@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<title>ALTER.CO</title>
+
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
+
+<style>
+
+*{
+margin:0;
+padding:0;
+box-sizing:border-box;
+}
+
+body{
+font-family: 'Inter', sans-serif;
+background:#0a0a0a;
+color:white;
+line-height:1.6;
+}
+
+.container{
+width:90%;
+max-width:1200px;
+margin:auto;
+}
+
+/* NAVBAR */
+
+nav{
+display:flex;
+justify-content:space-between;
+align-items:center;
+padding:30px 0;
+}
+
+.logo img{
+height:40px;
+}
+
+nav ul{
+display:flex;
+list-style:none;
+}
+
+nav li{
+margin-left:30px;
+}
+
+nav a{
+text-decoration:none;
+color:white;
+font-weight:500;
+opacity:0.8;
+}
+
+nav a:hover{
+opacity:1;
+}
+
+/* HERO */
+
+.hero{
+text-align:center;
+padding:120px 0;
+}
+
+.hero h1{
+font-size:64px;
+margin-bottom:10px;
+}
+
+.hero p{
+color:#999;
+font-size:18px;
+}
+
+.button{
+display:inline-block;
+margin-top:30px;
+padding:12px 28px;
+background:white;
+color:black;
+text-decoration:none;
+font-weight:600;
+border-radius:6px;
+}
+
+/* SECTIONS */
+
+section{
+padding:80px 0;
+}
+
+section h2{
+margin-bottom:40px;
+font-size:32px;
+}
+
+/* PROJECT GRID */
+
+.grid{
+display:grid;
+grid-template-columns:repeat(auto-fit,minmax(260px,1fr));
+gap:30px;
+}
+
+.card{
+background:#141414;
+padding:30px;
+border-radius:10px;
+transition:0.3s;
+}
+
+.card:hover{
+transform:translateY(-5px);
+background:#1c1c1c;
+}
+
+.card h3{
+margin-bottom:10px;
+}
+
+.status{
+margin-top:10px;
+color:#888;
+font-size:14px;
+}
+
+/* LIST */
+
+.list{
+color:#aaa;
+}
+
+.list li{
+margin-bottom:10px;
+}
+
+/* FOOTER */
+
+footer{
+padding:60px 0;
+text-align:center;
+color:#777;
+border-top:1px solid #1a1a1a;
+}
+
+</style>
+
+</head>
+<body>
+
+<div class="container">
+
+<nav>
+
+<div class="logo">
+<img src="logo.png" alt="ALTER.CO Logo">
+</div>
+
+<ul>
+<li><a href="#projects">Projects</a></li>
+<li><a href="#ideas">Ideas</a></li>
+<li><a href="#notes">Notes</a></li>
+</ul>
+
+</nav>
+
+</div>
+
+<section class="hero">
+
+<div class="container">
+
+<h1>ALTER.CO</h1>
+
+<p>Building ideas into companies.</p>
+
+<a class="button" href="#projects">View Projects</a>
+
+</div>
+
+</section>
+
+<section id="projects">
+
+<div class="container">
+
+<h2>Projects</h2>
+
+<div class="grid">
+
+<div class="card">
+<h3>ALTER MEDIA</h3>
+<p>Social media growth agency for brands.</p>
+<div class="status">Status: Building</div>
+</div>
+
+<div class="card">
+<h3>AI SHORTS</h3>
+<p>AI tool that generates viral short videos.</p>
+<div class="status">Status: Prototype</div>
+</div>
+
+<div class="card">
+<h3>REAL ESTATE OS</h3>
+<p>Platform for property investors.</p>
+<div class="status">Status: Research</div>
+</div>
+
+</div>
+
+</div>
+
+</section>
+
+<section id="ideas">
+
+<div class="container">
+
+<h2>Ideas</h2>
+
+<ul class="list">
+
+<li>AI Podcast Clipper</li>
+<li>Creator Monetization Platform</li>
+<li>Gym Micro SaaS</li>
+<li>Startup Idea Ranking Tool</li>
+
+</ul>
+
+</div>
+
+</section>
+
+<section id="notes">
+
+<div class="container">
+
+<h2>Notes</h2>
+
+<ul class="list">
+
+<li>Marketing frameworks</li>
+<li>Startup experiments</li>
+<li>Growth strategies</li>
+<li>Product ideas</li>
+
+</ul>
+
+</div>
+
+</section>
+
+<footer>
+
+ALTER.CO — Venture Studio  
+<br><br>
+© 2026
+
+</footer>
+
+</body>
+</html>
