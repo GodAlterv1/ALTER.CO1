@@ -1,0 +1,8 @@
+# Dependencies
+node_modules/
+
+# Optional: keep .env out of GitHub (has JWT_SECRET)
+# backend/.env
+
+# Data is NOT ignored so backend/data/ can be stored on GitHub
+# If you want to stop tracking data later, add: backend/data/

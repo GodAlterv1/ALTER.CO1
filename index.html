@@ -1301,7 +1301,34 @@ button:disabled { opacity: 0.5; cursor: not-allowed; transform: none; box-shadow
   grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
   gap: 20px;
   margin-bottom: 30px;
+  min-height: 320px;
+  min-width: 0;
 }
+#billing .billing-plans {
+  display: grid !important;
+  visibility: visible !important;
+}
+#billing .billing-plans .plan-card {
+  display: block !important;
+  visibility: visible !important;
+  min-height: 280px;
+}
+
+/* Ensure plan cards and toggle are visible on desktop (no collapse) */
+#billing .billing-plans {
+  display: grid !important;
+  visibility: visible !important;
+}
+
+#billing .billing-plans .plan-card {
+  display: block !important;
+  visibility: visible !important;
+  min-height: 280px;
+}
+.billing-plans-toggle-row {
+  margin-bottom: 8px;
+}
+
 .billing-period-toggle {
   display: inline-flex;
   align-items: center;
@@ -1807,6 +1834,54 @@ button:disabled { opacity: 0.5; cursor: not-allowed; transform: none; box-shadow
 
 .toast-close:hover { color: white; background: none; transform: none; box-shadow: none; }
 
+/* ===== GLOBAL ERROR BANNER ===== */
+.app-error-banner {
+  display: none;
+  position: sticky;
+  top: 0;
+  z-index: 2001; /* above topbar (100) and most UI */
+  border-bottom: 1px solid rgba(220, 38, 38, 0.35);
+  background: linear-gradient(135deg, rgba(127, 29, 29, 0.92), rgba(17, 24, 39, 0.92));
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+
+.app-error-banner.active { display: block; }
+
+.app-error-banner-inner {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 16px;
+}
+
+.app-error-title {
+  font-weight: 700;
+  font-size: 13px;
+  color: #fecaca;
+  margin-bottom: 2px;
+}
+
+.app-error-msg {
+  font-size: 12px;
+  color: #e5e7eb;
+  opacity: 0.95;
+  max-width: 900px;
+  overflow-wrap: anywhere;
+}
+
+.app-error-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+.app-error-actions button { box-shadow: none; transform: none; }
+.app-error-actions button:hover { transform: none; box-shadow: none; }
+
 /* ===== SHORTCUTS OVERLAY ===== */
 .shortcuts-overlay {
   display: none;
@@ -1878,6 +1953,11 @@ kbd {
 .empty-state-icon { font-size: 48px; margin-bottom: 16px; }
 .empty-state h3   { font-size: 18px; margin-bottom: 8px; color: #6B7280; }
 .empty-state p    { font-size: 14px; margin-bottom: 20px; }
+.empty-state button { margin-top: 8px; }
+.empty-state.compact { padding: 32px 16px; }
+.empty-state.compact .empty-state-icon { font-size: 36px; margin-bottom: 10px; }
+.empty-state.compact h3 { font-size: 15px; }
+.empty-state.compact p { font-size: 13px; margin-bottom: 12px; }
 
 /* ===== TABLE ===== */
 .data-table { width: 100%; border-collapse: collapse; font-size: 13px; }
@@ -1972,6 +2052,7 @@ kbd {
   }
 }
 </style>
+<meta name="alter-api-base" content="http://localhost:3000" id="alterApiBaseMeta">
 </head>
 <body>
 
@@ -2094,6 +2175,21 @@ kbd {
 
     <!-- WORKSPACE -->
     <div class="workspace">
+
+      <!-- GLOBAL ERROR BANNER -->
+      <div id="appErrorBanner" class="app-error-banner" aria-live="polite">
+        <div class="app-error-banner-inner">
+          <div style="min-width:0;">
+            <div class="app-error-title">Something went wrong</div>
+            <div class="app-error-msg" id="appErrorBannerMsg">An unexpected error happened.</div>
+          </div>
+          <div class="app-error-actions">
+            <button class="btn-xs btn-secondary" onclick="copyLastError()">Copy details</button>
+            <button class="btn-xs btn-warning" onclick="location.reload()">Reload</button>
+            <button class="btn-xs btn-danger" onclick="dismissAppError()">Dismiss</button>
+          </div>
+        </div>
+      </div>
 
       <!-- TOP BAR -->
       <div class="topbar">
@@ -2511,7 +2607,7 @@ kbd {
         <div class="audit-log-container" id="auditLogList"></div>
       </div>
 
-      <!-- BILLING -->
+            <!-- BILLING -->
       <div id="billing" class="page page-content hidden">
         <div class="workspace-header">
           <div>
@@ -2520,6 +2616,7 @@ kbd {
           </div>
         </div>
 
+        <!-- Current Subscription -->
         <div class="billing-info">
           <h3>Current Subscription</h3>
           <div class="billing-row">
@@ -2542,12 +2639,18 @@ kbd {
             <span class="billing-row-label">Payment Method</span>
             <span class="billing-row-value" id="billingPayment">None</span>
           </div>
+          <!-- Big upgrade button under the rows -->
+          <div style="margin-top:16px;text-align:right;">
+            <button onclick="upgradePlan('pro')" class="btn-warning btn-sm">Upgrade to Pro</button>
+          </div>
         </div>
 
+        <!-- Plans -->
         <h3 style="margin-bottom:18px;">Choose a Plan</h3>
         <div class="billing-plans" id="billingPlans"></div>
 
-        <div class="billing-info">
+        <!-- Invoice History -->
+        <div class="billing-info" style="margin-top:24px;">
           <h3>Invoice History</h3>
           <table class="invoice-table">
             <thead>
@@ -3221,6 +3324,85 @@ let apiKeys       = JSON.parse(localStorage.getItem('alco_apikeys'))       || []
 let invoices      = JSON.parse(localStorage.getItem('alco_invoices'))      || []
 let userSettings  = JSON.parse(localStorage.getItem('alco_usersettings'))  || {}
 
+(function () {
+  var meta = document.getElementById('alterApiBaseMeta')
+  var fromMeta = meta && meta.getAttribute('content') && meta.getAttribute('content').trim()
+  if (typeof window.location !== 'undefined' && window.location.origin && window.location.protocol !== 'file:' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
+    window.ALTER_API_BASE = window.location.origin
+    return
+  }
+  window.ALTER_API_BASE = fromMeta || ''
+})()
+var ALTER_API_BASE = window.ALTER_API_BASE || ''
+var syncWorkspaceTimeout = null
+
+function getAuthToken() { return localStorage.getItem('alco_token') || '' }
+function setAuthToken(t) { if (t) localStorage.setItem('alco_token', t); else localStorage.removeItem('alco_token') }
+function clearAuthToken() { localStorage.removeItem('alco_token') }
+
+function loadWorkspaceFromBackend() {
+  var token = getAuthToken()
+  if (!ALTER_API_BASE || !token) return Promise.resolve(null)
+  return fetch(ALTER_API_BASE + '/api/workspace', {
+    headers: { 'Authorization': 'Bearer ' + token }
+  }).then(function (r) {
+    if (r.status === 401) throw new Error('Unauthorized')
+    if (!r.ok) throw new Error('Load failed')
+    return r.json()
+  })
+}
+
+function applyWorkspaceToState(data) {
+  if (!data) return
+  if (Array.isArray(data.projects)) projects = data.projects
+  if (Array.isArray(data.tasks)) tasks = data.tasks
+  if (Array.isArray(data.ideas)) ideas = data.ideas
+  if (Array.isArray(data.events)) events = data.events
+  if (Array.isArray(data.timeEntries)) timeEntries = data.timeEntries
+  if (Array.isArray(data.team)) team = data.team
+  if (Array.isArray(data.notifications)) notifications = data.notifications
+  if (Array.isArray(data.activity)) activity = data.activity
+  if (Array.isArray(data.auditLogs)) auditLogs = data.auditLogs
+  if (Array.isArray(data.invoices)) invoices = data.invoices
+  if (Array.isArray(data.apiKeys)) apiKeys = data.apiKeys
+  if (data.userSettings && typeof data.userSettings === 'object') userSettings = data.userSettings
+}
+
+function syncWorkspaceToBackend() {
+  var token = getAuthToken()
+  if (!ALTER_API_BASE || !token) return Promise.resolve()
+  var payload = {
+    projects: projects,
+    tasks: tasks,
+    ideas: ideas,
+    events: events,
+    timeEntries: timeEntries,
+    team: team,
+    notifications: notifications,
+    activity: activity,
+    auditLogs: auditLogs,
+    invoices: invoices,
+    apiKeys: apiKeys,
+    userSettings: userSettings
+  }
+  return fetch(ALTER_API_BASE + '/api/workspace', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+    body: JSON.stringify(payload)
+  }).then(function (r) {
+    if (r.status === 401) clearAuthToken()
+  }).catch(function () {})
+}
+
+function scheduleSyncWorkspace() {
+  if (!ALTER_API_BASE || !getAuthToken()) return
+  if (syncWorkspaceTimeout) clearTimeout(syncWorkspaceTimeout)
+  syncWorkspaceTimeout = setTimeout(function () {
+    syncWorkspaceTimeout = null
+    syncWorkspaceToBackend()
+  }, 600)
+}
+
 let charts       = {}
 let currentDate  = new Date()
 let draggedTaskId= null
@@ -3253,9 +3435,105 @@ const ONBOARDING_STEPS = [
 
 let currentOnboardingStep = 0
 
+// Billing plans (must be before boot so renderBilling can use it)
+const PLANS = [
+  { id: 'free', name: 'Free', price: 0, priceYearly: 0, priceLabel: 'Forever free', priceLabelYearly: 'Forever free', desc: 'For individuals and small teams getting started', features: [ { text: '3 projects', ok: true }, { text: 'Unlimited tasks', ok: true }, { text: 'Basic analytics', ok: true }, { text: 'Time tracking', ok: true }, { text: 'Team (up to 3)', ok: true }, { text: 'Priority support', ok: false }, { text: 'Advanced reports', ok: false }, { text: 'API access', ok: false } ] },
+  { id: 'pro', name: 'Pro', price: 29, priceYearly: 23, priceLabel: 'per workspace / month', priceLabelYearly: 'billed yearly (save ~20%)', desc: 'For growing teams that need more power', features: [ { text: 'Unlimited projects', ok: true }, { text: 'Unlimited tasks', ok: true }, { text: 'Advanced analytics', ok: true }, { text: 'Time tracking & reports', ok: true }, { text: 'Team (up to 25)', ok: true }, { text: 'Priority support', ok: true }, { text: 'Advanced reports', ok: true }, { text: 'API access (coming soon)', ok: false } ], popular: true },
+  { id: 'enterprise', name: 'Enterprise', price: 99, priceYearly: 79, priceLabel: 'per workspace / month', priceLabelYearly: 'billed yearly (save ~20%)', desc: 'For large organizations with advanced needs', features: [ { text: 'Unlimited everything', ok: true }, { text: 'Custom integrations', ok: true }, { text: 'Advanced analytics', ok: true }, { text: 'Time tracking & reports', ok: true }, { text: 'Unlimited team members', ok: true }, { text: 'Dedicated support', ok: true }, { text: 'SLA guarantee', ok: true }, { text: 'Full API access', ok: true } ] }
+]
+
 /* ===================================================
    HELPERS
 =================================================== */
+// Global error capture (keeps app from failing silently)
+let lastAppError = null
+
+function getLastErrorText() {
+  if (!lastAppError) return ''
+  try {
+    return JSON.stringify(lastAppError, null, 2)
+  } catch (e) {
+    return String(lastAppError?.message || 'Unknown error')
+  }
+}
+
+function showAppErrorBanner(summary) {
+  let banner = document.getElementById('appErrorBanner')
+  let msgEl  = document.getElementById('appErrorBannerMsg')
+  if (!banner || !msgEl) return
+  msgEl.textContent = summary || 'An unexpected error happened.'
+  banner.classList.add('active')
+}
+
+function dismissAppError() {
+  let banner = document.getElementById('appErrorBanner')
+  if (banner) banner.classList.remove('active')
+}
+
+function copyLastError() {
+  let text = getLastErrorText()
+  if (!text) return showToast('No error details available', 'info')
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text)
+      .then(() => showToast('Error details copied', 'success'))
+      .catch(() => showToast('Copy failed — open Console for details', 'warning'))
+  } else {
+    // Fallback: best-effort prompt copy
+    try {
+      window.prompt('Copy error details:', text)
+    } catch (e) {
+      showToast('Copy not supported on this browser', 'warning')
+    }
+  }
+}
+
+function logAppError(payload) {
+  lastAppError = payload
+  try {
+    let key = 'alco_errorlog'
+    let list = JSON.parse(localStorage.getItem(key) || '[]')
+    list.unshift(payload)
+    if (list.length > 25) list = list.slice(0, 25)
+    localStorage.setItem(key, JSON.stringify(list))
+  } catch (e) {
+    // ignore storage failures
+  }
+}
+
+function initGlobalErrorCapture() {
+  if (window.__alcoErrorCaptureInit) return
+  window.__alcoErrorCaptureInit = true
+
+  window.addEventListener('error', function (event) {
+    let payload = {
+      type: 'error',
+      message: String(event?.message || 'Unknown error'),
+      source: event?.filename || '',
+      line: event?.lineno || null,
+      col: event?.colno || null,
+      stack: event?.error?.stack || '',
+      time: new Date().toISOString(),
+      page: document.getElementById('topbarTitle')?.textContent || ''
+    }
+    logAppError(payload)
+    showAppErrorBanner(payload.message)
+  })
+
+  window.addEventListener('unhandledrejection', function (event) {
+    let reason = event?.reason
+    let message = (reason && (reason.message || reason.toString)) ? (reason.message || String(reason)) : 'Unhandled promise rejection'
+    let payload = {
+      type: 'unhandledrejection',
+      message: String(message || 'Unhandled promise rejection'),
+      stack: reason?.stack || '',
+      time: new Date().toISOString(),
+      page: document.getElementById('topbarTitle')?.textContent || ''
+    }
+    logAppError(payload)
+    showAppErrorBanner(payload.message)
+  })
+}
+
 function escapeHtml(str) {
   if (str === null || str === undefined) return ''
   return String(str)
@@ -3263,7 +3541,10 @@ function escapeHtml(str) {
     .replace(/"/g,'&quot;').replace(/'/g,'&#039;')
 }
 
-function save(key, data) { localStorage.setItem('alco_' + key, JSON.stringify(data)) }
+function save(key, data) {
+  localStorage.setItem('alco_' + key, JSON.stringify(data))
+  if (ALTER_API_BASE && getAuthToken()) scheduleSyncWorkspace()
+}
 
 function genId() { return Date.now().toString(36) + Math.random().toString(36).substr(2, 5) }
 
@@ -3297,15 +3578,33 @@ function greeting() {
    BOOT
 =================================================== */
 ;(function boot() {
-  let session = JSON.parse(localStorage.getItem('alco_session'))
+  if (ALTER_API_BASE && getAuthToken()) {
+    loadWorkspaceFromBackend()
+      .then(function (data) {
+        if (data) applyWorkspaceToState(data)
+        var session = JSON.parse(localStorage.getItem('alco_session'))
+        if (session && session.id) {
+          currentUser = session
+          showApp()
+        } else {
+          clearAuthToken()
+          localStorage.removeItem('alco_session')
+        }
+      })
+      .catch(function (err) {
+        clearAuthToken()
+        localStorage.removeItem('alco_session')
+      })
+    return
+  }
+  var session = JSON.parse(localStorage.getItem('alco_session'))
   if (session && session.id) {
-    let freshUser = users.find(u => u.id === session.id)
+    var freshUser = users.find(function (u) { return u.id === session.id })
     if (freshUser) {
       currentUser = freshUser
       showApp()
     }
   }
-  // Seed demo invoices if empty
   if (!invoices.length) {
     invoices = [
       { id:'inv001', date:'2024-01-01', amount:'$0.00',  status:'paid',    plan:'Free' },
@@ -3326,34 +3625,76 @@ function switchLoginTab(tab, el) {
 }
 
 function register() {
-  let u  = document.getElementById('regUsername').value.trim()
-  let e  = document.getElementById('regEmail').value.trim()
-  let p  = document.getElementById('regPassword').value.trim()
-  let c  = document.getElementById('regConfirm').value.trim()
+  var u  = document.getElementById('regUsername').value.trim()
+  var e  = document.getElementById('regEmail').value.trim()
+  var p  = document.getElementById('regPassword').value.trim()
+  var c  = document.getElementById('regConfirm').value.trim()
   if (u.length < 4)     return showLoginMessage('Username must be at least 4 characters', 'error')
   if (p.length < 6)     return showLoginMessage('Password must be at least 6 characters', 'error')
   if (p !== c)          return showLoginMessage('Passwords do not match', 'error')
-  if (users.find(x => x.username === u)) return showLoginMessage('Username already exists', 'error')
-
-  let newUser = { id: genId(), username: u, email: e, password: p, fullName: '', role: 'member', bio: '', timezone: 'UTC', plan: 'free', created: new Date().toISOString() }
+  if (ALTER_API_BASE) {
+    fetch(ALTER_API_BASE + '/api/auth/register', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username: u, email: e, password: p, fullName: '' })
+    }).then(function (r) { return r.json().then(function (body) { return { ok: r.ok, status: r.status, body: body } }) })
+      .then(function (res) {
+        if (!res.ok) return showLoginMessage(res.body.error || 'Registration failed', 'error')
+        setAuthToken(res.body.token)
+        save('session', res.body.user)
+        currentUser = res.body.user
+        applyWorkspaceToState({ projects: [], tasks: [], ideas: [], events: [], timeEntries: [], team: [], notifications: [], activity: [], auditLogs: [], invoices: [], apiKeys: [], userSettings: {} })
+        addAuditLog('login', 'Account created', 'login')
+        showApp()
+      })
+      .catch(function () { showLoginMessage('Network error. Is the backend running?', 'error') })
+    return
+  }
+  if (users.find(function (x) { return x.username === u })) return showLoginMessage('Username already exists', 'error')
+  var newUser = { id: genId(), username: u, email: e, password: p, fullName: '', role: 'member', bio: '', timezone: 'UTC', plan: 'free', created: new Date().toISOString() }
   users.push(newUser)
   save('users', users)
   showLoginMessage('Account created! You can now sign in.', 'success')
 }
 
 function login() {
-  let u   = document.getElementById('usernameInput').value.trim()
-  let p   = document.getElementById('passwordInput').value.trim()
-  let acc = users.find(x => x.username === u && x.password === p)
+  var u   = document.getElementById('usernameInput').value.trim()
+  var p   = document.getElementById('passwordInput').value.trim()
+  if (ALTER_API_BASE) {
+    fetch(ALTER_API_BASE + '/api/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username: u, password: p })
+    }).then(function (r) { return r.json().then(function (body) { return { ok: r.ok, status: r.status, body: body } }) })
+      .then(function (res) {
+        if (!res.ok) return showLoginMessage(res.body.error || 'Invalid username or password', 'error')
+        setAuthToken(res.body.token)
+        save('session', res.body.user)
+        currentUser = res.body.user
+        return loadWorkspaceFromBackend()
+      })
+      .then(function (data) {
+        if (data) applyWorkspaceToState(data)
+        addAuditLog('login', u + ' signed in', 'login')
+        showApp()
+      })
+      .catch(function () { showLoginMessage('Network error. Is the backend running?', 'error') })
+    return
+  }
+  var acc = users.find(function (x) { return x.username === u && x.password === p })
   if (!acc) return showLoginMessage('Invalid username or password', 'error')
   currentUser = acc
   save('session', acc)
-  addAuditLog('login', `${u} signed in`, 'login')
+  addAuditLog('login', u + ' signed in', 'login')
   showApp()
 }
 
 function demoLogin() {
-  let acc = users.find(x => x.username === 'admin')
+  if (ALTER_API_BASE) {
+    showLoginMessage('Create an account or sign in with your credentials', 'info')
+    return
+  }
+  var acc = users.find(function (x) { return x.username === 'admin' })
   if (!acc) return
   currentUser = acc
   save('session', acc)
@@ -3364,6 +3705,7 @@ function demoLogin() {
 function showApp() {
   document.getElementById('loginScreen').classList.add('hidden')
   document.getElementById('app').classList.remove('hidden')
+  initGlobalErrorCapture()
   initializeApp()
   // Show onboarding for new users who haven't seen it
   if (!localStorage.getItem('alco_onboarded_' + currentUser.id)) {
@@ -3373,8 +3715,9 @@ function showApp() {
 
 function logout() {
   if (!confirm('Sign out of ALTER.CO?')) return
+  clearAuthToken()
   localStorage.removeItem('alco_session')
-  Object.values(charts).forEach(c => { try { c.destroy() } catch(e){} })
+  Object.keys(charts).forEach(function (k) { try { if (charts[k]) charts[k].destroy() } catch(e){} })
   charts = {}
   stopTimer()
   currentUser = null
@@ -3811,7 +4154,17 @@ function buildProjectCard(p) {
 function renderProjects() {
   let html = projects.map(buildProjectCard).join('')
   document.getElementById('projectsList').innerHTML = html ||
-    `<div class="empty-state"><div class="empty-state-icon">📁</div><h3>No projects yet</h3><p>Create your first project to get organized</p><button onclick="openCreateProjectModal()">+ New Project</button></div>`
+    `<div class="empty-state"><div class="empty-state-icon">📁</div><h3>No projects yet</h3><p>Create your first project to get organized</p><button class="btn-primary btn-sm" onclick="openCreateProjectModal()">+ New Project</button></div>`
+}
+
+function clearProjectFilters() {
+  let searchEl = document.getElementById('projectSearch')
+  let priorityEl = document.getElementById('projectFilter')
+  let statusEl = document.getElementById('projectStatusFilter')
+  if (searchEl) searchEl.value = ''
+  if (priorityEl) priorityEl.value = ''
+  if (statusEl) statusEl.value = ''
+  renderProjects()
 }
 
 function filterProjects() {
@@ -3825,7 +4178,15 @@ function filterProjects() {
     return matchSearch && matchPriority && matchStatus
   })
   let html = filtered.map(buildProjectCard).join('')
-  document.getElementById('projectsList').innerHTML = html || `<div class="empty-state"><div class="empty-state-icon">🔍</div><h3>No matching projects</h3></div>`
+  if (html) {
+    document.getElementById('projectsList').innerHTML = html
+    return
+  }
+  if (projects.length === 0) {
+    document.getElementById('projectsList').innerHTML = `<div class="empty-state"><div class="empty-state-icon">📁</div><h3>No projects yet</h3><p>Create your first project to get organized</p><button class="btn-primary btn-sm" onclick="openCreateProjectModal()">+ New Project</button></div>`
+  } else {
+    document.getElementById('projectsList').innerHTML = `<div class="empty-state"><div class="empty-state-icon">🔍</div><h3>No matching projects</h3><p>Try different filters or clear them</p><button class="btn-secondary btn-sm" onclick="clearProjectFilters()">Clear filters</button></div>`
+  }
 }
 
 function editProject(id) {
@@ -3959,7 +4320,9 @@ function buildTaskCard(t) {
   let timeHtml = tracked > 0 ? `<span class="time-badge" style="font-size:10px;color:#4f46e5;">⏱ ${formatHours(tracked)}</span>` : ''
 
   return `
-    <div class="task-card" data-task-id="${escapeHtml(t.id)}" draggable="true" ondragstart="dragStart(event)" ondragend="dragEnd(event)" ondblclick="openTaskDetail('${t.id}')">
+    <div class="task-card" data-task-id="${escapeHtml(t.id)}" draggable="true"
+         ondragstart="dragStart(event)" ondragend="dragEnd(event)"
+         ondblclick="openTaskDetail('${t.id}')">
       ${project ? `<div style="font-size:10px;color:#4f46e5;margin-bottom:5px;font-weight:600;">📁 ${escapeHtml(project.name)}</div>` : ''}
       <h4>${escapeHtml(t.title)}</h4>
       ${t.description ? `<p>${escapeHtml(t.description).substring(0, 80)}${t.description.length > 80 ? '...' : ''}</p>` : ''}
@@ -3971,10 +4334,52 @@ function buildTaskCard(t) {
           <span class="task-assignee" title="${escapeHtml(currentUser.username)}">${currentUser.username.charAt(0).toUpperCase()}</span>
         </div>
       </div>
+      <div style="margin-top:8px;display:flex;flex-direction:column;gap:6px;">
+        <button class="btn-xs btn-danger" onclick="showDeleteConfirm('${t.id}')">✕ Delete</button>
+        <div id="deleteConfirm-${t.id}" class="hidden" style="display:flex;align-items:center;gap:6px;font-size:11px;color:#fca5a5;">
+          <span>Delete this task?</span>
+          <button class="btn-xs btn-danger" onclick="confirmDeleteTask('${t.id}')">Yes</button>
+          <button class="btn-xs btn-secondary" onclick="hideDeleteConfirm('${t.id}')">Cancel</button>
+        </div>
+      </div>
     </div>
   `
 }
+function showDeleteConfirm(id) {
+  let row = document.getElementById('deleteConfirm-' + id)
+  if (row) row.classList.remove('hidden')
+}
 
+function hideDeleteConfirm(id) {
+  let row = document.getElementById('deleteConfirm-' + id)
+  if (row) row.classList.add('hidden')
+}
+
+function confirmDeleteTask(id) {
+  let task = tasks.find(t => t.id === id)
+  if (!task) return
+
+  tasks = tasks.filter(t => t.id !== id)
+  save('tasks', tasks)
+  renderTasks()
+  renderDashboardCharts()
+  updateStats()
+  addAuditLog('delete', `Deleted task "${task.title}"`, 'delete')
+  showToast('Task deleted', 'success')
+}
+function deleteTask(id) {
+  let task = tasks.find(t => t.id === id)
+  if (!task) return
+  if (!confirm(`Delete task "${task.title}"?`)) return
+
+  tasks = tasks.filter(t => t.id !== id)
+  save('tasks', tasks)
+  renderTasks()
+  renderDashboardCharts()
+  updateStats()
+  addAuditLog('delete', `Deleted task "${task.title}"`, 'delete')
+  showToast('Task deleted', 'success')
+}
 function renderTasks(taskList) {
   let source = taskList || tasks
   let columns = { 'todo':[], 'in-progress':[], 'review':[], 'done':[] }
@@ -3982,18 +4387,22 @@ function renderTasks(taskList) {
 
   let colIds   = { 'todo':'todoTasks','in-progress':'progressTasks','review':'reviewTasks','done':'doneTasks' }
   let countIds = { 'todo':'countTodo','in-progress':'countProgress','review':'countReview','done':'countDone' }
-  let emptyMsg = { 'todo':'No tasks','in-progress':'Nothing in progress','review':'Nothing to review','done':'Nothing done yet' }
+  let emptyTitles = { 'todo':'No tasks yet','in-progress':'Nothing in progress','review':'Nothing to review','done':'Nothing done yet' }
+  let emptyDescs  = { 'todo':'Add a task to get started','in-progress':'Move a task here when you start','review':'Tasks ready for review go here','done':'Completed tasks appear here' }
 
   Object.keys(columns).forEach(status => {
     let colEl   = document.getElementById(colIds[status])
     let countEl = document.getElementById(countIds[status])
     if (!colEl) return
-    colEl.innerHTML = columns[status].length
-      ? columns[status].map(buildTaskCard).join('')
-      : `<p style="text-align:center;color:#374151;padding:25px 10px;font-size:12px;">${emptyMsg[status]}</p>`
+    if (columns[status].length) {
+      colEl.innerHTML = columns[status].map(buildTaskCard).join('')
+    } else {
+      colEl.innerHTML = `<div class="empty-state compact"><div class="empty-state-icon">📋</div><h3>${emptyTitles[status]}</h3><p>${emptyDescs[status]}</p><button class="btn-sm btn-secondary" onclick="openCreateTaskModalWithStatus('${status}')">+ Add task</button></div>`
+    }
     if (countEl) countEl.textContent = columns[status].length
   })
 }
+
 
 function filterTasks() {
   let search   = document.getElementById('taskSearch').value.toLowerCase()
@@ -4175,7 +4584,7 @@ function renderTimeTracking() {
 
   let list = document.getElementById('timeEntriesList')
   if (!timeEntries.length) {
-    list.innerHTML = `<div class="empty-state"><div class="empty-state-icon">⏱</div><h3>No time entries yet</h3><p>Start the timer or log time manually</p></div>`
+    list.innerHTML = `<div class="empty-state"><div class="empty-state-icon">⏱</div><h3>No time entries yet</h3><p>Start the timer above or log time manually to see entries here</p></div>`
     return
   }
 
@@ -4273,7 +4682,15 @@ function renderIdeas() {
   let sorted = [...ideas].sort((a, b) => b.votes - a.votes)
   let html = sorted.map(buildIdeaCard).join('')
   document.getElementById('ideasList').innerHTML = html ||
-    `<div class="empty-state"><div class="empty-state-icon">💡</div><h3>No ideas yet</h3><p>Be the first to submit an idea!</p><button onclick="openCreateIdeaModal()">+ New Idea</button></div>`
+    `<div class="empty-state"><div class="empty-state-icon">💡</div><h3>No ideas yet</h3><p>Be the first to submit an idea!</p><button class="btn-primary btn-sm" onclick="openCreateIdeaModal()">+ New Idea</button></div>`
+}
+
+function clearIdeaFilters() {
+  let searchEl = document.getElementById('ideaSearch')
+  let catEl = document.getElementById('ideaCategoryFilter')
+  if (searchEl) searchEl.value = ''
+  if (catEl) catEl.value = ''
+  renderIdeas()
 }
 
 function filterIdeas() {
@@ -4285,8 +4702,16 @@ function filterIdeas() {
     return ms && mc
   })
   let sorted = [...filtered].sort((a, b) => b.votes - a.votes)
-  document.getElementById('ideasList').innerHTML = sorted.map(buildIdeaCard).join('') ||
-    `<div class="empty-state"><div class="empty-state-icon">🔍</div><h3>No matching ideas</h3></div>`
+  let html = sorted.map(buildIdeaCard).join('')
+  if (html) {
+    document.getElementById('ideasList').innerHTML = html
+    return
+  }
+  if (ideas.length === 0) {
+    document.getElementById('ideasList').innerHTML = `<div class="empty-state"><div class="empty-state-icon">💡</div><h3>No ideas yet</h3><p>Be the first to submit an idea!</p><button class="btn-primary btn-sm" onclick="openCreateIdeaModal()">+ New Idea</button></div>`
+  } else {
+    document.getElementById('ideasList').innerHTML = `<div class="empty-state"><div class="empty-state-icon">🔍</div><h3>No matching ideas</h3><p>Try different filters or add a new idea</p><button class="btn-secondary btn-sm" onclick="clearIdeaFilters()">Clear filters</button></div>`
+  }
 }
 
 function voteIdea(id) {
@@ -4345,7 +4770,7 @@ function deleteIdea(id) {
   addAuditLog('delete', `Deleted idea "${idea?.title}"`, 'delete')
   showToast('Idea deleted', 'success')
   updateStats()
-  }
+}
   /* ===================================================
    CALENDAR HELPERS
 =================================================== */
@@ -4408,7 +4833,7 @@ function renderCalendarDayDetail(dateStr) {
   }).sort((a, b) => new Date(a.start) - new Date(b.start))
 
   if (!dayEvents.length) {
-    listEl.innerHTML = '<p style="font-size:12px;color:#6B7280;">No events on this day.</p>'
+    listEl.innerHTML = `<div class="empty-state compact"><div class="empty-state-icon">📅</div><h3>No events this day</h3><p>Add an event for ${d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</p><button class="btn-sm btn-primary" onclick="openCreateEventModal(); if(selectedCalendarDate){ document.getElementById('modalEventStart').value=selectedCalendarDate+'T09:00'; document.getElementById('modalEventEnd').value=selectedCalendarDate+'T10:00'; }">+ Add event</button></div>`
     return
   }
 
@@ -4513,20 +4938,22 @@ function renderCalendar() {
 
   let upcomingEl = document.getElementById('upcomingEvents')
   if (upcomingEl) {
-    upcomingEl.innerHTML = upcoming.length
-      ? upcoming.map(e => `
-          <div style="display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid #1F2937;">
-            <div style="background:#4f46e5;color:white;padding:6px 10px;border-radius:8px;font-size:12px;font-weight:700;min-width:50px;text-align:center;">
-              ${new Date(e.start).toLocaleDateString('en-US',{month:'short',day:'numeric'})}
-            </div>
-            <div>
-              <div style="font-size:14px;font-weight:500;">${escapeHtml(e.title)}</div>
-              <div style="font-size:12px;color:#6B7280;">${new Date(e.start).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})}</div>
-            </div>
-            <button class="btn-sm btn-danger" style="margin-left:auto;" onclick="deleteEvent('${e.id}')">✕</button>
+    if (upcoming.length) {
+      upcomingEl.innerHTML = upcoming.map(e => `
+        <div style="display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid #1F2937;">
+          <div style="background:#4f46e5;color:white;padding:6px 10px;border-radius:8px;font-size:12px;font-weight:700;min-width:50px;text-align:center;">
+            ${new Date(e.start).toLocaleDateString('en-US',{month:'short',day:'numeric'})}
           </div>
-        `).join('')
-      : '<p style="color:#4B5563;font-size:13px;padding:10px 0;">No upcoming events</p>'
+          <div>
+            <div style="font-size:14px;font-weight:500;">${escapeHtml(e.title)}</div>
+            <div style="font-size:12px;color:#6B7280;">${new Date(e.start).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})}</div>
+          </div>
+          <button class="btn-sm btn-danger" style="margin-left:auto;" onclick="deleteEvent('${e.id}')">✕</button>
+        </div>
+      `).join('')
+    } else {
+      upcomingEl.innerHTML = `<div class="empty-state compact"><div class="empty-state-icon">📅</div><h3>No upcoming events</h3><p>Schedule an event from the calendar</p><button class="btn-sm btn-primary" onclick="switchPage('calendar',null); openCreateEventModal();">+ New Event</button></div>`
+    }
   }
 }
 
@@ -4616,6 +5043,9 @@ function renderTeam() {
     }
   })
 
+  if (team.length === 0) {
+    activeHtml += `<div class="empty-state compact" style="grid-column:1/-1;margin-top:16px;"><div class="empty-state-icon">👥</div><h3>No team members yet</h3><p>Invite teammates to collaborate on projects</p><button class="btn-primary btn-sm" onclick="openInviteTeamModal()">+ Invite Member</button></div>`
+  }
   document.getElementById('teamList').innerHTML    = activeHtml
   document.getElementById('inviteList').innerHTML  = pendingHtml || '<p style="color:#4B5563;font-size:13px;padding:20px 0;">No pending invitations</p>'
 
@@ -4688,8 +5118,12 @@ function renderNotifications(filter) {
     </div>
   `).join('')
 
-  document.getElementById('notificationsList').innerHTML = html ||
-    '<p style="text-align:center;color:#4B5563;padding:30px;font-size:13px;">No notifications</p>'
+  let listEl = document.getElementById('notificationsList')
+  if (list.length === 0) {
+    listEl.innerHTML = '<div class="empty-state compact"><div class="empty-state-icon">🔔</div><h3>No notifications</h3><p>Notifications will show up here when you get updates</p></div>'
+  } else {
+    listEl.innerHTML = html
+  }
 
   let unread = notifications.filter(n => !n.read).length
   let badge  = document.getElementById('topbarNotifBadge')
@@ -4730,7 +5164,10 @@ function addActivity(text) {
 function renderActivityFeed() {
   let el = document.getElementById('activityFeed')
   if (!el) return
-  if (!activity.length) { el.innerHTML = '<p style="color:#4B5563;font-size:13px;">No activity yet</p>'; return }
+  if (!activity.length) {
+    el.innerHTML = '<div class="empty-state compact"><div class="empty-state-icon">📋</div><h3>No activity yet</h3><p>Create projects, tasks, or log time to see activity here</p></div>'
+    return
+  }
   el.innerHTML = activity.slice(0, 20).map(a => `
     <div class="activity-item">
       <div class="activity-avatar">${a.user.charAt(0).toUpperCase()}</div>
@@ -4801,67 +5238,6 @@ function exportAuditLog() {
 /* ===================================================
    BILLING
 =================================================== */
-const PLANS = [
-  {
-    id: 'free',
-    name: 'Free',
-    price: 0, // monthly
-    priceYearly: 0,
-    priceLabel: 'Forever free',
-    priceLabelYearly: 'Forever free',
-    desc: 'For individuals and small teams getting started',
-    features: [
-      { text: '3 projects', ok: true },
-      { text: 'Unlimited tasks', ok: true },
-      { text: 'Basic analytics', ok: true },
-      { text: 'Time tracking', ok: true },
-      { text: 'Team (up to 3)', ok: true },
-      { text: 'Priority support', ok: false },
-      { text: 'Advanced reports', ok: false },
-      { text: 'API access', ok: false },
-    ]
-  },
-  {
-    id: 'pro',
-    name: 'Pro',
-    price: 29,          // monthly
-    priceYearly: 23,    // shown per month, billed yearly
-    priceLabel: 'per workspace / month',
-    priceLabelYearly: 'billed yearly (save ~20%)',
-    desc: 'For growing teams that need more power',
-    features: [
-      { text: 'Unlimited projects', ok: true },
-      { text: 'Unlimited tasks', ok: true },
-      { text: 'Advanced analytics', ok: true },
-      { text: 'Time tracking & reports', ok: true },
-      { text: 'Team (up to 25)', ok: true },
-      { text: 'Priority support', ok: true },
-      { text: 'Advanced reports', ok: true },
-      { text: 'API access (coming soon)', ok: false },
-    ],
-    popular: true
-  },
-  {
-    id: 'enterprise',
-    name: 'Enterprise',
-    price: 99,          // monthly
-    priceYearly: 79,    // shown per month, billed yearly
-    priceLabel: 'per workspace / month',
-    priceLabelYearly: 'billed yearly (save ~20%)',
-    desc: 'For large organizations with advanced needs',
-    features: [
-      { text: 'Unlimited everything', ok: true },
-      { text: 'Custom integrations', ok: true },
-      { text: 'Advanced analytics', ok: true },
-      { text: 'Time tracking & reports', ok: true },
-      { text: 'Unlimited team members', ok: true },
-      { text: 'Dedicated support', ok: true },
-      { text: 'SLA guarantee', ok: true },
-      { text: 'Full API access', ok: true },
-    ]
-  }
-]
-
 function renderBilling() {
   let currentPlan = currentUser.plan || 'free'
   let planInfo    = PLANS.find(p => p.id === currentPlan)
@@ -4898,13 +5274,15 @@ function renderBilling() {
     const isYearly = billingPeriod === 'yearly'
 
     plansEl.innerHTML =
-      `<div class="billing-period-toggle">
-        <button class="${!isYearly ? 'active' : ''}" onclick="setBillingPeriod('monthly')">
-          Monthly
-        </button>
-        <button class="${isYearly ? 'active' : ''}" onclick="setBillingPeriod('yearly')">
-          Yearly <span>save ~20%</span>
-        </button>
+  `<div class="billing-plans-toggle-row" style="grid-column: 1 / -1;">
+    <div class="billing-period-toggle">
+          <button class="${!isYearly ? 'active' : ''}" onclick="setBillingPeriod('monthly')">
+            Monthly
+          </button>
+          <button class="${isYearly ? 'active' : ''}" onclick="setBillingPeriod('yearly')">
+            Yearly <span>save ~20%</span>
+          </button>
+        </div>
       </div>` +
       PLANS.map(plan => {
         const price      = isYearly && plan.priceYearly != null ? plan.priceYearly : plan.price
@@ -4940,15 +5318,19 @@ function renderBilling() {
 
   let invoiceEl = document.getElementById('invoiceList')
   if (invoiceEl) {
-    invoiceEl.innerHTML = invoices.map(inv => `
-      <tr>
-        <td>${inv.id}</td>
-        <td>${inv.date}</td>
-        <td>${inv.amount}</td>
-        <td><span class="invoice-status ${inv.status}">${inv.status}</span></td>
-        <td><button class="btn-xs btn-secondary" onclick="showToast('PDF download coming soon','info')">⬇ PDF</button></td>
-      </tr>
-    `).join('') || '<tr><td colspan="5" style="text-align:center;color:#4B5563;padding:20px;">No invoices yet</td></tr>'
+    if (!invoices.length) {
+      invoiceEl.innerHTML = `<tr><td colspan="5"><div class="empty-state compact"><div class="empty-state-icon">📄</div><h3>No invoices yet</h3><p>Invoices will appear here after you upgrade to a paid plan</p></div></td></tr>`
+    } else {
+      invoiceEl.innerHTML = invoices.map(inv => `
+        <tr>
+          <td>${inv.id}</td>
+          <td>${inv.date}</td>
+          <td>${inv.amount}</td>
+          <td><span class="invoice-status ${inv.status}">${inv.status}</span></td>
+          <td><button class="btn-xs btn-secondary" onclick="showToast('PDF download coming soon','info')">⬇ PDF</button></td>
+        </tr>
+      `).join('')
+    }
   }
 }
 function setBillingPeriod(period) {
@@ -5345,19 +5727,53 @@ function refreshDashboard() {
 }
 
 function exportData() {
-  let data = {
-    exportedBy: currentUser.username,
-    exportDate: new Date().toISOString(),
-    projects, tasks, ideas, events,
-    timeEntries: timeEntries.map(e => ({ ...e })),
-    team: team.map(m => ({ id: m.id, email: m.email, role: m.role, status: m.status }))
+  try {
+    let workspaceName = localStorage.getItem('alco_workspace_name') || 'My Workspace'
+    let safeName = workspaceName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'workspace'
+
+    let data = {
+      exportedBy: currentUser.username,
+      exportDate: new Date().toISOString(),
+      workspaceName,
+      projects: projects.map(p => ({ ...p })),
+      tasks: tasks.map(t => ({ ...t })),
+      ideas: ideas.map(i => ({ ...i })),
+      events: events.map(e => ({ ...e })),
+      timeEntries: timeEntries.map(e => ({ ...e })),
+      team: team.map(m => ({ ...m })),
+      notifications: notifications.map(n => ({ ...n })),
+      activity: activity.map(a => ({ ...a })),
+      auditLogs: auditLogs.map(l => ({ ...l })),
+      invoices: invoices.map(inv => ({ ...inv })),
+      apiKeys: apiKeys.map(k => ({ ...k })),
+      userSettings: { ...userSettings },
+      calendarState: {
+        calendarView,
+        selectedCalendarDate
+      },
+      billingState: {
+        billingPeriod
+      }
+    }
+
+    let blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
+    let a    = Object.assign(document.createElement('a'), {
+      href: URL.createObjectURL(blob),
+      download: `alter-co-export-${safeName}-${Date.now()}.json`
+    })
+    a.click()
+    URL.revokeObjectURL(a.href)
+    addAuditLog('other', 'Exported workspace data', 'other')
+    showToast('Data exported!', 'success')
+  } catch (err) {
+    console.error('Export failed', err)
+    showAppErrorBanner('Export failed. Please try again.')
+    logAppError({
+      type: 'export-failed',
+      message: err?.message || String(err),
+      time: new Date().toISOString()
+    })
   }
-  let blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
-  let a    = Object.assign(document.createElement('a'), { href: URL.createObjectURL(blob), download: `alter-co-export-${Date.now()}.json` })
-  a.click()
-  URL.revokeObjectURL(a.href)
-  addAuditLog('other', 'Exported workspace data', 'other')
-  showToast('Data exported!', 'success')
 }
 
 function generateReport() {
@@ -5412,6 +5828,4 @@ document.addEventListener('click', e => {
 </script>
 </body>
 </html>
-
-
 

@@ -1,0 +1,12 @@
+{
+  "name": "alter-co",
+  "version": "1.0.0",
+  "description": "ALTER.CO – app and API in one",
+  "scripts": {
+    "build": "cd backend && npm install",
+    "start": "node backend/server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

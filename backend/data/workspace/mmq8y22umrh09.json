@@ -1,0 +1,31 @@
+{
+  "projects": [],
+  "tasks": [],
+  "ideas": [],
+  "events": [],
+  "timeEntries": [],
+  "team": [],
+  "notifications": [],
+  "activity": [],
+  "auditLogs": [
+    {
+      "id": "mmq8yjxssh5lv",
+      "type": "login",
+      "text": "bardin signed in",
+      "iconType": "login",
+      "user": "bardin",
+      "timestamp": "2026-03-14T11:33:11.152Z"
+    },
+    {
+      "id": "mmq8y25axjk8a",
+      "type": "login",
+      "text": "Account created",
+      "iconType": "login",
+      "user": "bardin",
+      "timestamp": "2026-03-14T11:32:48.094Z"
+    }
+  ],
+  "invoices": [],
+  "apiKeys": [],
+  "userSettings": {}
+}
