@@ -1,0 +1,13 @@
+# Render Blueprint – one Web Service for ALTER.CO (frontend + API)
+# See https://render.com/docs/blueprint-spec
+
+services:
+  - type: web
+    name: alter-co
+    runtime: node
+    # Root Directory must be empty so repo root is used (where package.json + backend/ live)
+    buildCommand: npm run build
+    startCommand: npm start
+    envVars:
+      - key: JWT_SECRET
+        generateValue: true  # Render creates a random secret if you don't set one

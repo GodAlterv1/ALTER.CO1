@@ -1,7 +1,7 @@
 {
   "name": "alter-co-backend",
   "version": "1.0.0",
-  "description": "ALTER.CO API with auth and JSON file storage (no native build)",
+  "description": "ALTER.CO API – auth + workspace storage using JSON files (no native build)",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
@@ -13,5 +13,8 @@
     "dotenv": "^16.4.5",
     "express": "^4.21.1",
     "jsonwebtoken": "^9.0.2"
+  },
+  "engines": {
+    "node": ">=18"
   }
 }

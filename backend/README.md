@@ -1,6 +1,6 @@
 # ALTER.CO Backend
 
-Real backend with **auth** (JWT) and **SQLite** for the ALTER.CO app.
+Backend with **auth** (JWT) and **JSON file storage** (no database install, no native build). Works on Windows, Mac, Linux, and services like Render.
 
 ## Quick start
 
@@ -15,24 +15,29 @@ API runs at **http://localhost:3000**.
 ## Use the backend from the frontend
 
 1. Start the backend: `npm start` in the `backend` folder.
-2. In your `index.html`, set the API base URL so the app uses the backend instead of only localStorage:
-   - Find the meta tag: `<meta name="alter-api-base" content="" id="alterApiBaseMeta">`
-   - Set `content` to your API URL, e.g. `content="http://localhost:3000"`.
-3. Open the app (e.g. by opening `index.html` or via a local server). Sign up or sign in; data is stored in the database and synced on each change.
+2. In `index.html`, the meta tag `<meta name="alter-api-base" content="http://localhost:3000" ...>` tells the app to use this API.  
+   - `content="http://localhost:3000"` → use backend for login and workspace data.  
+   - `content=""` → use **localStorage only** (no backend).
+3. Open the app (e.g. open `index.html` in the browser or use a local server). Register or sign in; data is saved in `backend/data/` and synced on change.
 
-With `content=""` (default), the app keeps using **localStorage only** (no backend). With `content="http://localhost:3000"`, it uses the backend for auth and workspace data.
+## Where data is stored
+
+- **Users:** `backend/data/users.json`
+- **Workspace per user:** `backend/data/workspace/<userId>.json`
+
+No SQLite or other database needed.
 
 ## Environment (optional)
 
-Create a `.env` file (see `.env.example`):
+Copy `.env.example` to `.env` and adjust if needed:
 
 - `PORT` – server port (default 3000)
-- `JWT_SECRET` – secret for signing tokens (change in production)
-- `DB_PATH` – path to the SQLite file (default `./alter.db`)
+- `JWT_SECRET` – secret for signing tokens (use a long random string in production)
 
 ## API
 
 - `POST /api/auth/register` – body: `{ username, email, password [, fullName ] }` → `{ token, user }`
 - `POST /api/auth/login` – body: `{ username, password }` → `{ token, user }`
-- `GET /api/workspace` – auth: `Authorization: Bearer <token>` → full workspace JSON
-- `PUT /api/workspace` – auth + body: same shape as GET → save workspace
+- `GET /api/workspace` – header: `Authorization: Bearer <token>` → full workspace JSON
+- `PUT /api/workspace` – same header + body: same shape as GET → save workspace
+- `GET /api/health` – no auth → `{ status: 'ok', storage: 'json' }`
