@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "description": "ALTER.CO – app and API in one",
   "scripts": {
-    "build": "cd backend && npm install",
+    "build": "npm install --prefix backend",
     "start": "node backend/server.js"
   },
   "engines": {

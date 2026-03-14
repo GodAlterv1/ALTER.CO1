@@ -5,70 +5,42 @@ const express = require('express')
 const cors = require('cors')
 const bcrypt = require('bcryptjs')
 const jwt = require('jsonwebtoken')
-const fs = require('fs')
+const Database = require('better-sqlite3')
 const path = require('path')
 
 const app = express()
 const PORT = process.env.PORT || 3000
 const JWT_SECRET = process.env.JWT_SECRET || 'alter-co-dev-secret-change-in-production'
-const DATA_DIR = path.join(__dirname, 'data')
-const USERS_FILE = path.join(DATA_DIR, 'users.json')
-const WORKSPACE_DIR = path.join(DATA_DIR, 'workspace')
-
-if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true })
-if (!fs.existsSync(WORKSPACE_DIR)) fs.mkdirSync(WORKSPACE_DIR, { recursive: true })
-if (!fs.existsSync(USERS_FILE)) fs.writeFileSync(USERS_FILE, '[]', 'utf8')
+const DB_PATH = process.env.DB_PATH || path.join(__dirname, 'alter.db')
 
 app.use(cors({ origin: true, credentials: true }))
 app.use(express.json({ limit: '5mb' }))
 
-// Serve the frontend (index.html and assets) from repo root when deployed
-const FRONTEND_ROOT = path.join(__dirname, '..')
-if (fs.existsSync(path.join(FRONTEND_ROOT, 'index.html'))) {
-  app.use(express.static(FRONTEND_ROOT, { index: false }))
-}
+const db = new Database(DB_PATH)
 
-function readUsers() {
-  try {
-    return JSON.parse(fs.readFileSync(USERS_FILE, 'utf8'))
-  } catch (e) {
-    return []
-  }
-}
+// Schema
+db.exec(`
+  CREATE TABLE IF NOT EXISTS users (
+    id TEXT PRIMARY KEY,
+    username TEXT UNIQUE NOT NULL,
+    email TEXT UNIQUE NOT NULL,
+    password_hash TEXT NOT NULL,
+    full_name TEXT,
+    role TEXT DEFAULT 'member',
+    plan TEXT DEFAULT 'free',
+    created_at TEXT NOT NULL
+  );
 
-function writeUsers(users) {
-  fs.writeFileSync(USERS_FILE, JSON.stringify(users, null, 2), 'utf8')
-}
+  CREATE TABLE IF NOT EXISTS workspace_data (
+    user_id TEXT NOT NULL,
+    key TEXT NOT NULL,
+    value TEXT NOT NULL,
+    PRIMARY KEY (user_id, key),
+    FOREIGN KEY (user_id) REFERENCES users(id)
+  );
 
-function getWorkspacePath(userId) {
-  const safe = (userId || '').replace(/[^a-zA-Z0-9-_]/g, '_')
-  return path.join(WORKSPACE_DIR, safe + '.json')
-}
-
-function readWorkspace(userId) {
-  const file = getWorkspacePath(userId)
-  if (!fs.existsSync(file)) return null
-  try {
-    return JSON.parse(fs.readFileSync(file, 'utf8'))
-  } catch (e) {
-    return null
-  }
-}
-
-function writeWorkspace(userId, data) {
-  fs.writeFileSync(getWorkspacePath(userId), JSON.stringify(data, null, 2), 'utf8')
-}
-
-const WORKSPACE_KEYS = [
-  'projects', 'tasks', 'ideas', 'events', 'timeEntries', 'team',
-  'notifications', 'activity', 'auditLogs', 'invoices', 'apiKeys', 'userSettings'
-]
-
-function emptyWorkspace() {
-  const out = {}
-  for (const k of WORKSPACE_KEYS) out[k] = k === 'userSettings' ? {} : []
-  return out
-}
+  CREATE INDEX IF NOT EXISTS idx_workspace_user ON workspace_data(user_id);
+`)
 
 // Auth middleware
 function authMiddleware(req, res, next) {
@@ -87,6 +59,7 @@ function authMiddleware(req, res, next) {
   }
 }
 
+// Helpers
 function hashPassword(pw) {
   return bcrypt.hashSync(pw, 10)
 }
@@ -110,26 +83,29 @@ app.post('/api/auth/register', (req, res) => {
     return res.status(400).json({ error: 'Password must be at least 6 characters' })
   }
 
-  const users = readUsers()
-  if (users.some(u => u.username === username || u.email === email)) {
+  const existing = db.prepare('SELECT id FROM users WHERE username = ? OR email = ?').get(username, email)
+  if (existing) {
     return res.status(409).json({ error: 'Username or email already exists' })
   }
 
   const id = genId()
   const password_hash = hashPassword(password)
   const created_at = new Date().toISOString()
-  users.push({
-    id, username, email, password_hash,
-    full_name: fullName || '', role: 'member', plan: 'free', created_at
-  })
-  writeUsers(users)
-  writeWorkspace(id, emptyWorkspace())
+  db.prepare(
+    'INSERT INTO users (id, username, email, password_hash, full_name, role, plan, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+  ).run(id, username, email, password_hash, fullName || '', 'member', 'free', created_at)
 
   const token = jwt.sign({ userId: id, username }, JWT_SECRET, { expiresIn: '30d' })
   const user = {
-    id, username, email,
-    fullName: fullName || '', role: 'member', plan: 'free',
-    bio: '', timezone: 'UTC', created: created_at
+    id,
+    username,
+    email,
+    fullName: fullName || '',
+    role: 'member',
+    plan: 'free',
+    bio: '',
+    timezone: 'UTC',
+    created: created_at
   }
   res.json({ token, user })
 })
@@ -140,8 +116,7 @@ app.post('/api/auth/login', (req, res) => {
     return res.status(400).json({ error: 'Username and password required' })
   }
 
-  const users = readUsers()
-  const row = users.find(u => u.username === username)
+  const row = db.prepare('SELECT * FROM users WHERE username = ?').get(username)
   if (!row || !comparePassword(password, row.password_hash)) {
     return res.status(401).json({ error: 'Invalid username or password' })
   }
@@ -161,13 +136,24 @@ app.post('/api/auth/login', (req, res) => {
   res.json({ token, user })
 })
 
-// ----- Workspace -----
+// ----- Workspace (full load/save) -----
+const WORKSPACE_KEYS = [
+  'projects', 'tasks', 'ideas', 'events', 'timeEntries', 'team',
+  'notifications', 'activity', 'auditLogs', 'invoices', 'apiKeys', 'userSettings'
+]
+
 app.get('/api/workspace', authMiddleware, (req, res) => {
-  const data = readWorkspace(req.userId) || emptyWorkspace()
-  const out = { ...emptyWorkspace() }
-  for (const k of WORKSPACE_KEYS) {
-    if (data[k] !== undefined) out[k] = data[k]
+  const rows = db.prepare('SELECT key, value FROM workspace_data WHERE user_id = ?').all(req.userId)
+  const out = {}
+  for (const k of WORKSPACE_KEYS) out[k] = null
+  for (const { key, value } of rows) {
+    try {
+      out[key] = JSON.parse(value)
+    } catch (e) {
+      out[key] = null
+    }
   }
+  // Default arrays/object so frontend never gets undefined
   if (!Array.isArray(out.projects)) out.projects = []
   if (!Array.isArray(out.tasks)) out.tasks = []
   if (!Array.isArray(out.ideas)) out.ideas = []
@@ -185,43 +171,21 @@ app.get('/api/workspace', authMiddleware, (req, res) => {
 
 app.put('/api/workspace', authMiddleware, (req, res) => {
   const data = req.body || {}
-  const current = readWorkspace(req.userId) || emptyWorkspace()
+  const put = db.prepare('INSERT OR REPLACE INTO workspace_data (user_id, key, value) VALUES (?, ?, ?)')
   for (const key of WORKSPACE_KEYS) {
-    if (data[key] !== undefined) current[key] = data[key]
+    if (data[key] !== undefined) {
+      const value = JSON.stringify(data[key])
+      put.run(req.userId, key, value)
+    }
   }
-  writeWorkspace(req.userId, current)
   res.json({ ok: true })
 })
 
+// Health
 app.get('/api/health', (req, res) => {
-  res.json({ status: 'ok', storage: 'json' })
-})
-
-app.get('/', (req, res) => {
-  const indexPath = path.join(FRONTEND_ROOT, 'index.html')
-  if (fs.existsSync(indexPath)) {
-    return res.sendFile(indexPath)
-  }
-  res.type('html').send(`
-    <!DOCTYPE html>
-    <html>
-    <head><meta charset="utf-8"><title>ALTER.CO API</title></head>
-    <body style="font-family:sans-serif;max-width:520px;margin:40px auto;padding:20px;">
-      <h1>ALTER.CO API</h1>
-      <p>Backend is running. Use the frontend app with this URL as the API base.</p>
-      <p><strong>Endpoints:</strong></p>
-      <ul>
-        <li><code>POST /api/auth/register</code> – create account</li>
-        <li><code>POST /api/auth/login</code> – sign in</li>
-        <li><code>GET /api/workspace</code> – get workspace (auth required)</li>
-        <li><code>PUT /api/workspace</code> – save workspace (auth required)</li>
-        <li><a href="/api/health">GET /api/health</a> – health check</li>
-      </ul>
-    </body>
-    </html>
-  `)
+  res.json({ status: 'ok', db: 'sqlite' })
 })
 
 app.listen(PORT, () => {
-  console.log('ALTER.CO API running on http://localhost:' + PORT)
+  console.log(`ALTER.CO API running on http://localhost:${PORT}`)
 })

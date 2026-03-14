@@ -694,9 +694,10 @@ img, video, canvas, svg {
   border-radius: 12px;
   border: 1px solid #1F2937;
   transition: all 0.3s;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.2);
 }
 
-.card:hover { border-color: #374151; }
+.card:hover { border-color: #374151; box-shadow: 0 4px 12px rgba(0,0,0,0.25); }
 
 .card h3 { margin-bottom: 15px; font-size: 15px; color: #D1D5DB; }
 .chart-container { position: relative; height: 220px; }
@@ -1752,6 +1753,7 @@ button:disabled { opacity: 0.5; cursor: not-allowed; transform: none; box-shadow
 }
 
 .modal-content.wide { max-width: 700px; }
+.modal-content.modal-sm { max-width: 400px; padding: 20px; }
 
 @keyframes modalSlideIn {
   from { opacity: 0; transform: scale(0.96) translateY(-10px); }
@@ -2887,6 +2889,14 @@ kbd {
           </div>
           <div class="setting-item">
             <div class="setting-info">
+              <h4>Restore from backup</h4>
+              <p>Upload a previously exported JSON file to restore projects, tasks, ideas, and more</p>
+            </div>
+            <input type="file" id="restoreFileInput" accept=".json" style="display:none" onchange="restoreFromBackupFile(event)">
+            <button onclick="document.getElementById('restoreFileInput').click()" class="btn-sm btn-secondary">Choose file...</button>
+          </div>
+          <div class="setting-item">
+            <div class="setting-info">
               <h4>Reset Workspace</h4>
               <p>Delete all projects, tasks, and ideas (irreversible)</p>
             </div>
@@ -2962,8 +2972,9 @@ kbd {
       <button onclick="document.getElementById('shortcutsOverlay').classList.remove('active')" class="btn-secondary btn-sm">Close</button>
     </div>
     <div class="shortcuts-grid">
+      <div class="shortcut-item"><span>Global search (projects, tasks, ideas)</span><div class="shortcut-keys"><kbd>⌘</kbd><kbd>K</kbd></div></div>
       <div class="shortcut-item"><span>Open command palette</span><div class="shortcut-keys"><kbd>⌘</kbd><kbd>K</kbd></div></div>
-      <div class="shortcut-item"><span>Show shortcuts</span><div class="shortcut-keys"><kbd>?</kbd></div></div>
+      <div class="shortcut-item"><span>Show this shortcuts list</span><div class="shortcut-keys"><kbd>?</kbd></div></div>
       <div class="shortcut-item"><span>Go to Dashboard</span><div class="shortcut-keys"><kbd>G</kbd><kbd>D</kbd></div></div>
       <div class="shortcut-item"><span>Go to Projects</span><div class="shortcut-keys"><kbd>G</kbd><kbd>P</kbd></div></div>
       <div class="shortcut-item"><span>Go to Tasks</span><div class="shortcut-keys"><kbd>G</kbd><kbd>T</kbd></div></div>
@@ -2974,6 +2985,21 @@ kbd {
       <div class="shortcut-item"><span>Toggle notifications</span><div class="shortcut-keys"><kbd>N</kbd></div></div>
       <div class="shortcut-item"><span>Export data</span><div class="shortcut-keys"><kbd>⌘</kbd><kbd>E</kbd></div></div>
       <div class="shortcut-item"><span>Logout</span><div class="shortcut-keys"><kbd>⌘</kbd><kbd>⇧</kbd><kbd>L</kbd></div></div>
+    </div>
+  </div>
+</div>
+
+<!-- CONFIRM MODAL (replaces browser confirm) -->
+<div id="confirmModal" class="modal" onclick="handleConfirmModalBackdrop(event)">
+  <div class="modal-content modal-sm" onclick="event.stopPropagation()">
+    <div class="modal-header">
+      <h2 id="confirmModalTitle">Confirm</h2>
+      <button class="modal-close" onclick="closeConfirmModal()">✕</button>
+    </div>
+    <p id="confirmModalMsg" style="margin:0 0 20px;color:#9CA3AF;font-size:14px;"></p>
+    <div style="display:flex;gap:10px;justify-content:flex-end;">
+      <button id="confirmModalCancel" onclick="closeConfirmModal()" class="btn-secondary">Cancel</button>
+      <button id="confirmModalOk" class="btn-danger">Confirm</button>
     </div>
   </div>
 </div>
@@ -3309,20 +3335,27 @@ kbd {
 /* ===================================================
    STATE
 =================================================== */
+function loadStored(key, defaultValue) {
+  try {
+    var s = localStorage.getItem(key)
+    return s ? JSON.parse(s) : defaultValue
+  } catch (e) { return defaultValue }
+}
+var defaultUser = [{ id: '1', username: 'admin', password: 'admin123', email: 'admin@alter.co', fullName: 'Admin User', role: 'admin', bio: '', timezone: 'UTC', plan: 'free' }]
 let currentUser   = null
-let users         = JSON.parse(localStorage.getItem('alco_users'))         || [{ id:'1', username:'admin', password:'admin123', email:'admin@alter.co', fullName:'Admin User', role:'admin', bio:'', timezone:'UTC', plan:'free' }]
-let projects      = JSON.parse(localStorage.getItem('alco_projects'))      || []
-let tasks         = JSON.parse(localStorage.getItem('alco_tasks'))         || []
-let ideas         = JSON.parse(localStorage.getItem('alco_ideas'))         || []
-let events        = JSON.parse(localStorage.getItem('alco_events'))        || []
-let team          = JSON.parse(localStorage.getItem('alco_team'))          || []
-let notifications = JSON.parse(localStorage.getItem('alco_notifications')) || []
-let activity      = JSON.parse(localStorage.getItem('alco_activity'))      || []
-let timeEntries   = JSON.parse(localStorage.getItem('alco_time'))          || []
-let auditLogs     = JSON.parse(localStorage.getItem('alco_audit'))         || []
-let apiKeys       = JSON.parse(localStorage.getItem('alco_apikeys'))       || []
-let invoices      = JSON.parse(localStorage.getItem('alco_invoices'))      || []
-let userSettings  = JSON.parse(localStorage.getItem('alco_usersettings'))  || {}
+let users         = loadStored('alco_users', defaultUser)
+let projects      = loadStored('alco_projects', [])
+let tasks         = loadStored('alco_tasks', [])
+let ideas         = loadStored('alco_ideas', [])
+let events        = loadStored('alco_events', [])
+let team          = loadStored('alco_team', [])
+let notifications = loadStored('alco_notifications', [])
+let activity      = loadStored('alco_activity', [])
+let timeEntries   = loadStored('alco_time', [])
+let auditLogs     = loadStored('alco_audit', [])
+let apiKeys       = loadStored('alco_apikeys', [])
+let invoices      = loadStored('alco_invoices', [])
+let userSettings  = loadStored('alco_usersettings', {})
 
 (function () {
   var meta = document.getElementById('alterApiBaseMeta')
@@ -3594,6 +3627,8 @@ function greeting() {
       .catch(function (err) {
         clearAuthToken()
         localStorage.removeItem('alco_session')
+        var msg = document.getElementById('loginMessage')
+        if (msg) { msg.textContent = 'Session expired or backend unavailable. Sign in again.'; msg.className = 'login-message error'; msg.classList.remove('hidden') }
       })
     return
   }
@@ -3703,18 +3738,24 @@ function demoLogin() {
 }
 
 function showApp() {
-  document.getElementById('loginScreen').classList.add('hidden')
-  document.getElementById('app').classList.remove('hidden')
+  if (!currentUser) return
+  var loginEl = document.getElementById('loginScreen')
+  var appEl = document.getElementById('app')
+  if (loginEl) loginEl.classList.add('hidden')
+  if (appEl) appEl.classList.remove('hidden')
   initGlobalErrorCapture()
   initializeApp()
-  // Show onboarding for new users who haven't seen it
   if (!localStorage.getItem('alco_onboarded_' + currentUser.id)) {
-    setTimeout(() => startOnboarding(), 800)
+    setTimeout(function () { startOnboarding() }, 800)
   }
 }
 
 function logout() {
-  if (!confirm('Sign out of ALTER.CO?')) return
+  showConfirmModal('Sign out', 'Sign out of ALTER.CO?', function () {
+    doLogout()
+  }, 'Sign out')
+}
+function doLogout() {
   clearAuthToken()
   localStorage.removeItem('alco_session')
   Object.keys(charts).forEach(function (k) { try { if (charts[k]) charts[k].destroy() } catch(e){} })
@@ -3739,6 +3780,7 @@ function showLoginMessage(msg, type) {
    INIT
 =================================================== */
 function initializeApp() {
+  if (!currentUser) return
   updateSidebarUser()
   renderAllPages()
   renderNotifications()
@@ -3746,7 +3788,8 @@ function initializeApp() {
   renderAuditLog()
   renderTimeTracking()
   setupKeyboardShortcuts()
-  document.getElementById('dashboardGreeting').textContent = greeting() + ', ' + (currentUser.fullName || currentUser.username) + ' 👋'
+  var ge = document.getElementById('dashboardGreeting')
+  if (ge) ge.textContent = greeting() + ', ' + (currentUser.fullName || currentUser.username || 'User') + ' '
 }
 
 function renderAllPages() {
@@ -3763,12 +3806,19 @@ function renderAllPages() {
 }
 
 function updateSidebarUser() {
-  let initial = (currentUser.fullName || currentUser.username).charAt(0).toUpperCase()
-  document.getElementById('sidebarAvatar').textContent   = initial
-  document.getElementById('sidebarUsername').textContent = currentUser.fullName || currentUser.username
-  document.getElementById('sidebarRoleText').textContent = currentUser.role
-  document.getElementById('sidebarPlanBadge').textContent = (currentUser.plan || 'free').toUpperCase()
-  document.getElementById('profileAvatar').textContent   = initial
+  if (!currentUser) return
+  var name = (currentUser.fullName || currentUser.username || '?')
+  var initial = name.charAt(0).toUpperCase()
+  var a = document.getElementById('sidebarAvatar')
+  var u = document.getElementById('sidebarUsername')
+  var r = document.getElementById('sidebarRoleText')
+  var b = document.getElementById('sidebarPlanBadge')
+  var p = document.getElementById('profileAvatar')
+  if (a) a.textContent = initial
+  if (u) u.textContent = name
+  if (r) r.textContent = currentUser.role || 'member'
+  if (b) b.textContent = (currentUser.plan || 'free').toUpperCase()
+  if (p) p.textContent = initial
 }
 
 /* ===================================================
@@ -3781,18 +3831,22 @@ function startOnboarding() {
 }
 
 function renderOnboardingStep() {
-  let step = ONBOARDING_STEPS[currentOnboardingStep]
-  let dots = document.getElementById('onboardingDots')
-  dots.innerHTML = ONBOARDING_STEPS.map((_, i) =>
-    `<div class="onboarding-step-dot ${i < currentOnboardingStep ? 'done' : i === currentOnboardingStep ? 'active' : ''}"></div>`
-  ).join('')
-  document.getElementById('onboardingIcon').textContent  = step.icon
-  document.getElementById('onboardingTitle').textContent = step.title
-  document.getElementById('onboardingDesc').textContent  = step.desc
-
-  let btn = document.querySelector('#onboardingOverlay button:first-child')
-  btn.textContent = currentOnboardingStep < ONBOARDING_STEPS.length - 1 ? 'Next →' : '🚀 Let\'s Go!'
-}
+  var step = ONBOARDING_STEPS[currentOnboardingStep]
+  if (!step) { currentOnboardingStep = 0; step = ONBOARDING_STEPS[0] }
+  var dots = document.getElementById('onboardingDots')
+  if (!dots) return
+  dots.innerHTML = ONBOARDING_STEPS.map(function (_, i) {
+    return '<div class="onboarding-step-dot ' + (i < currentOnboardingStep ? 'done' : i === currentOnboardingStep ? 'active' : '') + '"></div>'
+  }).join('')
+  var iconEl = document.getElementById('onboardingIcon')
+  var titleEl = document.getElementById('onboardingTitle')
+  var descEl = document.getElementById('onboardingDesc')
+  if (iconEl) iconEl.textContent = step.icon
+  if (titleEl) titleEl.textContent = step.title
+  if (descEl) descEl.textContent = step.desc
+  var btn = document.querySelector('#onboardingOverlay button:first-child')
+  if (btn) btn.textContent = currentOnboardingStep < ONBOARDING_STEPS.length - 1 ? 'Next →' : "Let's Go!"
+y}
 
 function nextOnboardingStep() {
   currentOnboardingStep++
@@ -3826,9 +3880,10 @@ function switchPage(pageId, el) {
     })
   }
 
-  let titles = { dashboard:'Dashboard', projects:'Projects', tasks:'Tasks', timetracking:'Time Tracking', ideas:'Ideas', calendar:'Calendar', team:'Team', analytics:'Analytics', auditlog:'Audit Log', billing:'Billing', settings:'Settings' }
-  let title = titles[pageId] || pageId
-  document.getElementById('topbarTitle').textContent = title
+  var titles = { dashboard:'Dashboard', projects:'Projects', tasks:'Tasks', timetracking:'Time Tracking', ideas:'Ideas', calendar:'Calendar', team:'Team', analytics:'Analytics', auditlog:'Audit Log', billing:'Billing', settings:'Settings' }
+  var title = titles[pageId] || pageId
+  var titleEl = document.getElementById('topbarTitle')
+  if (titleEl) titleEl.textContent = title
 
   if (pageId === 'analytics')   renderAnalyticsCharts()
   if (pageId === 'timetracking') renderTimeTracking()
@@ -3893,11 +3948,10 @@ function updateCommandResults() {
   let filteredPages   = q ? pages.filter(p => p.label.toLowerCase().includes(q) || p.sub.toLowerCase().includes(q)) : pages
   let filteredCreates = q ? creates.filter(c => c.label.toLowerCase().includes(q)) : creates
 
-  // Projects search
-  let filteredProjects = q ? projects.filter(p => p.name.toLowerCase().includes(q)).slice(0, 3) : []
-
-  // Tasks search
-  let filteredTasks = q ? tasks.filter(t => t.title.toLowerCase().includes(q)).slice(0, 3) : []
+  // Projects, tasks, ideas search
+  let filteredProjects = q ? projects.filter(function (p) { return p.name.toLowerCase().includes(q) }).slice(0, 5) : []
+  let filteredTasks = q ? tasks.filter(function (t) { return t.title.toLowerCase().includes(q) }).slice(0, 5) : []
+  let filteredIdeas = q ? ideas.filter(function (i) { return (i.title || '').toLowerCase().includes(q) || (i.description || '').toLowerCase().includes(q) }).slice(0, 5) : []
 
   if (filteredPages.length) {
     html += `<div class="command-section-label">Navigation</div>`
@@ -3926,8 +3980,17 @@ function updateCommandResults() {
 
   if (filteredTasks.length) {
     html += `<div class="command-section-label">Tasks</div>`
-    filteredTasks.forEach(t => {
-      let item = { icon:'✅', label: t.title, sub: t.status, action: () => switchPage('tasks', null) }
+    filteredTasks.forEach(function (t) {
+      var item = { icon:'✅', label: t.title, sub: t.status, action: function () { switchPage('tasks', null) } }
+      commandItems.push(item)
+      html += commandItemHtml(item)
+    })
+  }
+
+  if (filteredIdeas.length) {
+    html += `<div class="command-section-label">Ideas</div>`
+    filteredIdeas.forEach(function (i) {
+      var item = { icon:'💡', label: i.title || 'Idea', sub: (i.category || '') + ' · ' + (i.votes || 0) + ' votes', action: function () { switchPage('ideas', null) } }
       commandItems.push(item)
       html += commandItemHtml(item)
     })
@@ -4075,16 +4138,16 @@ function closeCreateProjectModal() {
 }
 
 function saveProject() {
-  let name     = document.getElementById('modalProjectName').value.trim()
-  let desc     = document.getElementById('modalProjectDesc').value.trim()
+  var name     = document.getElementById('modalProjectName').value.trim()
+  if (!name) return showToast('Project name is required', 'error')
+  showToast('Saving...', 'info')
+  var desc     = document.getElementById('modalProjectDesc').value.trim()
   let deadline = document.getElementById('modalProjectDeadline').value
   let start    = document.getElementById('modalProjectStart').value
   let priority = document.getElementById('modalProjectPriority').value
   let status   = document.getElementById('modalProjectStatus').value
   let tagsRaw  = document.getElementById('modalProjectTags').value.trim()
   let tags     = tagsRaw ? tagsRaw.split(',').map(t => t.trim()).filter(Boolean) : []
-
-  if (!name) return showToast('Please enter a project name', 'error')
 
   let project = {
     id: genId(), name, description: desc, deadline, startDate: start,
@@ -4202,11 +4265,12 @@ function editProject(id) {
 }
 
 function saveEditProject() {
-  let id   = document.getElementById('editProjectId').value
-  let proj = projects.find(p => p.id === id)
+  var id   = document.getElementById('editProjectId').value
+  var proj = projects.find(function (p) { return p.id === id })
   if (!proj) return
-  let name = document.getElementById('editProjectName').value.trim()
+  var name = document.getElementById('editProjectName').value.trim()
   if (!name) return showToast('Project name is required', 'error')
+  showToast('Saving...', 'info')
 
   proj.name        = name
   proj.description = document.getElementById('editProjectDesc').value.trim()
@@ -4225,16 +4289,20 @@ function saveEditProject() {
 }
 
 function deleteProject(id) {
-  let p = projects.find(x => x.id === id)
-  if (!confirm(`Delete project "${p?.name}"? This will also delete all associated tasks.`)) return
-  projects = projects.filter(x => x.id !== id)
-  tasks    = tasks.filter(t => t.projectId !== id)
+  var p = projects.find(function (x) { return x.id === id })
+  showConfirmModal('Delete project', 'Delete project "' + (p ? p.name : '') + '"? This will also delete all associated tasks.', function () {
+    doDeleteProject(id, p)
+  })
+}
+function doDeleteProject(id, p) {
+  projects = projects.filter(function (x) { return x.id !== id })
+  tasks    = tasks.filter(function (t) { return t.projectId !== id })
   save('projects', projects)
   save('tasks', tasks)
   renderProjects()
   renderTasks()
   renderDashboardCharts()
-  addAuditLog('delete', `Deleted project "${p?.name}"`, 'delete')
+  addAuditLog('delete', 'Deleted project "' + (p ? p.name : '') + '"', 'delete')
   showToast('Project deleted', 'success')
   updateStats()
 }
@@ -4283,15 +4351,15 @@ function closeCreateTaskModal() {
 }
 
 function saveTask() {
-  let title    = document.getElementById('modalTaskTitle').value.trim()
-  let desc     = document.getElementById('modalTaskDesc').value.trim()
-  let projId   = document.getElementById('modalTaskProject').value
-  let priority = document.getElementById('modalTaskPriority').value
-  let status   = document.getElementById('modalTaskStatus').value
-  let dueDate  = document.getElementById('modalTaskDue').value
-  let estimate = parseFloat(document.getElementById('modalTaskEstimate').value) || 0
-
+  var title    = document.getElementById('modalTaskTitle').value.trim()
   if (!title) return showToast('Please enter a task title', 'error')
+  showToast('Saving...', 'info')
+  var desc     = document.getElementById('modalTaskDesc').value.trim()
+  var projId   = document.getElementById('modalTaskProject').value
+  var priority = document.getElementById('modalTaskPriority').value
+  var status   = document.getElementById('modalTaskStatus').value
+  var dueDate  = document.getElementById('modalTaskDue').value
+  var estimate = parseFloat(document.getElementById('modalTaskEstimate').value) || 0
 
   let task = {
     id: genId(), title, description: desc, projectId: projId,
@@ -4368,17 +4436,17 @@ function confirmDeleteTask(id) {
   showToast('Task deleted', 'success')
 }
 function deleteTask(id) {
-  let task = tasks.find(t => t.id === id)
+  var task = tasks.find(function (t) { return t.id === id })
   if (!task) return
-  if (!confirm(`Delete task "${task.title}"?`)) return
-
-  tasks = tasks.filter(t => t.id !== id)
-  save('tasks', tasks)
-  renderTasks()
-  renderDashboardCharts()
-  updateStats()
-  addAuditLog('delete', `Deleted task "${task.title}"`, 'delete')
-  showToast('Task deleted', 'success')
+  showConfirmModal('Delete task', 'Delete task "' + (task.title || '') + '"?', function () {
+    tasks = tasks.filter(function (t) { return t.id !== id })
+    save('tasks', tasks)
+    renderTasks()
+    renderDashboardCharts()
+    updateStats()
+    addAuditLog('delete', 'Deleted task "' + (task.title || '') + '"', 'delete')
+    showToast('Task deleted', 'success')
+  })
 }
 function renderTasks(taskList) {
   let source = taskList || tasks
@@ -4665,7 +4733,7 @@ function buildIdeaCard(idea) {
         <span style="font-size:11px;padding:2px 8px;background:#1F2937;border-radius:12px;border:1px solid #374151;">${escapeHtml(idea.category)}</span>
       </div>
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
-        <span class="idea-votes" style="font-size:18px;font-weight:700;">${idea.votes} 👍</span>
+        <span class="idea-votes" style="font-size:18px;font-weight:700;">${(idea.votes != null ? idea.votes : (idea.voters && idea.voters.length) ? idea.voters.length : 0)} 👍</span>
         <span style="font-size:11px;color:#4B5563;">${timeAgo(idea.created)}</span>
       </div>
       <div class="idea-actions">
@@ -4679,7 +4747,7 @@ function buildIdeaCard(idea) {
 }
 
 function renderIdeas() {
-  let sorted = [...ideas].sort((a, b) => b.votes - a.votes)
+  var sorted = ideas.slice().sort(function (a, b) { return (b.votes != null ? b.votes : (b.voters && b.voters.length) || 0) - (a.votes != null ? a.votes : (a.voters && a.voters.length) || 0) })
   let html = sorted.map(buildIdeaCard).join('')
   document.getElementById('ideasList').innerHTML = html ||
     `<div class="empty-state"><div class="empty-state-icon">💡</div><h3>No ideas yet</h3><p>Be the first to submit an idea!</p><button class="btn-primary btn-sm" onclick="openCreateIdeaModal()">+ New Idea</button></div>`
@@ -4701,7 +4769,7 @@ function filterIdeas() {
     let mc = !category || i.category === category
     return ms && mc
   })
-  let sorted = [...filtered].sort((a, b) => b.votes - a.votes)
+  var sorted = filtered.slice().sort(function (a, b) { return (b.votes != null ? b.votes : (b.voters && b.voters.length) || 0) - (a.votes != null ? a.votes : (a.voters && a.voters.length) || 0) })
   let html = sorted.map(buildIdeaCard).join('')
   if (html) {
     document.getElementById('ideasList').innerHTML = html
@@ -4762,14 +4830,16 @@ function convertIdeaToTask(id) {
 }
 
 function deleteIdea(id) {
-  let idea = ideas.find(i => i.id === id)
-  if (!confirm(`Delete idea "${idea?.title}"?`)) return
-  ideas = ideas.filter(i => i.id !== id)
-  save('ideas', ideas)
-  renderIdeas()
-  addAuditLog('delete', `Deleted idea "${idea?.title}"`, 'delete')
-  showToast('Idea deleted', 'success')
-  updateStats()
+  var idea = ideas.find(function (i) { return i.id === id })
+  if (!idea) return
+  showConfirmModal('Delete idea', 'Delete idea "' + (idea.title || '') + '"?', function () {
+    ideas = ideas.filter(function (i) { return i.id !== id })
+    save('ideas', ideas)
+    renderIdeas()
+    addAuditLog('delete', 'Deleted idea "' + (idea.title || '') + '"', 'delete')
+    showToast('Idea deleted', 'success')
+    updateStats()
+  })
 }
   /* ===================================================
    CALENDAR HELPERS
@@ -5078,14 +5148,16 @@ function acceptInvite(id) {
 }
 
 function removeMember(id) {
-  let m = team.find(x => x.id === id)
-  if (!confirm(`Remove ${m?.email || 'this member'}?`)) return
-  team = team.filter(x => x.id !== id)
-  save('team', team)
-  renderTeam()
-  addAuditLog('delete', `Removed team member ${m?.email}`, 'delete')
-  showToast('Member removed', 'success')
-  updateStats()
+  var m = team.find(function (x) { return x.id === id })
+  if (!m) return
+  showConfirmModal('Remove member', 'Remove ' + (m.email || 'this member') + '?', function () {
+    team = team.filter(function (x) { return x.id !== id })
+    save('team', team)
+    renderTeam()
+    addAuditLog('delete', 'Removed team member ' + (m.email || ''), 'delete')
+    showToast('Member removed', 'success')
+    updateStats()
+  })
 }
 
 function resendInvite(id) {
@@ -5239,8 +5311,9 @@ function exportAuditLog() {
    BILLING
 =================================================== */
 function renderBilling() {
-  let currentPlan = currentUser.plan || 'free'
-  let planInfo    = PLANS.find(p => p.id === currentPlan)
+  if (!currentUser) return
+  var currentPlan = currentUser.plan || 'free'
+  var planInfo = (typeof PLANS !== 'undefined' && PLANS && PLANS.find) ? PLANS.find(function (p) { return p.id === currentPlan }) : null
 
   // Top summary card values
   let billingPlanNameEl = document.getElementById('billingPlanName')
@@ -5342,22 +5415,26 @@ function upgradePlan(planId) {
   if (!plan) return
   if (plan.price > 0) {
     showToast('Redirecting to payment... (demo mode)', 'info')
-    setTimeout(() => {
+    setTimeout(function () {
       currentUser.plan = planId
-      let idx = users.findIndex(u => u.id === currentUser.id)
-      if (idx >= 0) { users[idx] = currentUser; save('users', users); save('session', currentUser) }
-      document.getElementById('sidebarPlanBadge').textContent = planId.toUpperCase()
+      var idx = users.findIndex(function (u) { return u.id === currentUser.id })
+      if (idx >= 0) { users[idx] = currentUser; save('users', users) }
+      save('session', currentUser)
+      var badge = document.getElementById('sidebarPlanBadge')
+      if (badge) badge.textContent = (planId || 'free').toUpperCase()
       renderBilling()
       addAuditLog('update', `Upgraded plan to ${plan.name}`, 'update')
       showToast(`🎉 Upgraded to ${plan.name}!`, 'success')
     }, 1000)
   } else {
     currentUser.plan = planId
-    let idx = users.findIndex(u => u.id === currentUser.id)
-    if (idx >= 0) { users[idx] = currentUser; save('users', users); save('session', currentUser) }
-    document.getElementById('sidebarPlanBadge').textContent = planId.toUpperCase()
+    var idx = users.findIndex(function (u) { return u.id === currentUser.id })
+    if (idx >= 0) { users[idx] = currentUser; save('users', users) }
+    save('session', currentUser)
+    var badge = document.getElementById('sidebarPlanBadge')
+    if (badge) badge.textContent = (planId || 'free').toUpperCase()
     renderBilling()
-    showToast(`Downgraded to ${plan.name}`, 'info')
+    showToast('Downgraded to ' + plan.name, 'info')
   }
 }
 
@@ -5491,7 +5568,6 @@ function renderAnalyticsCharts() {
   })).filter(x => x.secs > 0)
 
   makeChart('timeChart', {
-    type: 'horizontalBar',
     type: 'bar',
     data: {
       labels: projTimeData.length ? projTimeData.map(x => x.name.substring(0, 20)) : ['No data'],
@@ -5506,14 +5582,14 @@ function renderAnalyticsCharts() {
   })
 
   // Ideas votes
-  let topIdeas = [...ideas].sort((a,b) => b.votes - a.votes).slice(0, 5)
+  var topIdeas = ideas.slice().sort(function (a, b) { return (b.votes != null ? b.votes : (b.voters && b.voters.length) || 0) - (a.votes != null ? a.votes : (a.voters && a.voters.length) || 0) }).slice(0, 5)
   makeChart('ideasChart', {
     type: 'bar',
     data: {
       labels: topIdeas.length ? topIdeas.map(i => i.title.substring(0, 20)) : ['No ideas'],
       datasets: [{
         label: 'Votes',
-        data: topIdeas.length ? topIdeas.map(i => i.votes) : [0],
+        data: topIdeas.length ? topIdeas.map(function (i) { return i.votes != null ? i.votes : (i.voters && i.voters.length) || 0 }) : [0],
         backgroundColor: 'rgba(124,58,237,0.7)',
         borderRadius: 6
       }]
@@ -5618,24 +5694,24 @@ function changePassword() {
 function enableTwoFactor() { showToast('Two-factor authentication setup coming soon!', 'info') }
 
 function deleteAccount() {
-  let confirm1 = confirm('This will permanently delete your account and ALL data. This cannot be undone.')
-  if (!confirm1) return
-  let confirm2 = prompt('Type your username to confirm:')
-  if (confirm2 !== currentUser.username) return showToast('Username does not match', 'error')
-
-  users = users.filter(u => u.id !== currentUser.id)
-  save('users', users)
-  ;['projects','tasks','ideas','events','team','notifications','activity','time','audit','apikeys'].forEach(k => localStorage.removeItem('alco_' + k))
-  logout()
+  showConfirmModal('Delete account', 'This will permanently delete your account and ALL data. This cannot be undone.', function () {
+    var confirm2 = prompt('Type your username to confirm:')
+    if (confirm2 !== currentUser.username) return showToast('Username does not match', 'error')
+    users = users.filter(function (u) { return u.id !== currentUser.id })
+    save('users', users)
+    ;['projects','tasks','ideas','events','team','notifications','activity','time','audit','apikeys'].forEach(function (k) { localStorage.removeItem('alco_' + k) })
+    doLogout()
+  })
 }
 
 function resetWorkspace() {
-  if (!confirm('This will delete ALL projects, tasks, ideas, and events. Are you sure?')) return
-  projects = []; tasks = []; ideas = []; events = []; timeEntries = []; activity = []
-  ;['projects','tasks','ideas','events','time','activity'].forEach(k => save(k, []))
-  renderAllPages()
-  addAuditLog('delete', 'Reset entire workspace', 'delete')
-  showToast('Workspace reset!', 'warning')
+  showConfirmModal('Reset workspace', 'This will delete ALL projects, tasks, ideas, and events. Are you sure?', function () {
+    projects = []; tasks = []; ideas = []; events = []; timeEntries = []; activity = []
+    ;['projects','tasks','ideas','events','time','activity'].forEach(function (k) { save(k, []) })
+    renderAllPages()
+    addAuditLog('delete', 'Reset entire workspace', 'delete')
+    showToast('Workspace reset!', 'warning')
+  })
 }
 
 /* ===================================================
@@ -5776,36 +5852,63 @@ function exportData() {
   }
 }
 
+function restoreFromBackupFile(event) {
+  var file = event.target.files[0]
+  if (!file) return
+  var reader = new FileReader()
+  reader.onload = function () {
+    try {
+      var data = JSON.parse(reader.result)
+      if (Array.isArray(data.projects)) { projects = data.projects; save('projects', projects) }
+      if (Array.isArray(data.tasks)) { tasks = data.tasks; save('tasks', tasks) }
+      if (Array.isArray(data.ideas)) { ideas = data.ideas; save('ideas', ideas) }
+      if (Array.isArray(data.events)) { events = data.events; save('events', events) }
+      if (Array.isArray(data.timeEntries)) { timeEntries = data.timeEntries; save('time', timeEntries) }
+      if (Array.isArray(data.team)) { team = data.team; save('team', team) }
+      if (Array.isArray(data.notifications)) { notifications = data.notifications; save('notifications', notifications) }
+      if (Array.isArray(data.activity)) { activity = data.activity; save('activity', activity) }
+      if (Array.isArray(data.auditLogs)) { auditLogs = data.auditLogs; save('audit', auditLogs) }
+      if (Array.isArray(data.invoices)) { invoices = data.invoices; save('invoices', invoices) }
+      if (Array.isArray(data.apiKeys)) { apiKeys = data.apiKeys; save('apikeys', apiKeys) }
+      if (data.userSettings && typeof data.userSettings === 'object') { userSettings = data.userSettings; save('usersettings', userSettings) }
+      renderAllPages()
+      updateStats()
+      addAuditLog('other', 'Restored workspace from backup', 'other')
+      showToast('Backup restored!', 'success')
+    } catch (e) {
+      showToast('Invalid backup file', 'error')
+      console.error(e)
+    }
+    event.target.value = ''
+  }
+  reader.readAsText(file)
+}
+
 function generateReport() {
-  let done = tasks.filter(t => t.status === 'done').length
-  let rate = tasks.length > 0 ? Math.round((done / tasks.length) * 100) : 0
-  let totalHours = (timeEntries.reduce((s, e) => s + (e.duration||0), 0) / 3600).toFixed(1)
-
-  let report = `ALTER.CO WORKSPACE REPORT
-Generated: ${new Date().toLocaleDateString()}
-Workspace: ${localStorage.getItem('alco_workspace_name') || 'My Workspace'}
-User: ${currentUser.fullName || currentUser.username}
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-SUMMARY
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Projects:        ${projects.length}
-  Active:        ${projects.filter(p=>p.status==='active').length}
-  Completed:     ${projects.filter(p=>p.status==='completed').length}
-  On Hold:       ${projects.filter(p=>p.status==='on-hold').length}
-
-Tasks:           ${tasks.length}
-  Completed:     ${done} (${rate}%)
-  In Progress:   ${tasks.filter(t=>t.status==='in-progress').length}
-  To Do:         ${tasks.filter(t=>t.status==='todo').length}
-  In Review:     ${tasks.filter(t=>t.status==='review').length}
-
-Ideas Submitted: ${ideas.length}
-Events:          ${events.length}
-Team Members:    ${team.length + 1}
-Hours Tracked:   ${totalHours}h
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━`
-
+  if (!currentUser) return showToast('Sign in to generate report', 'error')
+  var done = tasks.filter(function (t) { return t.status === 'done' }).length
+  var rate = tasks.length > 0 ? Math.round((done / tasks.length) * 100) : 0
+  var totalHours = (timeEntries.reduce(function (s, e) { return s + (e.duration || 0) }, 0) / 3600).toFixed(1)
+  var userName = (currentUser && (currentUser.fullName || currentUser.username)) || 'User'
+  var report = 'ALTER.CO WORKSPACE REPORT\n' +
+'Generated: ' + new Date().toLocaleDateString() + '\n' +
+'Workspace: ' + (localStorage.getItem('alco_workspace_name') || 'My Workspace') + '\n' +
+'User: ' + userName + '\n' +
+'\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━\nSUMMARY\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n' +
+'Projects:        ' + projects.length + '\n' +
+'  Active:        ' + projects.filter(function (p) { return p.status === 'active' }).length + '\n' +
+'  Completed:     ' + projects.filter(function (p) { return p.status === 'completed' }).length + '\n' +
+'  On Hold:       ' + projects.filter(function (p) { return p.status === 'on-hold' }).length + '\n\n' +
+'Tasks:           ' + tasks.length + '\n' +
+'  Completed:     ' + done + ' (' + rate + '%)\n' +
+'  In Progress:   ' + tasks.filter(function (t) { return t.status === 'in-progress' }).length + '\n' +
+'  To Do:         ' + tasks.filter(function (t) { return t.status === 'todo' }).length + '\n' +
+'  In Review:     ' + tasks.filter(function (t) { return t.status === 'review' }).length + '\n\n' +
+'Ideas Submitted: ' + ideas.length + '\n' +
+'Events:          ' + events.length + '\n' +
+'Team Members:    ' + (team.length + 1) + '\n' +
+'Hours Tracked:   ' + totalHours + 'h\n' +
+'━━━━━━━━━━━━━━━━━━━━━━━━━━━━'
   alert(report)
   addAuditLog('other', 'Generated workspace report', 'other')
   showToast('Report generated!', 'success')
@@ -5813,6 +5916,29 @@ Hours Tracked:   ${totalHours}h
 
 function handleModalBackdrop(e) {
   if (e.target.classList.contains('modal')) e.target.classList.remove('active')
+}
+
+var confirmModalCallback = null
+function showConfirmModal(title, message, onConfirm, okLabel) {
+  document.getElementById('confirmModalTitle').textContent = title || 'Confirm'
+  document.getElementById('confirmModalMsg').textContent = message || 'Are you sure?'
+  var okBtn = document.getElementById('confirmModalOk')
+  okBtn.textContent = okLabel || 'Confirm'
+  okBtn.className = okLabel === 'Sign out' ? 'btn-secondary' : 'btn-danger'
+  confirmModalCallback = onConfirm
+  document.getElementById('confirmModal').classList.add('active')
+  okBtn.onclick = function () {
+    if (confirmModalCallback) confirmModalCallback()
+    confirmModalCallback = null
+    document.getElementById('confirmModal').classList.remove('active')
+  }
+}
+function closeConfirmModal() {
+  confirmModalCallback = null
+  document.getElementById('confirmModal').classList.remove('active')
+}
+function handleConfirmModalBackdrop(e) {
+  if (e.target.id === 'confirmModal') closeConfirmModal()
 }
 
 // Close notifications panel on outside click
