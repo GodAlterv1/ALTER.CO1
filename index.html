@@ -3736,6 +3736,33 @@ var currentDate  = new Date()
   window.ALTER_API_BASE = fromMeta || ''
 })()
 var ALTER_API_BASE = window.ALTER_API_BASE || ''
+
+// Accessibility: auto-associate <label> with the nearest form control id.
+// This avoids hundreds of manual markup fixes in this single-file HTML app.
+function autoAssociateLabelsWithInputs() {
+  /** @type {NodeListOf<HTMLLabelElement>} */
+  const labels = document.querySelectorAll('label:not([for])')
+  labels.forEach(label => {
+    // If the label already wraps a form control, the association is already valid.
+    if (label.querySelector('input[id], textarea[id], select[id]')) return
+
+    // Most of our markup uses a structure like:
+    // <div class="form-group"><label>Text</label><input id="..."></div>
+    const parent = label.parentElement
+    if (!parent) return
+
+    const control = parent.querySelector('input[id], textarea[id], select[id]')
+    if (!control) return
+
+    const id = control.getAttribute('id')
+    if (!id) return
+    label.setAttribute('for', id)
+  })
+}
+
+// Run after the script loads (script tag is near the end of <body>).
+autoAssociateLabelsWithInputs()
+
 var syncWorkspaceTimeout = null
 let pendingConfirm = null
 
@@ -6108,6 +6135,43 @@ function sendInvite() {
   if (!email) return showToast('Please enter an email address', 'error')
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return showToast('Please enter a valid email', 'error')
   if (team.find(m => (m.email || '').toLowerCase() === email)) return showToast('This email is already invited', 'warning')
+
+  // If backend + auth are configured, send a real email invite through the API
+  if (ALTER_API_BASE && getAuthToken()) {
+    const token = getAuthToken()
+    fetch(ALTER_API_BASE + '/api/integrations/email/send-invite', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer ' + token
+      },
+      body: JSON.stringify({
+        to: email,
+        subject: 'You are invited to join ALTER.CO',
+        message: `You've been invited to join the ALTER.CO workspace.\n\nRole: ${role}${dept ? `\nDepartment: ${dept}` : ''}\n\nSign in or create an account with this email to get started.`
+      })
+    })
+      .then(function (r) { return r.json().then(function (body) { return { ok: r.ok, status: r.status, body: body } }) })
+      .then(function (res) {
+        if (!res.ok) {
+          showToast(res.body && res.body.error ? res.body.error : 'Failed to send invite email', 'error')
+          return
+        }
+        // Only add to local team after email send succeeds
+        team.push({ id: genId(), email, role, department: dept, status: 'pending', created: new Date().toISOString() })
+        save('team', team)
+        closeInviteTeamModal()
+        renderTeam()
+        addNotification(`Invitation sent to ${email}`, 'team')
+        addAuditLog('create', `Invited ${email} as ${role}`, 'create')
+        showToast('Invitation email sent!', 'success')
+        updateStats()
+      })
+      .catch(function () {
+        showToast('Network error while sending invite', 'error')
+      })
+    return
+  }
 
   team.push({ id: genId(), email, role, department: dept, status: 'pending', created: new Date().toISOString() })
   save('team', team)
