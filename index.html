@@ -6759,7 +6759,13 @@ function renderTeam() {
 }
 
 function buildCurrentUserCard() {
-  let taskCount = tasks.filter(t => t.assignee === currentUser.id).length
+  // Guard against cases where the team page renders before auth/session is ready
+  if (!currentUser) {
+    return ''
+  }
+  let taskCount = Array.isArray(tasks)
+    ? tasks.filter(t => t.assignee === currentUser.id).length
+    : 0
   const role = currentUser.role || 'owner'
   return `
     <div class="member-card">
