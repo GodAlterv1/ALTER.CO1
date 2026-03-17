@@ -4353,6 +4353,26 @@ function updateSidebarUser() {
   if (ppCreated && currentUser.created) ppCreated.textContent = currentUser.created.split('T')[0]
   let ppBio = document.getElementById('profilePageBio')
   if (ppBio) ppBio.textContent = currentUser.bio || 'Add a short bio from Settings to introduce yourself to your team.'
+
+  // Hydrate notification toggles from userSettings if present
+  try {
+    const map = {
+      notifEmailToggle: 'notifEmailEnabled',
+      notifTaskToggle: 'notifTaskEnabled',
+      notifProjectToggle: 'notifProjectEnabled',
+      notifDeadlineToggle: 'notifDeadlineEnabled',
+      notifWeeklyToggle: 'notifWeeklyEnabled'
+    }
+    Object.keys(map).forEach(id => {
+      const el = document.getElementById(id)
+      if (!el) return
+      const key = map[id]
+      const val = userSettings && Object.prototype.hasOwnProperty.call(userSettings, key)
+        ? !!userSettings[key]
+        : el.classList.contains('active') // default from HTML
+      el.classList.toggle('active', val)
+    })
+  } catch (e) {}
 }
 
 /* ===================================================
@@ -5209,6 +5229,8 @@ function saveTaskDetail() {
   let task = tasks.find(t => t.id === currentTaskDetailId)
   if (!task) return
 
+  let oldAssignee = task.assignee || ''
+
   let title = document.getElementById('taskDetailTitleInput').value.trim()
   if (!title) return showToast('Task title is required', 'error')
 
@@ -5237,6 +5259,36 @@ function saveTaskDetail() {
   renderDashboardCharts()
   updateStats()
   addAuditLog('update', `Updated task "${task.title}" from side panel`, 'update')
+
+  // Email notification: task assigned to someone (respect notification prefs and backend availability)
+  try {
+    if (ALTER_API_BASE && getAuthToken() && oldAssignee !== task.assignee) {
+      // Check notification preferences (default to on if not configured)
+      const wantsEmail =
+        (userSettings && userSettings.notifEmailEnabled !== false) &&
+        (userSettings && userSettings.notifTaskEnabled !== false)
+
+      if (wantsEmail) {
+        const member = team.find(m => m.id === task.assignee)
+        const to = member && member.email
+        if (to) {
+          const proj = task.projectId ? projects.find(p => p.id === task.projectId) : null
+          const projectName = proj ? proj.name : ''
+          const dueDate = task.dueDate || ''
+
+          fetch(ALTER_API_BASE + '/api/integrations/email/task-assigned', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': 'Bearer ' + getAuthToken()
+            },
+            body: JSON.stringify({ to, taskTitle: task.title, projectName, dueDate })
+          }).catch(() => {})
+        }
+      }
+    }
+  } catch (e) {}
+
   showToast('Task updated', 'success')
   closeTaskDetail()
 }
@@ -7874,6 +7926,25 @@ function saveWorkspaceSettings() {
 }
 
 function saveNotifPrefs() {
+  // Persist notification preferences into userSettings (synced to backend on next save)
+  try {
+    const map = {
+      notifEmailToggle: 'notifEmailEnabled',
+      notifTaskToggle: 'notifTaskEnabled',
+      notifProjectToggle: 'notifProjectEnabled',
+      notifDeadlineToggle: 'notifDeadlineEnabled',
+      notifWeeklyToggle: 'notifWeeklyEnabled'
+    }
+    Object.keys(map).forEach(id => {
+      const el = document.getElementById(id)
+      if (!el) return
+      const key = map[id]
+      const active = el.classList.contains('active')
+      if (!userSettings || typeof userSettings !== 'object') userSettings = {}
+      userSettings[key] = active
+    })
+    save('usersettings', userSettings)
+  } catch (e) {}
   showToast('Notification preferences saved!', 'success')
   addAuditLog('update', 'Updated notification preferences', 'update')
 }
