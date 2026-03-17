@@ -2138,6 +2138,38 @@ kbd {
 .pages-row:hover { border-color: #4f46e5; }
 .pages-row.active { border-color: #4f46e5; box-shadow: 0 0 0 1px rgba(79,70,229,.35) inset; }
 
+.pages-main { min-width: 0; }
+.pages-toolbar {
+  display:flex;
+  align-items:center;
+  gap:6px;
+  margin-bottom:10px;
+  padding:6px 8px;
+  border-radius:999px;
+  background:rgba(15,23,42,0.9);
+  border:1px solid #1F2937;
+  position:sticky;
+  top:0;
+  z-index:5;
+}
+.pages-toolbar button {
+  border:none;
+  background:transparent;
+  color:#E5E7EB;
+  font-size:11px;
+  padding:6px 9px;
+  border-radius:999px;
+  cursor:pointer;
+}
+.pages-toolbar button:hover {
+  background:#111827;
+}
+.toolbar-separator {
+  width:1px;
+  height:18px;
+  background:#1F2937;
+}
+
 .blocks-container { margin-top: 8px; display: flex; flex-direction: column; gap: 10px; }
 .block-row { border: 1px solid transparent; padding: 6px 10px; border-radius: 12px; }
 .block-row:hover { border-color: #1F2937; background: rgba(17,24,39,.4); }
@@ -2892,7 +2924,7 @@ kbd {
         <div class="workspace-header">
           <div>
             <h1>Pages</h1>
-            <p>Write with blocks: text, headings, checklists, dividers</p>
+            <p>Rich documents with headings, checklists, quotes, and more.</p>
           </div>
           <button onclick="createNewPage()">+ New Page</button>
         </div>
@@ -2906,11 +2938,31 @@ kbd {
           </div>
 
           <div class="pages-main">
-            <div class="card" style="padding:16px;">
-              <input id="pageTitleInput" placeholder="Page title" type="text" style="width:100%;padding:12px 14px;background:#111827;border:1px solid #1F2937;color:white;border-radius:10px;font-size:14px;margin-bottom:12px;">
+            <div class="card" style="padding:20px 22px;max-width:840px;margin:0 auto;">
+              <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;">
+                <div style="width:36px;height:36px;border-radius:10px;background:linear-gradient(135deg,#4f46e5,#7c3aed);display:flex;align-items:center;justify-content:center;font-size:18px;" id="pageIcon">
+                  📄
+                </div>
+                <input id="pageTitleInput" placeholder="Untitled page" type="text" style="flex:1;padding:10px 12px;background:#020617;border:1px solid #1F2937;color:white;border-radius:10px;font-size:16px;font-weight:600;">
+              </div>
+
+              <!-- Formatting toolbar -->
+              <div class="pages-toolbar">
+                <button type="button" onclick="setBlockTypeFromToolbar('paragraph')">Text</button>
+                <button type="button" onclick="setBlockTypeFromToolbar('heading')">H1</button>
+                <button type="button" onclick="setBlockTypeFromToolbar('quote')">Quote</button>
+                <span class="toolbar-separator"></span>
+                <button type="button" onclick="applyInlineFormat('bold')"><strong>B</strong></button>
+                <button type="button" onclick="applyInlineFormat('italic')"><em>I</em></button>
+                <button type="button" onclick="applyInlineFormat('underline')"><span style="text-decoration:underline;">U</span></button>
+                <span class="toolbar-separator"></span>
+                <button type="button" onclick="insertBlockFromToolbar('checklist')">Checklist</button>
+                <button type="button" onclick="insertBlockFromToolbar('divider')">Divider</button>
+              </div>
+
               <div id="blocksContainer" class="blocks-container"></div>
               <div style="margin-top:10px;font-size:12px;color:#6B7280;">
-                Tip: type <b>/</b> to insert a block menu. Press <b>Enter</b> on a text block to add a new paragraph.
+                Tip: Press <b>Enter</b> for a new paragraph, <b>/</b> for block menu, or use the toolbar for quick formatting.
               </div>
             </div>
           </div>
@@ -6882,6 +6934,7 @@ function exportAuditLog() {
    PAGES (Notion-style blocks)
 =================================================== */
 let blocksEditorHandlersBound = false
+let currentBlockIndex = null
 
 function ensurePageInitialized() {
   if (!pages || !pages.length) {
@@ -7013,7 +7066,7 @@ function renderBlocksForCurrentPage() {
                  data-block-index="${i}"
                  data-block-field="checkText"
                  data-placeholder="Checklist item">
-              ${escapeHtml(b.text || '')}
+              ${b.text || ''}
             </div>
           </div>
         </div>
@@ -7028,7 +7081,7 @@ function renderBlocksForCurrentPage() {
                data-block-index="${i}"
                data-block-field="text"
                data-placeholder="Heading 1">
-            ${escapeHtml(b.text || '')}
+            ${b.text || ''}
           </div>
         </div>
       `
@@ -7043,7 +7096,7 @@ function renderBlocksForCurrentPage() {
                data-block-field="text"
                data-placeholder="Quote"
                style="border-left:2px solid #4f46e5;padding-left:12px;">
-            ${escapeHtml(b.text || '')}
+            ${b.text || ''}
           </div>
         </div>
       `
@@ -7057,7 +7110,7 @@ function renderBlocksForCurrentPage() {
              data-block-index="${i}"
              data-block-field="text"
              data-placeholder="Type something...">
-          ${escapeHtml(b.text || '')}
+          ${b.text || ''}
         </div>
       </div>
     `
@@ -7123,6 +7176,16 @@ function bindBlocksEditorHandlersIfNeeded() {
   const container = document.getElementById('blocksContainer')
   if (!container) return
 
+  // Track which block is active so toolbar actions know where to apply
+  container.addEventListener('focusin', e => {
+    const target = e.target
+    if (!target || !target.getAttribute) return
+    const idxAttr = target.getAttribute('data-block-index')
+    if (idxAttr == null) return
+    const idx = Number(idxAttr)
+    if (!Number.isNaN(idx)) currentBlockIndex = idx
+  })
+
   // Input updates
   container.addEventListener('input', e => {
     const target = e.target
@@ -7131,7 +7194,7 @@ function bindBlocksEditorHandlersIfNeeded() {
     const field = target.getAttribute('data-block-field')
     if (Number.isNaN(idx) || !field) return
 
-    const text = target.innerText || ''
+    const text = target.innerHTML || ''
     updateCurrentPageAndPersist(page => {
       const b = page.blocks[idx]
       if (!b) return
@@ -7215,6 +7278,33 @@ function bindBlocksEditorHandlersIfNeeded() {
     if (menu.contains(e.target)) return
     hideBlockInsertMenu()
   })
+}
+
+function applyInlineFormat(command) {
+  try {
+    document.execCommand(command, false, null)
+  } catch (e) {
+    // execCommand is best-effort; ignore if not supported
+  }
+}
+
+function setBlockTypeFromToolbar(type) {
+  if (currentBlockIndex == null) return
+  updateCurrentPageAndPersist(page => {
+    if (!Array.isArray(page.blocks)) return
+    const b = page.blocks[currentBlockIndex]
+    if (!b) return
+    b.type = type
+  })
+  renderBlocksForCurrentPage()
+  focusBlockIndex(currentBlockIndex)
+}
+
+function insertBlockFromToolbar(type) {
+  const idx = currentBlockIndex == null ? 0 : currentBlockIndex + 1
+  addBlockAt(idx, type)
+  renderBlocksForCurrentPage()
+  focusBlockIndex(idx)
 }
 
 function renderPagesEditor() {
