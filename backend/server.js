@@ -87,6 +87,19 @@ function getMailTransporter() {
   return mailTransporter
 }
 
+async function sendEmailSafe({ to, subject, text }) {
+  try {
+    const transporter = getMailTransporter()
+    if (!transporter || !to) return false
+    const from = process.env.EMAIL_FROM || process.env.SMTP_USER
+    await transporter.sendMail({ from, to, subject, text })
+    return true
+  } catch (e) {
+    console.error('sendEmailSafe failed', e)
+    return false
+  }
+}
+
 const WORKSPACE_KEYS = [
   'projects', 'tasks', 'ideas', 'events', 'timeEntries', 'team',
   'notifications', 'activity', 'auditLogs', 'invoices', 'apiKeys', 'userSettings',
@@ -132,7 +145,7 @@ function authMiddleware(req, res, next) {
 }
 
 // ----- Routes: Auth -----
-app.post('/api/auth/register', (req, res) => {
+app.post('/api/auth/register', async (req, res) => {
   const { username, email, password, fullName } = req.body || {}
   if (!username || !email || !password) {
     return res.status(400).json({ error: 'Username, email, and password required' })
@@ -180,6 +193,21 @@ app.post('/api/auth/register', (req, res) => {
     timezone: 'UTC',
     created: created_at
   }
+
+  // Fire-and-forget welcome email (does not block registration)
+  if (newUser.email) {
+    sendEmailSafe({
+      to: newUser.email,
+      subject: 'Welcome to ALTER.CO',
+      text:
+        `Hi ${fullName || username},\n\n` +
+        `Welcome to ALTER.CO – your new home for projects, tasks, and docs.\n\n` +
+        `You can sign in anytime with this email and start creating projects, tracking time, and writing pages.\n\n` +
+        `If you did not sign up, you can safely ignore this email.\n\n` +
+        `— ALTER.CO`
+    }).catch(() => {})
+  }
+
   res.json({ token, user })
 })
 
@@ -267,6 +295,35 @@ app.post('/api/integrations/email/send-invite', authMiddleware, async (req, res)
   } catch (err) {
     console.error('Error sending invite email', err)
     res.status(500).json({ error: 'Failed to send email' })
+  }
+})
+
+app.post('/api/integrations/email/task-assigned', authMiddleware, async (req, res) => {
+  try {
+    const { to, taskTitle, projectName, dueDate } = req.body || {}
+    if (!to || !taskTitle) {
+      return res.status(400).json({ error: 'Missing "to" or "taskTitle"' })
+    }
+
+    const ok = await sendEmailSafe({
+      to,
+      subject: `New task assigned to you: ${taskTitle}`,
+      text:
+        `You have been assigned a new task in ALTER.CO.\n\n` +
+        `Task: ${taskTitle}\n` +
+        (projectName ? `Project: ${projectName}\n` : '') +
+        (dueDate ? `Due: ${dueDate}\n` : '') +
+        `\nSign in to ALTER.CO to view the details and update the status.\n`
+    })
+
+    if (!ok) {
+      return res.status(500).json({ error: 'Email not configured on server' })
+    }
+
+    res.json({ ok: true })
+  } catch (e) {
+    console.error('Error sending task assigned email', e)
+    res.status(500).json({ error: 'Failed to send task assignment email' })
   }
 })
 
