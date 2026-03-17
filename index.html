@@ -6809,7 +6809,13 @@ function exportAuditLog() {
    BILLING
 =================================================== */
 function renderBilling() {
-  let currentPlan = currentUser.plan || 'free'
+  // Billing can be clicked before async auth/workspace load finishes.
+  // Guard against `currentUser` being null to avoid runtime crashes.
+  if (!currentUser) {
+    // Keep UI functional with a safe default.
+    try { showToast('Sign in to view billing details', 'info') } catch (e) {}
+  }
+  let currentPlan = (currentUser && currentUser.plan) ? currentUser.plan : 'free'
   let planInfo    = PLANS.find(p => p.id === currentPlan)
 
   // Top summary card values
