@@ -1,9 +1,11 @@
+<!DOCTYPE html>
 <html>
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>ALTER.CO - Advanced SaaS Platform</title>
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<!-- Pinned Chart.js version to avoid strict CSP 'unsafe-eval' issues -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.5.1/dist/chart.umd.min.js"></script>
 <style>
 * { margin: 0; padding: 0; box-sizing: border-box; }
 
@@ -3742,6 +3744,7 @@ var ALTER_API_BASE = window.ALTER_API_BASE || ''
 function autoAssociateLabelsWithInputs() {
   /** @type {NodeListOf<HTMLLabelElement>} */
   const labels = document.querySelectorAll('label:not([for])')
+  let autoIdCounter = 0
   labels.forEach(label => {
     // If the label already wraps a form control, the association is already valid.
     if (label.querySelector('input[id], textarea[id], select[id]')) return
@@ -3754,8 +3757,13 @@ function autoAssociateLabelsWithInputs() {
     const control = parent.querySelector('input[id], textarea[id], select[id]')
     if (!control) return
 
-    const id = control.getAttribute('id')
-    if (!id) return
+    let id = control.getAttribute('id')
+    if (!id) {
+      // Some of your markup has inputs without ids; create a stable one so labels associate correctly.
+      autoIdCounter += 1
+      id = 'alco_auto_input_' + autoIdCounter
+      control.setAttribute('id', id)
+    }
     label.setAttribute('for', id)
   })
 }
