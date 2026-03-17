@@ -7,6 +7,14 @@ const bcrypt = require('bcryptjs')
 const jwt = require('jsonwebtoken')
 const fs = require('fs')
 const path = require('path')
+// Nodemailer is only required if SMTP email integration is enabled.
+// This keeps the backend running even if dependencies aren't installed yet.
+let nodemailer = null
+try {
+  nodemailer = require('nodemailer')
+} catch (e) {
+  nodemailer = null
+}
 
 const app = express()
 const PORT = process.env.PORT || 3000
@@ -54,9 +62,35 @@ function writeWorkspace(userId, data) {
   fs.writeFileSync(file, JSON.stringify(data, null, 2), 'utf8')
 }
 
+// ----- Email (SMTP via Nodemailer) -----
+let mailTransporter = null
+
+function getMailTransporter() {
+  if (mailTransporter) return mailTransporter
+
+  const { SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, SMTP_SECURE } = process.env
+  if (!SMTP_HOST || !SMTP_PORT || !SMTP_USER || !SMTP_PASS) {
+    return null
+  }
+  if (!nodemailer) return null
+
+  mailTransporter = nodemailer.createTransport({
+    host: SMTP_HOST,
+    port: Number(SMTP_PORT),
+    secure: String(SMTP_SECURE || '').toLowerCase() === 'true',
+    auth: {
+      user: SMTP_USER,
+      pass: SMTP_PASS
+    }
+  })
+
+  return mailTransporter
+}
+
 const WORKSPACE_KEYS = [
   'projects', 'tasks', 'ideas', 'events', 'timeEntries', 'team',
-  'notifications', 'activity', 'auditLogs', 'invoices', 'apiKeys', 'userSettings'
+  'notifications', 'activity', 'auditLogs', 'invoices', 'apiKeys', 'userSettings',
+  'pages'
 ]
 
 function emptyWorkspace() {
@@ -199,6 +233,41 @@ app.put('/api/workspace', authMiddleware, (req, res) => {
   }
   writeWorkspace(req.userId, current)
   res.json({ ok: true })
+})
+
+// ----- Routes: Integrations - Email -----
+app.post('/api/integrations/email/send-invite', authMiddleware, async (req, res) => {
+  try {
+    const transporter = getMailTransporter()
+    if (!transporter) {
+      return res.status(500).json({ error: 'Email not configured on server' })
+    }
+
+    const { to, subject, message } = req.body || {}
+    if (!to) {
+      return res.status(400).json({ error: 'Missing "to" email address' })
+    }
+
+    const from = process.env.EMAIL_FROM || process.env.SMTP_USER
+    const mailSubject = subject || 'You are invited to join ALTER.CO'
+    const textBody =
+      message ||
+      `You've been invited to collaborate in ALTER.CO.\n\n` +
+      `Sign in or create an account using this email address to access the workspace.\n\n` +
+      `If you were not expecting this invitation, you can safely ignore this email.`
+
+    await transporter.sendMail({
+      from,
+      to,
+      subject: mailSubject,
+      text: textBody
+    })
+
+    res.json({ ok: true })
+  } catch (err) {
+    console.error('Error sending invite email', err)
+    res.status(500).json({ error: 'Failed to send email' })
+  }
 })
 
 // ----- Health -----
