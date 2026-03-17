@@ -138,6 +138,35 @@ img, video, canvas, svg {
 
 .login-box input:focus { outline: none; border-color: #4f46e5; }
 
+/* Date & time pickers (projects, tasks, goals) */
+input[type="date"],
+input[type="datetime-local"],
+input[type="time"] {
+  width: 100%;
+  padding: 10px 12px;
+  background: #020617;
+  border: 1px solid #1F2937;
+  color: #E5E7EB;
+  border-radius: 8px;
+  font-size: 13px;
+}
+
+input[type="date"]:focus,
+input[type="datetime-local"]:focus,
+input[type="time"]:focus {
+  outline: none;
+  border-color: #4f46e5;
+  box-shadow: 0 0 0 1px rgba(79,70,229,0.4);
+}
+
+input[type="date"]::-webkit-calendar-picker-indicator,
+input[type="datetime-local"]::-webkit-calendar-picker-indicator,
+input[type="time"]::-webkit-calendar-picker-indicator {
+  filter: invert(0.8);
+  opacity: 0.9;
+  cursor: pointer;
+}
+
 .login-box button.btn-primary-login {
   width: 100%;
   padding: 12px;
@@ -201,6 +230,7 @@ img, video, canvas, svg {
 
 .login-message.error { background: #7f1d1d; color: #fecaca; }
 .login-message.success { background: #1B4332; color: #86efac; }
+.login-message.info { background: #1e3a5f; color: #bfdbfe; }
 
 /* ===== ONBOARDING ===== */
 .onboarding-overlay {
@@ -379,6 +409,51 @@ img, video, canvas, svg {
   border-radius: 4px;
   font-family: monospace;
   margin-right: 4px;
+}
+
+/* Task detail side panel */
+.task-detail-panel {
+  position: fixed;
+  top: 60px;
+  right: 0;
+  width: 360px;
+  max-width: 90vw;
+  height: calc(100vh - 60px);
+  background: #020617;
+  border-left: 1px solid #1F2937;
+  box-shadow: -10px 0 30px rgba(0,0,0,0.6);
+  z-index: 6000;
+  display: flex;
+  flex-direction: column;
+  transform: translateX(100%);
+  transition: transform 0.25s ease;
+}
+
+.task-detail-panel.active {
+  transform: translateX(0);
+}
+
+.task-detail-header {
+  padding: 16px 18px 10px;
+  border-bottom: 1px solid #1F2937;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+}
+
+.task-detail-body {
+  padding: 14px 18px 16px;
+  overflow-y: auto;
+  font-size: 13px;
+}
+
+.task-detail-footer {
+  padding: 10px 16px;
+  border-top: 1px solid #1F2937;
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
 }
 
 /* ===== LAYOUT ===== */
@@ -694,10 +769,9 @@ img, video, canvas, svg {
   border-radius: 12px;
   border: 1px solid #1F2937;
   transition: all 0.3s;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.2);
 }
 
-.card:hover { border-color: #374151; box-shadow: 0 4px 12px rgba(0,0,0,0.25); }
+.card:hover { border-color: #374151; }
 
 .card h3 { margin-bottom: 15px; font-size: 15px; color: #D1D5DB; }
 .chart-container { position: relative; height: 220px; }
@@ -990,8 +1064,9 @@ button:disabled { opacity: 0.5; cursor: not-allowed; transform: none; box-shadow
 
 .time-entry-desc { flex: 1; font-size: 14px; }
 .time-entry-project { font-size: 12px; color: #6B7280; }
+.time-entry-user { font-size: 11px; color: #9CA3AF; margin-top: 2px; }
 .time-entry-duration { font-size: 14px; font-weight: 600; color: #4f46e5; font-family: monospace; min-width: 70px; text-align: right; }
-.time-entry-date { font-size: 12px; color: #4B5563; }
+.time-entry-date { font-size: 12px; color: #4B5563; min-width: 90px; text-align: right; }
 
 .time-summary {
   display: grid;
@@ -1109,7 +1184,7 @@ button:disabled { opacity: 0.5; cursor: not-allowed; transform: none; box-shadow
 .calendar-day.other-month { opacity: 0.3; }
 .calendar-day.empty { background: transparent; border: none; cursor: default; }
 
-.day-number { font-weight: 600; margin-bottom: 4px; font-size: 13px; }
+.day-number { font-weight: 600; margin-bottom: 4px; font-size: 13px; color: #E5E7EB; }
 .today .day-number { color: #22c55e; }
 
 .day-events { font-size: 10px; display: flex; flex-direction: column; gap: 2px; }
@@ -1753,7 +1828,6 @@ button:disabled { opacity: 0.5; cursor: not-allowed; transform: none; box-shadow
 }
 
 .modal-content.wide { max-width: 700px; }
-.modal-content.modal-sm { max-width: 400px; padding: 20px; }
 
 @keyframes modalSlideIn {
   from { opacity: 0; transform: scale(0.96) translateY(-10px); }
@@ -2140,6 +2214,10 @@ kbd {
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
           Calendar
         </div>
+        <div class="nav-item" onclick="switchPage('goals', this)">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+          Goals & OKRs
+        </div>
         <div class="nav-item" onclick="switchPage('team', this)">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
           Team
@@ -2149,11 +2227,19 @@ kbd {
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
           Analytics
         </div>
+        <div class="nav-item" onclick="switchPage('overview', this)">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 13h8V3H3z"/><path d="M13 21h8V8h-8z"/><path d="M3 21h8v-4H3z"/></svg>
+          Overview
+        </div>
         <div class="nav-item" onclick="switchPage('auditlog', this)">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
           Audit Log
         </div>
         <div class="nav-section-label" style="margin-top:10px;">Account</div>
+        <div class="nav-item" onclick="switchPage('profile', this)">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M6 20c0-3 2.686-5 6-5s6 2 6 5"/></svg>
+          Profile
+        </div>
         <div class="nav-item" onclick="switchPage('billing', this)">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="4" width="22" height="16" rx="2" ry="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
           Billing
@@ -2290,27 +2376,107 @@ kbd {
             <h3>Recent Activity</h3>
             <div class="activity-feed" id="activityFeed"></div>
           </div>
-          <div class="card">
-            <h3>Quick Stats</h3>
-            <div style="display:flex;flex-direction:column;gap:18px;padding-top:5px;">
-              <div>
-                <div class="section-label">Ideas Submitted</div>
-                <div style="font-size:28px;font-weight:700;color:#4f46e5;" id="quickIdeas">0</div>
-              </div>
-              <div>
-                <div class="section-label">Events This Month</div>
-                <div style="font-size:28px;font-weight:700;color:#4f46e5;" id="quickEvents">0</div>
-              </div>
-              <div>
-                <div class="section-label">Tasks Completed</div>
-                <div style="font-size:28px;font-weight:700;color:#22c55e;" id="quickCompleted">0</div>
-              </div>
-              <div>
-                <div class="section-label">Hours Logged</div>
-                <div style="font-size:28px;font-weight:700;color:#f59e0b;" id="quickHours">0h</div>
+          <div style="display:flex;flex-direction:column;gap:16px;">
+            <div class="card">
+              <h3>Today for you</h3>
+              <div id="dashboardMyToday" style="font-size:13px;color:#9CA3AF;"></div>
+            </div>
+            <div class="card">
+              <h3>Quick Stats</h3>
+              <div style="display:flex;flex-direction:column;gap:18px;padding-top:5px;">
+                <div>
+                  <div class="section-label">Ideas Submitted</div>
+                  <div style="font-size:28px;font-weight:700;color:#4f46e5;" id="quickIdeas">0</div>
+                </div>
+                <div>
+                  <div class="section-label">Events This Month</div>
+                  <div style="font-size:28px;font-weight:700;color:#4f46e5;" id="quickEvents">0</div>
+                </div>
+                <div>
+                  <div class="section-label">Tasks Completed</div>
+                  <div style="font-size:28px;font-weight:700;color:#22c55e;" id="quickCompleted">0</div>
+                </div>
+                <div>
+                  <div class="section-label">Hours Logged</div>
+                  <div style="font-size:28px;font-weight:700;color:#f59e0b;" id="quickHours">0h</div>
+                </div>
               </div>
             </div>
           </div>
+        </div>
+      </div>
+
+      <!-- OVERVIEW (Client / Stakeholder view) -->
+      <div id="overview" class="page page-content hidden">
+        <div class="workspace-header">
+          <div>
+            <h1>Overview</h1>
+            <p>High-level snapshot of projects, goals, and upcoming deadlines.</p>
+          </div>
+          <div class="header-actions">
+            <select id="overviewProjectFilter" onchange="renderOverview()" style="padding:8px 10px;background:#111827;border:1px solid #1F2937;color:white;border-radius:8px;font-size:12px;">
+              <option value="">All projects</option>
+              <option value="active">Active only</option>
+              <option value="client">Client-tagged</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="stats" id="overviewSummary"></div>
+
+        <div class="dashboard-grid">
+          <div class="card">
+            <h3>Key Projects</h3>
+            <div id="overviewProjects"></div>
+          </div>
+          <div class="card">
+            <h3>Goals & OKRs</h3>
+            <div id="overviewGoals"></div>
+          </div>
+          <div class="card">
+            <h3>Upcoming Deadlines & Events</h3>
+            <div id="overviewTimeline"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- PROFILE (dedicated page) -->
+      <div id="profile" class="page page-content hidden">
+        <div class="workspace-header">
+          <div>
+            <h1>Profile</h1>
+            <p>View a summary of your account at a glance.</p>
+          </div>
+          <button onclick="switchPage('settings', null)">Open full settings</button>
+        </div>
+
+        <div style="display:grid;grid-template-columns:minmax(0,2fr) minmax(0,3fr);gap:20px;align-items:flex-start;flex-wrap:wrap;">
+          <div class="card">
+            <h3>Account Overview</h3>
+            <div style="display:flex;align-items:center;gap:16px;margin-top:8px;">
+              <div style="width:64px;height:64px;border-radius:50%;background:linear-gradient(135deg,#4f46e5,#7c3aed);display:flex;align-items:center;justify-content:center;font-size:28px;font-weight:700;color:white;" id="profilePageAvatar">A</div>
+              <div>
+                <div style="font-size:16px;font-weight:600;" id="profilePageName">User</div>
+                <div style="font-size:13px;color:#9CA3AF;" id="profilePageEmail"></div>
+                <div style="font-size:12px;color:#6B7280;margin-top:4px;">Role: <span id="profilePageRole">member</span></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="card">
+            <h3>Workspace & Plan</h3>
+            <p style="font-size:13px;color:#9CA3AF;margin-top:6px;">Quick snapshot of your current plan and preferences.</p>
+            <div style="margin-top:14px;font-size:13px;display:flex;flex-direction:column;gap:6px;">
+              <div>Plan: <span style="font-weight:600;" id="profilePagePlan">FREE</span></div>
+              <div>Timezone: <span id="profilePageTimezone">UTC</span></div>
+              <div>Member since: <span id="profilePageCreated">—</span></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card" style="margin-top:20px;">
+          <h3>Bio</h3>
+          <p id="profilePageBio" style="font-size:13px;color:#9CA3AF;margin-top:6px;">Add a short bio from Settings to introduce yourself to your team.</p>
         </div>
       </div>
 
@@ -2366,6 +2532,10 @@ kbd {
             <option value="medium">Medium</option>
             <option value="low">Low</option>
           </select>
+          <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:#9CA3AF;margin-left:auto;">
+            <input type="checkbox" id="taskMyOnly" onchange="filterTasks()">
+            My tasks only
+          </label>
         </div>
         <div class="kanban-board">
           <div class="kanban-column">
@@ -2425,8 +2595,78 @@ kbd {
 
         <div class="time-summary" id="timeSummary"></div>
 
-        <h3 style="margin-bottom:14px;font-size:15px;">Time Entries</h3>
+        <div style="display:flex;justify-content:flex-end;align-items:center;margin-bottom:6px;">
+          <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:#9CA3AF;">
+            <input type="checkbox" id="timeMyOnly" onchange="renderTimeTracking()">
+            My time only
+          </label>
+        </div>
+
+        <h3 style="margin-bottom:10px;font-size:15px;">Time Entries</h3>
         <div id="timeEntriesList"></div>
+      </div>
+
+      <!-- TASK DETAIL SIDE PANEL -->
+      <div id="taskDetailPanel" class="task-detail-panel hidden">
+        <div class="task-detail-header">
+          <div style="min-width:0;">
+            <div style="font-size:11px;color:#6B7280;margin-bottom:2px;" id="taskDetailProjectLabel"></div>
+            <h3 id="taskDetailTitle" style="font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"></h3>
+          </div>
+          <button class="btn-xs btn-secondary" onclick="closeTaskDetail()">✕</button>
+        </div>
+        <div class="task-detail-body">
+          <div class="form-group">
+            <label>Title</label>
+            <input id="taskDetailTitleInput" type="text">
+          </div>
+          <div class="form-group">
+            <label>Description</label>
+            <textarea id="taskDetailDescInput" rows="3"></textarea>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label>Status</label>
+              <select id="taskDetailStatus">
+                <option value="todo">To Do</option>
+                <option value="in-progress">In Progress</option>
+                <option value="review">Review</option>
+                <option value="done">Done</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label>Priority</label>
+              <select id="taskDetailPriority">
+                <option value="low">Low</option>
+                <option value="medium">Medium</option>
+                <option value="high">High</option>
+              </select>
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label>Assignee</label>
+              <select id="taskDetailAssignee"></select>
+            </div>
+            <div class="form-group">
+              <label>Due date & time</label>
+              <input id="taskDetailDue" type="datetime-local">
+            </div>
+          </div>
+          <div class="form-group">
+            <label>Time logged on this task</label>
+            <div id="taskDetailTimeSummary" style="font-size:13px;color:#9CA3AF;"></div>
+          </div>
+          <div class="form-group">
+            <label>Updates / Comments</label>
+            <div id="taskDetailUpdates" style="font-size:12px;color:#9CA3AF;margin-bottom:6px;"></div>
+            <textarea id="taskDetailUpdateInput" rows="2" placeholder="Add a quick update..."></textarea>
+          </div>
+        </div>
+        <div class="task-detail-footer">
+          <button class="btn-secondary" onclick="closeTaskDetail()">Close</button>
+          <button onclick="saveTaskDetail()">Save changes</button>
+        </div>
       </div>
 
       <!-- IDEAS -->
@@ -2449,6 +2689,44 @@ kbd {
           </select>
         </div>
         <div class="ideas-grid" id="ideasList"></div>
+      </div>
+
+      <!-- GOALS & OKRs -->
+      <div id="goals" class="page page-content hidden">
+        <div class="workspace-header">
+          <div>
+            <h1>Goals & OKRs</h1>
+            <p>Set high-level objectives and track progress across projects and tasks</p>
+          </div>
+          <button onclick="openCreateGoalModal()">+ New Goal</button>
+        </div>
+        <div class="search-container">
+          <input id="goalSearch" placeholder="Search goals..." oninput="renderGoals()">
+          <select id="goalStatusFilter" onchange="renderGoals()" style="padding:10px 14px;background:#111827;border:1px solid #1F2937;color:white;border-radius:8px;cursor:pointer;font-size:13px;">
+            <option value="">All statuses</option>
+            <option value="on_track">On track</option>
+            <option value="at_risk">At risk</option>
+            <option value="off_track">Off track</option>
+            <option value="completed">Completed</option>
+          </select>
+          <select id="goalOwnerFilter" onchange="renderGoals()" style="padding:10px 14px;background:#111827;border:1px solid #1F2937;color:white;border-radius:8px;cursor:pointer;font-size:13px;">
+            <option value="">All owners</option>
+          </select>
+          <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:#9CA3AF;margin-left:auto;">
+            <input type="checkbox" id="goalMyOnly" onchange="renderGoals()">
+            My goals only
+          </label>
+        </div>
+        <div class="dashboard-grid">
+          <div class="card">
+            <h3>Current Quarter Goals</h3>
+            <div id="goalsList"></div>
+          </div>
+          <div class="card">
+            <h3>Summary</h3>
+            <div id="goalsSummary" style="font-size:13px;color:#9CA3AF;"></div>
+          </div>
+        </div>
       </div>
 
       <!-- CALENDAR -->
@@ -2482,6 +2760,16 @@ kbd {
             <option value="month">This month</option>
           </select>
         </label>
+        <label style="font-size:12px;color:#9CA3AF;display:flex;align-items:center;gap:4px;">
+          <input type="checkbox" id="calendarShowGoogle" checked onchange="renderCalendar()">
+          Show Google Calendar
+        </label>
+        <button id="calendarConnectGoogleBtn"
+                class="btn-secondary btn-sm"
+                onclick="connectGoogleCalendar()">
+          Connect Google Calendar
+        </button>
+        <span id="calendarGoogleStatus" style="font-size:11px;color:#4B5563;"></span>
       </div>
     </div>
 
@@ -2528,7 +2816,7 @@ kbd {
             <h1>Team Management</h1>
             <p>Manage team members, roles, and permissions</p>
           </div>
-          <button onclick="openInviteTeamModal()">+ Invite Member</button>
+          <button id="teamInviteBtn" onclick="openInviteTeamModal()">+ Invite Member</button>
         </div>
         <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px;margin-bottom:24px;">
           <div class="stat-card">
@@ -2543,6 +2831,22 @@ kbd {
             <h3>Admins</h3>
             <div class="value" id="teamStatAdmins">1</div>
           </div>
+        </div>
+        <div class="search-container" style="margin-bottom:10px;align-items:center;gap:10px;">
+          <div style="font-size:12px;color:#9CA3AF;">Filters:</div>
+          <select id="teamRoleFilter" onchange="renderTeam()" style="padding:8px 10px;background:#111827;border:1px solid #1F2937;color:white;border-radius:8px;font-size:12px;">
+            <option value="">All roles</option>
+            <option value="owner">Owner</option>
+            <option value="admin">Admin</option>
+            <option value="manager">Manager</option>
+            <option value="member">Member</option>
+          </select>
+          <select id="teamStatusFilter" onchange="renderTeam()" style="padding:8px 10px;background:#111827;border:1px solid #1F2937;color:white;border-radius:8px;font-size:12px;">
+            <option value="">All statuses</option>
+            <option value="accepted">Active</option>
+            <option value="pending">Pending</option>
+          </select>
+          <button class="btn-secondary btn-sm" onclick="document.getElementById('teamRoleFilter').value='';document.getElementById('teamStatusFilter').value='';renderTeam();">Clear</button>
         </div>
         <div class="section-label">Active Members</div>
         <div class="team-grid" id="teamList"></div>
@@ -2583,6 +2887,10 @@ kbd {
           <div class="card">
             <h3>Weekly Task Throughput</h3>
             <div class="chart-container"><canvas id="throughputChart"></canvas></div>
+          </div>
+          <div class="card">
+            <h3>My Productivity (Last 6 Weeks)</h3>
+            <div class="chart-container"><canvas id="myProductivityChart"></canvas></div>
           </div>
         </div>
       </div>
@@ -2889,14 +3197,6 @@ kbd {
           </div>
           <div class="setting-item">
             <div class="setting-info">
-              <h4>Restore from backup</h4>
-              <p>Upload a previously exported JSON file to restore projects, tasks, ideas, and more</p>
-            </div>
-            <input type="file" id="restoreFileInput" accept=".json" style="display:none" onchange="restoreFromBackupFile(event)">
-            <button onclick="document.getElementById('restoreFileInput').click()" class="btn-sm btn-secondary">Choose file...</button>
-          </div>
-          <div class="setting-item">
-            <div class="setting-info">
               <h4>Reset Workspace</h4>
               <p>Delete all projects, tasks, and ideas (irreversible)</p>
             </div>
@@ -2972,9 +3272,8 @@ kbd {
       <button onclick="document.getElementById('shortcutsOverlay').classList.remove('active')" class="btn-secondary btn-sm">Close</button>
     </div>
     <div class="shortcuts-grid">
-      <div class="shortcut-item"><span>Global search (projects, tasks, ideas)</span><div class="shortcut-keys"><kbd>⌘</kbd><kbd>K</kbd></div></div>
       <div class="shortcut-item"><span>Open command palette</span><div class="shortcut-keys"><kbd>⌘</kbd><kbd>K</kbd></div></div>
-      <div class="shortcut-item"><span>Show this shortcuts list</span><div class="shortcut-keys"><kbd>?</kbd></div></div>
+      <div class="shortcut-item"><span>Show shortcuts</span><div class="shortcut-keys"><kbd>?</kbd></div></div>
       <div class="shortcut-item"><span>Go to Dashboard</span><div class="shortcut-keys"><kbd>G</kbd><kbd>D</kbd></div></div>
       <div class="shortcut-item"><span>Go to Projects</span><div class="shortcut-keys"><kbd>G</kbd><kbd>P</kbd></div></div>
       <div class="shortcut-item"><span>Go to Tasks</span><div class="shortcut-keys"><kbd>G</kbd><kbd>T</kbd></div></div>
@@ -2985,21 +3284,6 @@ kbd {
       <div class="shortcut-item"><span>Toggle notifications</span><div class="shortcut-keys"><kbd>N</kbd></div></div>
       <div class="shortcut-item"><span>Export data</span><div class="shortcut-keys"><kbd>⌘</kbd><kbd>E</kbd></div></div>
       <div class="shortcut-item"><span>Logout</span><div class="shortcut-keys"><kbd>⌘</kbd><kbd>⇧</kbd><kbd>L</kbd></div></div>
-    </div>
-  </div>
-</div>
-
-<!-- CONFIRM MODAL (replaces browser confirm) -->
-<div id="confirmModal" class="modal" onclick="handleConfirmModalBackdrop(event)">
-  <div class="modal-content modal-sm" onclick="event.stopPropagation()">
-    <div class="modal-header">
-      <h2 id="confirmModalTitle">Confirm</h2>
-      <button class="modal-close" onclick="closeConfirmModal()">✕</button>
-    </div>
-    <p id="confirmModalMsg" style="margin:0 0 20px;color:#9CA3AF;font-size:14px;"></p>
-    <div style="display:flex;gap:10px;justify-content:flex-end;">
-      <button id="confirmModalCancel" onclick="closeConfirmModal()" class="btn-secondary">Cancel</button>
-      <button id="confirmModalOk" class="btn-danger">Confirm</button>
     </div>
   </div>
 </div>
@@ -3046,8 +3330,8 @@ kbd {
         <input id="modalProjectStart" type="date">
       </div>
       <div class="form-group">
-        <label>Deadline</label>
-        <input id="modalProjectDeadline" type="date">
+        <label>Deadline (date & time)</label>
+        <input id="modalProjectDeadline" type="datetime-local">
       </div>
     </div>
     <div class="form-group">
@@ -3097,8 +3381,8 @@ kbd {
       </div>
     </div>
     <div class="form-group">
-      <label>Deadline</label>
-      <input id="editProjectDeadline" type="date">
+      <label>Deadline (date & time)</label>
+      <input id="editProjectDeadline" type="datetime-local">
     </div>
     <div style="display:flex;gap:10px;margin-top:20px;">
       <button onclick="saveEditProject()">Save Changes</button>
@@ -3148,8 +3432,8 @@ kbd {
         </select>
       </div>
       <div class="form-group">
-        <label>Due Date</label>
-        <input id="modalTaskDue" type="date">
+        <label>Due date & time</label>
+        <input id="modalTaskDue" type="datetime-local">
       </div>
     </div>
     <div class="form-group">
@@ -3283,6 +3567,92 @@ kbd {
   </div>
 </div>
 
+<!-- Create Goal / OKR -->
+<div id="createGoalModal" class="modal" onclick="handleModalBackdrop(event)">
+  <div class="modal-content" onclick="event.stopPropagation()">
+    <div class="modal-header">
+      <h2>🎯 Create Goal / OKR</h2>
+      <button class="modal-close" onclick="closeCreateGoalModal()">✕</button>
+    </div>
+    <input type="hidden" id="modalGoalId" value="">
+    <div class="form-group">
+      <label>Objective *</label>
+      <input id="modalGoalTitle" type="text" placeholder="e.g. Increase product adoption in Q2">
+    </div>
+    <div class="form-group">
+      <label>Description</label>
+      <textarea id="modalGoalDesc" placeholder="What does success look like?"></textarea>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>Owner</label>
+        <select id="modalGoalOwner"></select>
+      </div>
+      <div class="form-group">
+        <label>Status</label>
+        <select id="modalGoalStatus">
+          <option value="on_track">On track</option>
+          <option value="at_risk">At risk</option>
+          <option value="off_track">Off track</option>
+          <option value="completed">Completed</option>
+        </select>
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>Target date & time</label>
+        <input id="modalGoalDue" type="datetime-local">
+      </div>
+      <div class="form-group">
+        <label>Linked Project (optional)</label>
+        <select id="modalGoalProject"><option value="">None</option></select>
+      </div>
+    </div>
+    <div class="form-group">
+      <label>Key Results (one per line)</label>
+      <textarea id="modalGoalKRs" placeholder="e.g. Hit 500 weekly active users&#10;e.g. Close 3 enterprise deals"></textarea>
+    </div>
+    <div style="display:flex;gap:10px;margin-top:20px;">
+      <button onclick="saveGoal()">Save Goal</button>
+      <button onclick="closeCreateGoalModal()" class="btn-secondary">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- Generic Confirm Modal -->
+<div id="confirmModal" class="modal" onclick="handleModalBackdrop(event)">
+  <div class="modal-content" onclick="event.stopPropagation()">
+    <div class="modal-header">
+      <h2 id="confirmTitle">Are you sure?</h2>
+      <button class="modal-close" onclick="closeConfirmModal()">✕</button>
+    </div>
+    <p id="confirmMessage" style="font-size:13px;color:#9CA3AF;margin-bottom:16px;"></p>
+    <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:10px;">
+      <button class="btn-secondary" onclick="closeConfirmModal()">Cancel</button>
+      <button id="confirmPrimaryBtn" class="btn-danger" onclick="confirmAction()">Confirm</button>
+    </div>
+  </div>
+</div>
+
+<!-- Goal Update Modal -->
+<div id="goalUpdateModal" class="modal" onclick="handleModalBackdrop(event)">
+  <div class="modal-content" onclick="event.stopPropagation()">
+    <div class="modal-header">
+      <h2>✏ Goal Update</h2>
+      <button class="modal-close" onclick="closeGoalUpdateModal()">✕</button>
+    </div>
+    <input type="hidden" id="modalGoalUpdateId" value="">
+    <div class="form-group">
+      <label>Update</label>
+      <textarea id="modalGoalUpdateText" placeholder="What changed for this goal?"></textarea>
+    </div>
+    <div style="display:flex;gap:10px;margin-top:20px;justify-content:flex-end;">
+      <button class="btn-secondary" onclick="closeGoalUpdateModal()">Cancel</button>
+      <button onclick="saveGoalUpdate()">Add update</button>
+    </div>
+  </div>
+</div>
+
 <!-- Manual Time Log -->
 <div id="manualTimeModal" class="modal" onclick="handleModalBackdrop(event)">
   <div class="modal-content" onclick="event.stopPropagation()">
@@ -3335,29 +3705,28 @@ kbd {
 /* ===================================================
    STATE
 =================================================== */
-function loadStored(key, defaultValue) {
-  try {
-    var s = localStorage.getItem(key)
-    return s ? JSON.parse(s) : defaultValue
-  } catch (e) { return defaultValue }
-}
-var defaultUser = [{ id: '1', username: 'admin', password: 'admin123', email: 'admin@alter.co', fullName: 'Admin User', role: 'admin', bio: '', timezone: 'UTC', plan: 'free' }]
 let currentUser   = null
-let users         = loadStored('alco_users', defaultUser)
-let projects      = loadStored('alco_projects', [])
-let tasks         = loadStored('alco_tasks', [])
-let ideas         = loadStored('alco_ideas', [])
-let events        = loadStored('alco_events', [])
-let team          = loadStored('alco_team', [])
-let notifications = loadStored('alco_notifications', [])
-let activity      = loadStored('alco_activity', [])
-let timeEntries   = loadStored('alco_time', [])
-let auditLogs     = loadStored('alco_audit', [])
-let apiKeys       = loadStored('alco_apikeys', [])
-let invoices      = loadStored('alco_invoices', [])
-let userSettings  = loadStored('alco_usersettings', {})
+let users         = JSON.parse(localStorage.getItem('alco_users'))         || [{ id:'1', username:'admin', password:'admin123', email:'admin@alter.co', fullName:'Admin User', role:'admin', bio:'', timezone:'UTC', plan:'free', created: new Date().toISOString() }]
+let projects      = JSON.parse(localStorage.getItem('alco_projects'))      || []
+let tasks         = JSON.parse(localStorage.getItem('alco_tasks'))         || []
+let ideas         = JSON.parse(localStorage.getItem('alco_ideas'))         || []
+let events        = JSON.parse(localStorage.getItem('alco_events'))        || []
+let goals         = JSON.parse(localStorage.getItem('alco_goals'))         || []
+// Google Calendar integration state (frontend-only; backend will fill these)
+let googleCalendarConnected = false
+let googleCalendarEvents    = []
+let team          = JSON.parse(localStorage.getItem('alco_team'))          || []
+let notifications = JSON.parse(localStorage.getItem('alco_notifications')) || []
+let activity      = JSON.parse(localStorage.getItem('alco_activity'))      || []
+let timeEntries   = JSON.parse(localStorage.getItem('alco_time'))          || []
+let auditLogs     = JSON.parse(localStorage.getItem('alco_audit'))         || []
+let apiKeys       = JSON.parse(localStorage.getItem('alco_apikeys'))       || []
+let invoices      = JSON.parse(localStorage.getItem('alco_invoices'))      || []
+let userSettings  = JSON.parse(localStorage.getItem('alco_usersettings'))  || {}
+// Ensure calendar state exists before any boot logic runs
+var currentDate  = new Date()
 
-(function () {
+;(function () {
   var meta = document.getElementById('alterApiBaseMeta')
   var fromMeta = meta && meta.getAttribute('content') && meta.getAttribute('content').trim()
   if (typeof window.location !== 'undefined' && window.location.origin && window.location.protocol !== 'file:' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
@@ -3368,6 +3737,7 @@ let userSettings  = loadStored('alco_usersettings', {})
 })()
 var ALTER_API_BASE = window.ALTER_API_BASE || ''
 var syncWorkspaceTimeout = null
+let pendingConfirm = null
 
 function getAuthToken() { return localStorage.getItem('alco_token') || '' }
 function setAuthToken(t) { if (t) localStorage.setItem('alco_token', t); else localStorage.removeItem('alco_token') }
@@ -3436,12 +3806,13 @@ function scheduleSyncWorkspace() {
   }, 600)
 }
 
-let charts       = {}
-let currentDate  = new Date()
+var charts       = {}
+currentDate  = new Date()
 let draggedTaskId= null
+let currentTaskDetailId = null
 // Calendar view state
-let calendarView = 'month'           // 'month' or 'week' (week is UI-only for now)
-let selectedCalendarDate = null      // 'YYYY-MM-DD'
+var calendarView = 'month'           // 'month' or 'week' (week is UI-only for now)
+var selectedCalendarDate = null      // 'YYYY-MM-DD'
 
 // Billing state
 let billingPeriod = 'monthly' // 'monthly' or 'yearly'
@@ -3455,6 +3826,7 @@ let timerSeconds   = 0
 // Keyboard shortcut state
 let keySequence = []
 let keyTimer    = null
+let keyboardShortcutsBound = false
 
 // Onboarding
 const ONBOARDING_STEPS = [
@@ -3479,7 +3851,7 @@ const PLANS = [
    HELPERS
 =================================================== */
 // Global error capture (keeps app from failing silently)
-let lastAppError = null
+var lastAppError = null
 
 function getLastErrorText() {
   if (!lastAppError) return ''
@@ -3513,7 +3885,18 @@ function copyLastError() {
   } else {
     // Fallback: best-effort prompt copy
     try {
-      window.prompt('Copy error details:', text)
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text)
+        showToast('Error details copied to clipboard.', 'info')
+      } else {
+        console.log('Error details:', text)
+        showToast('Error details logged to console.', 'info')
+      }
+    } catch (e) {
+      console.log('Error details:', text)
+      showToast('Could not copy error details, logged in console.', 'error')
+    }
     } catch (e) {
       showToast('Copy not supported on this browser', 'warning')
     }
@@ -3627,8 +4010,6 @@ function greeting() {
       .catch(function (err) {
         clearAuthToken()
         localStorage.removeItem('alco_session')
-        var msg = document.getElementById('loginMessage')
-        if (msg) { msg.textContent = 'Session expired or backend unavailable. Sign in again.'; msg.className = 'login-message error'; msg.classList.remove('hidden') }
       })
     return
   }
@@ -3665,6 +4046,7 @@ function register() {
   var p  = document.getElementById('regPassword').value.trim()
   var c  = document.getElementById('regConfirm').value.trim()
   if (u.length < 4)     return showLoginMessage('Username must be at least 4 characters', 'error')
+  if (e && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e)) return showLoginMessage('Please enter a valid email address', 'error')
   if (p.length < 6)     return showLoginMessage('Password must be at least 6 characters', 'error')
   if (p !== c)          return showLoginMessage('Passwords do not match', 'error')
   if (ALTER_API_BASE) {
@@ -3738,34 +4120,23 @@ function demoLogin() {
 }
 
 function showApp() {
-  if (!currentUser) return
-  var loginEl = document.getElementById('loginScreen')
-  var appEl = document.getElementById('app')
-  if (loginEl) loginEl.classList.add('hidden')
-  if (appEl) appEl.classList.remove('hidden')
+  document.getElementById('loginScreen').classList.add('hidden')
+  document.getElementById('app').classList.remove('hidden')
   initGlobalErrorCapture()
   initializeApp()
+  // Show onboarding for new users who haven't seen it
   if (!localStorage.getItem('alco_onboarded_' + currentUser.id)) {
-    setTimeout(function () { startOnboarding() }, 800)
+    setTimeout(() => startOnboarding(), 800)
   }
 }
 
 function logout() {
-  showConfirmModal('Sign out', 'Sign out of ALTER.CO?', function () {
-    doLogout()
-  }, 'Sign out')
-}
-function doLogout() {
-  clearAuthToken()
-  localStorage.removeItem('alco_session')
-  Object.keys(charts).forEach(function (k) { try { if (charts[k]) charts[k].destroy() } catch(e){} })
-  charts = {}
-  stopTimer()
-  currentUser = null
-  document.getElementById('app').classList.add('hidden')
-  document.getElementById('loginScreen').classList.remove('hidden')
-  document.getElementById('usernameInput').value = ''
-  document.getElementById('passwordInput').value = ''
+  openConfirmModal({
+    type: 'logout',
+    title: 'Sign out',
+    message: 'You will be signed out of ALTER.CO on this device.',
+    level: 'normal'
+  })
 }
 
 function showLoginMessage(msg, type) {
@@ -3780,16 +4151,11 @@ function showLoginMessage(msg, type) {
    INIT
 =================================================== */
 function initializeApp() {
-  if (!currentUser) return
   updateSidebarUser()
   renderAllPages()
   renderNotifications()
-  renderBilling()
-  renderAuditLog()
-  renderTimeTracking()
   setupKeyboardShortcuts()
-  var ge = document.getElementById('dashboardGreeting')
-  if (ge) ge.textContent = greeting() + ', ' + (currentUser.fullName || currentUser.username || 'User') + ' '
+  document.getElementById('dashboardGreeting').textContent = greeting() + ', ' + (currentUser.fullName || currentUser.username) + ' 👋'
 }
 
 function renderAllPages() {
@@ -3806,19 +4172,29 @@ function renderAllPages() {
 }
 
 function updateSidebarUser() {
-  if (!currentUser) return
-  var name = (currentUser.fullName || currentUser.username || '?')
-  var initial = name.charAt(0).toUpperCase()
-  var a = document.getElementById('sidebarAvatar')
-  var u = document.getElementById('sidebarUsername')
-  var r = document.getElementById('sidebarRoleText')
-  var b = document.getElementById('sidebarPlanBadge')
-  var p = document.getElementById('profileAvatar')
-  if (a) a.textContent = initial
-  if (u) u.textContent = name
-  if (r) r.textContent = currentUser.role || 'member'
-  if (b) b.textContent = (currentUser.plan || 'free').toUpperCase()
-  if (p) p.textContent = initial
+  let initial = (currentUser.fullName || currentUser.username).charAt(0).toUpperCase()
+  document.getElementById('sidebarAvatar').textContent   = initial
+  document.getElementById('sidebarUsername').textContent = currentUser.fullName || currentUser.username
+  document.getElementById('sidebarRoleText').textContent = currentUser.role
+  document.getElementById('sidebarPlanBadge').textContent = (currentUser.plan || 'free').toUpperCase()
+  document.getElementById('profileAvatar').textContent   = initial
+  // Also keep dedicated Profile page in sync
+  let ppAvatar = document.getElementById('profilePageAvatar')
+  if (ppAvatar) ppAvatar.textContent = initial
+  let ppName = document.getElementById('profilePageName')
+  if (ppName) ppName.textContent = currentUser.fullName || currentUser.username
+  let ppEmail = document.getElementById('profilePageEmail')
+  if (ppEmail) ppEmail.textContent = currentUser.email || ''
+  let ppRole = document.getElementById('profilePageRole')
+  if (ppRole) ppRole.textContent = currentUser.role || 'member'
+  let ppPlan = document.getElementById('profilePagePlan')
+  if (ppPlan) ppPlan.textContent = (currentUser.plan || 'free').toUpperCase()
+  let ppTz = document.getElementById('profilePageTimezone')
+  if (ppTz) ppTz.textContent = currentUser.timezone || 'UTC'
+  let ppCreated = document.getElementById('profilePageCreated')
+  if (ppCreated && currentUser.created) ppCreated.textContent = currentUser.created.split('T')[0]
+  let ppBio = document.getElementById('profilePageBio')
+  if (ppBio) ppBio.textContent = currentUser.bio || 'Add a short bio from Settings to introduce yourself to your team.'
 }
 
 /* ===================================================
@@ -3831,22 +4207,18 @@ function startOnboarding() {
 }
 
 function renderOnboardingStep() {
-  var step = ONBOARDING_STEPS[currentOnboardingStep]
-  if (!step) { currentOnboardingStep = 0; step = ONBOARDING_STEPS[0] }
-  var dots = document.getElementById('onboardingDots')
-  if (!dots) return
-  dots.innerHTML = ONBOARDING_STEPS.map(function (_, i) {
-    return '<div class="onboarding-step-dot ' + (i < currentOnboardingStep ? 'done' : i === currentOnboardingStep ? 'active' : '') + '"></div>'
-  }).join('')
-  var iconEl = document.getElementById('onboardingIcon')
-  var titleEl = document.getElementById('onboardingTitle')
-  var descEl = document.getElementById('onboardingDesc')
-  if (iconEl) iconEl.textContent = step.icon
-  if (titleEl) titleEl.textContent = step.title
-  if (descEl) descEl.textContent = step.desc
-  var btn = document.querySelector('#onboardingOverlay button:first-child')
-  if (btn) btn.textContent = currentOnboardingStep < ONBOARDING_STEPS.length - 1 ? 'Next →' : "Let's Go!"
-y}
+  let step = ONBOARDING_STEPS[currentOnboardingStep]
+  let dots = document.getElementById('onboardingDots')
+  dots.innerHTML = ONBOARDING_STEPS.map((_, i) =>
+    `<div class="onboarding-step-dot ${i < currentOnboardingStep ? 'done' : i === currentOnboardingStep ? 'active' : ''}"></div>`
+  ).join('')
+  document.getElementById('onboardingIcon').textContent  = step.icon
+  document.getElementById('onboardingTitle').textContent = step.title
+  document.getElementById('onboardingDesc').textContent  = step.desc
+
+  let btn = document.querySelector('#onboardingOverlay button:first-child')
+  btn.textContent = currentOnboardingStep < ONBOARDING_STEPS.length - 1 ? 'Next →' : '🚀 Let\'s Go!'
+}
 
 function nextOnboardingStep() {
   currentOnboardingStep++
@@ -3880,15 +4252,30 @@ function switchPage(pageId, el) {
     })
   }
 
-  var titles = { dashboard:'Dashboard', projects:'Projects', tasks:'Tasks', timetracking:'Time Tracking', ideas:'Ideas', calendar:'Calendar', team:'Team', analytics:'Analytics', auditlog:'Audit Log', billing:'Billing', settings:'Settings' }
-  var title = titles[pageId] || pageId
-  var titleEl = document.getElementById('topbarTitle')
-  if (titleEl) titleEl.textContent = title
+  let titles = {
+    dashboard:'Dashboard',
+    profile:'Profile',
+    projects:'Projects',
+    tasks:'Tasks',
+    timetracking:'Time Tracking',
+    ideas:'Ideas',
+    calendar:'Calendar',
+    team:'Team',
+    analytics:'Analytics',
+    overview:'Overview',
+    auditlog:'Audit Log',
+    billing:'Billing',
+    settings:'Settings'
+  }
+  let title = titles[pageId] || pageId
+  document.getElementById('topbarTitle').textContent = title
 
   if (pageId === 'analytics')   renderAnalyticsCharts()
   if (pageId === 'timetracking') renderTimeTracking()
   if (pageId === 'billing')      renderBilling()
   if (pageId === 'auditlog')     renderAuditLog()
+  if (pageId === 'goals')        renderGoals()
+  if (pageId === 'overview')     renderOverview()
 }
 
 /* ===================================================
@@ -3923,6 +4310,7 @@ function updateCommandResults() {
   // Navigation commands
   let pages = [
     { icon:'📊', label:'Dashboard', sub:'Go to dashboard', action: () => switchPage('dashboard', null) },
+    { icon:'👤', label:'Profile', sub:'View your profile', action: () => switchPage('profile', null) },
     { icon:'📁', label:'Projects', sub:'View all projects', action: () => switchPage('projects', null) },
     { icon:'✅', label:'Tasks', sub:'Kanban board', action: () => switchPage('tasks', null) },
     { icon:'⏱', label:'Time Tracking', sub:'Log and track time', action: () => switchPage('timetracking', null) },
@@ -3948,10 +4336,11 @@ function updateCommandResults() {
   let filteredPages   = q ? pages.filter(p => p.label.toLowerCase().includes(q) || p.sub.toLowerCase().includes(q)) : pages
   let filteredCreates = q ? creates.filter(c => c.label.toLowerCase().includes(q)) : creates
 
-  // Projects, tasks, ideas search
-  let filteredProjects = q ? projects.filter(function (p) { return p.name.toLowerCase().includes(q) }).slice(0, 5) : []
-  let filteredTasks = q ? tasks.filter(function (t) { return t.title.toLowerCase().includes(q) }).slice(0, 5) : []
-  let filteredIdeas = q ? ideas.filter(function (i) { return (i.title || '').toLowerCase().includes(q) || (i.description || '').toLowerCase().includes(q) }).slice(0, 5) : []
+  // Projects search
+  let filteredProjects = q ? projects.filter(p => p.name.toLowerCase().includes(q)).slice(0, 3) : []
+
+  // Tasks search
+  let filteredTasks = q ? tasks.filter(t => t.title.toLowerCase().includes(q)).slice(0, 3) : []
 
   if (filteredPages.length) {
     html += `<div class="command-section-label">Navigation</div>`
@@ -3980,17 +4369,8 @@ function updateCommandResults() {
 
   if (filteredTasks.length) {
     html += `<div class="command-section-label">Tasks</div>`
-    filteredTasks.forEach(function (t) {
-      var item = { icon:'✅', label: t.title, sub: t.status, action: function () { switchPage('tasks', null) } }
-      commandItems.push(item)
-      html += commandItemHtml(item)
-    })
-  }
-
-  if (filteredIdeas.length) {
-    html += `<div class="command-section-label">Ideas</div>`
-    filteredIdeas.forEach(function (i) {
-      var item = { icon:'💡', label: i.title || 'Idea', sub: (i.category || '') + ' · ' + (i.votes || 0) + ' votes', action: function () { switchPage('ideas', null) } }
+    filteredTasks.forEach(t => {
+      let item = { icon:'✅', label: t.title, sub: t.status, action: () => switchPage('tasks', null) }
       commandItems.push(item)
       html += commandItemHtml(item)
     })
@@ -4048,7 +4428,9 @@ function highlightCommandItem(items) {
    KEYBOARD SHORTCUTS
 =================================================== */
 function setupKeyboardShortcuts() {
+  if (keyboardShortcutsBound) return
   document.addEventListener('keydown', handleKeyDown)
+  keyboardShortcutsBound = true
 }
 
 function handleKeyDown(e) {
@@ -4101,6 +4483,7 @@ function closeShortcuts(e) {
 function updateStats() {
   let doneTasks = tasks.filter(t => t.status === 'done').length
   let rate      = tasks.length > 0 ? Math.round((doneTasks / tasks.length) * 100) : 0
+  // Stats for entire workspace (not per-user)
   let totalSecs = timeEntries.reduce((s, e) => s + (e.duration || 0), 0)
   let weekSecs  = timeEntries.filter(e => {
     let d = new Date(e.date)
@@ -4119,6 +4502,49 @@ function updateStats() {
   document.getElementById('quickEvents').textContent    = events.length
   document.getElementById('quickCompleted').textContent = doneTasks
   document.getElementById('quickHours').textContent     = formatHours(totalSecs)
+
+  // Today for you (dashboard)
+  const myTodayEl = document.getElementById('dashboardMyToday')
+  if (myTodayEl && currentUser) {
+    const now = new Date()
+    const todayStr = now.toISOString().split('T')[0]
+
+    const myTasks = tasks.filter(t => t.assignee === currentUser.id)
+    const upcomingMyTasks = myTasks
+      .filter(t => t.dueDate)
+      .map(t => ({ t, d: new Date(t.dueDate.includes('T') ? t.dueDate : (t.dueDate + 'T09:00')) }))
+      .filter(x => !isNaN(x.d.getTime()))
+      .sort((a,b) => a.d - b.d)
+      .slice(0, 3)
+
+    const myGoals = goals.filter(g => g.ownerId === currentUser.id)
+    const todayGoals = myGoals.filter(g => (g.dueDate || '').startsWith(todayStr))
+
+    let html = ''
+    if (!upcomingMyTasks.length && !todayGoals.length) {
+      html = '<p style="font-size:13px;color:#6B7280;">Nothing urgent assigned to you today. Great time for deep work.</p>'
+    } else {
+      if (upcomingMyTasks.length) {
+        html += '<div class="section-label">Your next tasks</div>'
+        html += '<ul style="list-style:none;padding:0;margin:6px 0 10px 0;display:flex;flex-direction:column;gap:6px;">'
+        html += upcomingMyTasks.map(x => {
+          const label = x.d.toLocaleString([], { month:'short', day:'numeric', hour:'2-digit', minute:'2-digit' })
+          return `<li style="display:flex;justify-content:space-between;gap:8px;">
+            <span style="min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(x.t.title)}</span>
+            <span style="font-size:11px;color:#9CA3AF;">${label}</span>
+          </li>`
+        }).join('')
+        html += '</ul>'
+      }
+      if (todayGoals.length) {
+        html += '<div class="section-label" style="margin-top:6px;">Goals due today</div>'
+        html += '<ul style="list-style:none;padding:0;margin:6px 0 0 0;display:flex;flex-direction:column;gap:4px;">'
+        html += todayGoals.map(g => `<li style="font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">🎯 ${escapeHtml(g.title)}</li>`).join('')
+        html += '</ul>'
+      }
+    }
+    myTodayEl.innerHTML = html
+  }
 }
 
 /* ===================================================
@@ -4138,16 +4564,16 @@ function closeCreateProjectModal() {
 }
 
 function saveProject() {
-  var name     = document.getElementById('modalProjectName').value.trim()
-  if (!name) return showToast('Project name is required', 'error')
-  showToast('Saving...', 'info')
-  var desc     = document.getElementById('modalProjectDesc').value.trim()
+  let name     = document.getElementById('modalProjectName').value.trim()
+  let desc     = document.getElementById('modalProjectDesc').value.trim()
   let deadline = document.getElementById('modalProjectDeadline').value
   let start    = document.getElementById('modalProjectStart').value
   let priority = document.getElementById('modalProjectPriority').value
   let status   = document.getElementById('modalProjectStatus').value
   let tagsRaw  = document.getElementById('modalProjectTags').value.trim()
   let tags     = tagsRaw ? tagsRaw.split(',').map(t => t.trim()).filter(Boolean) : []
+
+  if (!name) return showToast('Please enter a project name', 'error')
 
   let project = {
     id: genId(), name, description: desc, deadline, startDate: start,
@@ -4260,17 +4686,19 @@ function editProject(id) {
   document.getElementById('editProjectDesc').value      = p.description || ''
   document.getElementById('editProjectPriority').value  = p.priority
   document.getElementById('editProjectStatus').value    = p.status
-  document.getElementById('editProjectDeadline').value  = p.deadline || ''
+  // Keep backward compatibility with old date-only deadlines
+  let dl = p.deadline || ''
+  if (dl && typeof dl === 'string' && !dl.includes('T')) dl = dl + 'T09:00'
+  document.getElementById('editProjectDeadline').value  = dl
   document.getElementById('editProjectModal').classList.add('active')
 }
 
 function saveEditProject() {
-  var id   = document.getElementById('editProjectId').value
-  var proj = projects.find(function (p) { return p.id === id })
+  let id   = document.getElementById('editProjectId').value
+  let proj = projects.find(p => p.id === id)
   if (!proj) return
-  var name = document.getElementById('editProjectName').value.trim()
+  let name = document.getElementById('editProjectName').value.trim()
   if (!name) return showToast('Project name is required', 'error')
-  showToast('Saving...', 'info')
 
   proj.name        = name
   proj.description = document.getElementById('editProjectDesc').value.trim()
@@ -4289,20 +4717,34 @@ function saveEditProject() {
 }
 
 function deleteProject(id) {
-  var p = projects.find(function (x) { return x.id === id })
-  showConfirmModal('Delete project', 'Delete project "' + (p ? p.name : '') + '"? This will also delete all associated tasks.', function () {
-    doDeleteProject(id, p)
+  let p = projects.find(x => x.id === id)
+  if (!p) return
+  openConfirmModal({
+    type: 'delete_project',
+    id,
+    title: 'Delete project',
+    message: `This will delete project "${p.name}" and all its tasks and time entries.`,
+    level: 'danger'
   })
 }
-function doDeleteProject(id, p) {
-  projects = projects.filter(function (x) { return x.id !== id })
-  tasks    = tasks.filter(function (t) { return t.projectId !== id })
+
+function reallyDeleteProject(id) {
+  let p = projects.find(x => x.id === id)
+  // Collect related tasks and time entries so we can clean them up too
+  let projectTaskIds = tasks.filter(t => t.projectId === id).map(t => t.id)
+
+  projects   = projects.filter(x => x.id !== id)
+  tasks      = tasks.filter(t => t.projectId !== id)
+  timeEntries = timeEntries.filter(e => e.projectId !== id && !projectTaskIds.includes(e.taskId))
+
   save('projects', projects)
   save('tasks', tasks)
+  save('time', timeEntries)
   renderProjects()
   renderTasks()
+  renderTimeTracking()
   renderDashboardCharts()
-  addAuditLog('delete', 'Deleted project "' + (p ? p.name : '') + '"', 'delete')
+  addAuditLog('delete', `Deleted project "${p?.name}"`, 'delete')
   showToast('Project deleted', 'success')
   updateStats()
 }
@@ -4351,15 +4793,15 @@ function closeCreateTaskModal() {
 }
 
 function saveTask() {
-  var title    = document.getElementById('modalTaskTitle').value.trim()
+  let title    = document.getElementById('modalTaskTitle').value.trim()
+  let desc     = document.getElementById('modalTaskDesc').value.trim()
+  let projId   = document.getElementById('modalTaskProject').value
+  let priority = document.getElementById('modalTaskPriority').value
+  let status   = document.getElementById('modalTaskStatus').value
+  let dueDate  = document.getElementById('modalTaskDue').value
+  let estimate = parseFloat(document.getElementById('modalTaskEstimate').value) || 0
+
   if (!title) return showToast('Please enter a task title', 'error')
-  showToast('Saving...', 'info')
-  var desc     = document.getElementById('modalTaskDesc').value.trim()
-  var projId   = document.getElementById('modalTaskProject').value
-  var priority = document.getElementById('modalTaskPriority').value
-  var status   = document.getElementById('modalTaskStatus').value
-  var dueDate  = document.getElementById('modalTaskDue').value
-  var estimate = parseFloat(document.getElementById('modalTaskEstimate').value) || 0
 
   let task = {
     id: genId(), title, description: desc, projectId: projId,
@@ -4383,9 +4825,22 @@ function saveTask() {
 function buildTaskCard(t) {
   let cls = t.priority || 'medium'
   let project = t.projectId ? projects.find(p => p.id === t.projectId) : null
-  let dueHtml = t.dueDate ? `<span style="font-size:10px;color:${new Date(t.dueDate) < new Date() ? '#ef4444' : '#6B7280'};">📅 ${t.dueDate}</span>` : ''
+  let dueLabel = ''
+  if (t.dueDate) {
+    const d = new Date(t.dueDate.includes('T') ? t.dueDate : (t.dueDate + 'T09:00'))
+    dueLabel = isNaN(d.getTime())
+      ? t.dueDate
+      : d.toLocaleString([], { month:'short', day:'numeric', hour:'2-digit', minute:'2-digit' })
+  }
+  let dueHtml = t.dueDate ? `<span style="font-size:10px;color:${new Date(t.dueDate.includes('T') ? t.dueDate : (t.dueDate + 'T09:00')) < new Date() ? '#ef4444' : '#6B7280'};">📅 ${escapeHtml(dueLabel)}</span>` : ''
   let tracked = timeEntries.filter(e => e.taskId === t.id).reduce((s, e) => s + (e.duration || 0), 0)
   let timeHtml = tracked > 0 ? `<span class="time-badge" style="font-size:10px;color:#4f46e5;">⏱ ${formatHours(tracked)}</span>` : ''
+
+  let assigneeName = currentUser.username
+  if (t.assignee && t.assignee !== currentUser.id) {
+    let member = team.find(m => m.id === t.assignee)
+    if (member) assigneeName = member.email || 'Member'
+  }
 
   return `
     <div class="task-card" data-task-id="${escapeHtml(t.id)}" draggable="true"
@@ -4399,7 +4854,7 @@ function buildTaskCard(t) {
         <div style="display:flex;align-items:center;gap:5px;">
           ${timeHtml}
           ${dueHtml}
-          <span class="task-assignee" title="${escapeHtml(currentUser.username)}">${currentUser.username.charAt(0).toUpperCase()}</span>
+          <span class="task-assignee" title="${escapeHtml(assigneeName)}">${escapeHtml(assigneeName.charAt(0).toUpperCase())}</span>
         </div>
       </div>
       <div style="margin-top:8px;display:flex;flex-direction:column;gap:6px;">
@@ -4427,26 +4882,43 @@ function confirmDeleteTask(id) {
   let task = tasks.find(t => t.id === id)
   if (!task) return
 
+  // Remove task and any linked time entries
   tasks = tasks.filter(t => t.id !== id)
+  timeEntries = timeEntries.filter(e => e.taskId !== id)
   save('tasks', tasks)
+  save('time', timeEntries)
   renderTasks()
+  renderTimeTracking()
   renderDashboardCharts()
   updateStats()
   addAuditLog('delete', `Deleted task "${task.title}"`, 'delete')
   showToast('Task deleted', 'success')
 }
 function deleteTask(id) {
-  var task = tasks.find(function (t) { return t.id === id })
+  let task = tasks.find(t => t.id === id)
   if (!task) return
-  showConfirmModal('Delete task', 'Delete task "' + (task.title || '') + '"?', function () {
-    tasks = tasks.filter(function (t) { return t.id !== id })
-    save('tasks', tasks)
-    renderTasks()
-    renderDashboardCharts()
-    updateStats()
-    addAuditLog('delete', 'Deleted task "' + (task.title || '') + '"', 'delete')
-    showToast('Task deleted', 'success')
+  openConfirmModal({
+    type: 'delete_task',
+    id,
+    title: 'Delete task',
+    message: `This will delete task "${task.title}" and its logged time.`,
+    level: 'danger'
   })
+}
+
+function reallyDeleteTask(id) {
+  let task = tasks.find(t => t.id === id)
+  if (!task) return
+  tasks = tasks.filter(t => t.id !== id)
+  timeEntries = timeEntries.filter(e => e.taskId !== id)
+  save('tasks', tasks)
+  save('time', timeEntries)
+  renderTasks()
+  renderTimeTracking()
+  renderDashboardCharts()
+  updateStats()
+  addAuditLog('delete', `Deleted task "${task.title}"`, 'delete')
+  showToast('Task deleted', 'success')
 }
 function renderTasks(taskList) {
   let source = taskList || tasks
@@ -4476,11 +4948,13 @@ function filterTasks() {
   let search   = document.getElementById('taskSearch').value.toLowerCase()
   let status   = document.getElementById('taskFilter').value
   let priority = document.getElementById('taskPriorityFilter').value
+  let myOnly   = document.getElementById('taskMyOnly')?.checked
   let filtered = tasks.filter(t => {
     let ms = t.title.toLowerCase().includes(search) || (t.description||'').toLowerCase().includes(search)
     let mst = !status || t.status === status
     let mp  = !priority || t.priority === priority
-    return ms && mst && mp
+    let mo  = !myOnly || t.assignee === currentUser.id
+    return ms && mst && mp && mo
   })
   renderTasks(filtered)
 }
@@ -4488,9 +4962,137 @@ function filterTasks() {
 function openTaskDetail(id) {
   let task = tasks.find(t => t.id === id)
   if (!task) return
+  currentTaskDetailId = id
   let proj = task.projectId ? projects.find(p => p.id === task.projectId) : null
-  let tracked = timeEntries.filter(e => e.taskId === id).reduce((s, e) => s + (e.duration||0), 0)
-  showToast(`📋 "${task.title}" | ${task.status} | ${tracked > 0 ? formatHours(tracked) + ' logged' : 'No time logged'} ${proj ? '| '+proj.name : ''}`, 'info')
+
+  // Header
+  document.getElementById('taskDetailTitle').textContent = task.title
+  document.getElementById('taskDetailProjectLabel').textContent = proj ? `📁 ${proj.name}` : 'No project'
+
+  // Fields
+  document.getElementById('taskDetailTitleInput').value = task.title
+  document.getElementById('taskDetailDescInput').value  = task.description || ''
+  document.getElementById('taskDetailStatus').value     = task.status || 'todo'
+  document.getElementById('taskDetailPriority').value   = task.priority || 'medium'
+
+  // Assignee select
+  let assigneeSel = document.getElementById('taskDetailAssignee')
+  if (assigneeSel) {
+    assigneeSel.innerHTML = ''
+    let meOpt = document.createElement('option')
+    meOpt.value = currentUser.id
+    meOpt.textContent = currentUser.fullName || currentUser.username || 'Me'
+    assigneeSel.appendChild(meOpt)
+    team.filter(m => m.status === 'accepted').forEach(m => {
+      let opt = document.createElement('option')
+      opt.value = m.id
+      opt.textContent = m.email || m.id
+      assigneeSel.appendChild(opt)
+    })
+    assigneeSel.value = task.assignee || currentUser.id
+  }
+
+  // Due
+  let due = task.dueDate || ''
+  if (due && typeof due === 'string' && !due.includes('T')) due = due + 'T09:00'
+  document.getElementById('taskDetailDue').value = due
+
+  // Time summary for this task
+  let trackedSecs = timeEntries.filter(e => e.taskId === id).reduce((s, e) => s + (e.duration||0), 0)
+  document.getElementById('taskDetailTimeSummary').textContent =
+    trackedSecs > 0 ? `${formatHours(trackedSecs)} logged on this task` : 'No time logged yet'
+
+  // Updates/comments
+  let updatesEl = document.getElementById('taskDetailUpdates')
+  let inputEl   = document.getElementById('taskDetailUpdateInput')
+  if (inputEl) inputEl.value = ''
+  if (updatesEl) {
+    const updates = Array.isArray(task.updates)
+      ? task.updates.slice().sort((a,b) => new Date(b.createdAt||b.created) - new Date(a.createdAt||a.created))
+      : []
+    if (!updates.length) {
+      updatesEl.innerHTML = '<span style="font-size:12px;color:#6B7280;">No updates yet. Add one below to capture progress.</span>'
+    } else {
+      updatesEl.innerHTML = `
+        <ul style="list-style:none;padding:0;margin:0;display:flex;flex-direction:column;gap:4px;">
+          ${updates.slice(0,4).map(u => {
+            const d = u.createdAt || u.created
+            const when = d ? new Date(d).toLocaleDateString(undefined,{ month:'short', day:'numeric' }) : ''
+            const who  = u.authorName || ''
+            return `<li style="display:flex;justify-content:space-between;gap:6px;align-items:flex-start;">
+              <div style="min-width:0;">
+                <span style="color:#6B7280;font-size:11px;display:block;margin-bottom:1px;">${when}${who ? ' • '+escapeHtml(who) : ''}</span>
+                <span>${escapeHtml(u.text || '')}</span>
+              </div>
+              <button class="btn-xs btn-danger" style="font-size:10px;padding:2px 6px;" onclick="deleteTaskUpdate('${task.id}','${u.createdAt || u.created || ''}')">✕</button>
+            </li>`
+          }).join('')}
+        </ul>
+      `
+    }
+  }
+
+  let panel = document.getElementById('taskDetailPanel')
+  panel.classList.add('active')
+  panel.classList.remove('hidden')
+}
+
+function closeTaskDetail() {
+  currentTaskDetailId = null
+  let panel = document.getElementById('taskDetailPanel')
+  panel.classList.remove('active')
+  // keep panel in DOM but slide it out
+}
+
+function saveTaskDetail() {
+  if (!currentTaskDetailId) return
+  let task = tasks.find(t => t.id === currentTaskDetailId)
+  if (!task) return
+
+  let title = document.getElementById('taskDetailTitleInput').value.trim()
+  if (!title) return showToast('Task title is required', 'error')
+
+  task.title       = title
+  task.description = document.getElementById('taskDetailDescInput').value.trim()
+  task.status      = document.getElementById('taskDetailStatus').value
+  task.priority    = document.getElementById('taskDetailPriority').value
+  task.assignee    = document.getElementById('taskDetailAssignee').value
+  task.dueDate     = document.getElementById('taskDetailDue').value || null
+  task.updated     = new Date().toISOString()
+
+  // Optional new update/comment
+  let updateText = document.getElementById('taskDetailUpdateInput').value.trim()
+  if (updateText) {
+    if (!Array.isArray(task.updates)) task.updates = []
+    task.updates.unshift({
+      text: updateText,
+      createdAt: new Date().toISOString(),
+      authorId: currentUser.id,
+      authorName: currentUser.fullName || currentUser.username
+    })
+  }
+
+  save('tasks', tasks)
+  renderTasks()
+  renderDashboardCharts()
+  updateStats()
+  addAuditLog('update', `Updated task "${task.title}" from side panel`, 'update')
+  showToast('Task updated', 'success')
+  closeTaskDetail()
+}
+
+function deleteTaskUpdate(taskId, createdAt) {
+  const task = tasks.find(t => t.id === taskId)
+  if (!task || !Array.isArray(task.updates)) return
+  if (!createdAt) return
+  task.updates = task.updates.filter(u => (u.createdAt || u.created) !== createdAt)
+  save('tasks', tasks)
+  // If panel is open on this task, re-open to refresh updates list
+  if (currentTaskDetailId === taskId) {
+    openTaskDetail(taskId)
+  }
+  addAuditLog('update', `Deleted update on task \"${task.title}\"`, 'update')
+  showToast('Update deleted', 'success')
 }
 
 /* ===================================================
@@ -4540,6 +5142,51 @@ function drop(e) {
   addActivity(`Moved "${task.title}" → ${newStatus.replace('-',' ')}`)
   addAuditLog('update', `Moved task "${task.title}" from ${oldStatus} to ${newStatus}`, 'update')
   showToast(`Moved to ${newStatus.replace('-',' ')}`, 'info')
+}
+
+// Basic touch support for moving tasks on mobile
+let touchDragging = false
+
+function handleTaskTouchStart(e) {
+  let card = e.target.closest('.task-card')
+  if (!card) return
+  if (!e.touches || !e.touches[0]) return
+  draggedTaskId = card.dataset.taskId
+  touchDragging = true
+  card.classList.add('dragging')
+}
+
+function handleTaskTouchEnd(e) {
+  if (!touchDragging) return
+  touchDragging = false
+  let card = document.querySelector('.task-card.dragging')
+  if (card) card.classList.remove('dragging')
+  let touch = e.changedTouches && e.changedTouches[0]
+  if (!touch) { draggedTaskId = null; return }
+  let target = document.elementFromPoint(touch.clientX, touch.clientY)
+  if (!target) { draggedTaskId = null; return }
+  let list = target.closest('.tasks-list')
+  if (!list) { draggedTaskId = null; return }
+
+  let id = draggedTaskId
+  if (!id) return
+  let task = tasks.find(t => t.id === id)
+  if (!task) return
+  let statusMap = { todoTasks:'todo', progressTasks:'in-progress', reviewTasks:'review', doneTasks:'done' }
+  let newStatus = statusMap[list.id]
+  if (!newStatus || task.status === newStatus) { draggedTaskId = null; return }
+
+  let oldStatus = task.status
+  task.status = newStatus
+  task.updated = new Date().toISOString()
+  save('tasks', tasks)
+  renderTasks()
+  updateStats()
+  renderDashboardCharts()
+  addActivity(`Moved "${task.title}" → ${newStatus.replace('-',' ')}`)
+  addAuditLog('update', `Moved task "${task.title}" from ${oldStatus} to ${newStatus}`, 'update')
+  showToast(`Moved to ${newStatus.replace('-',' ')}`, 'info')
+  draggedTaskId = null
 }
 
 /* ===================================================
@@ -4597,7 +5244,9 @@ function updateTimerDisplay() {
 function saveTimeEntry(desc, projId, taskId, durationSecs, date) {
   let entry = {
     id: genId(), description: desc, projectId: projId, taskId,
-    duration: durationSecs, date, user: currentUser.id,
+    duration: durationSecs, date,
+    userId: currentUser.id,
+    userName: currentUser.fullName || currentUser.username,
     created: new Date().toISOString()
   }
   timeEntries.unshift(entry)
@@ -4630,14 +5279,18 @@ function saveManualTime() {
 }
 
 function renderTimeTracking() {
-  let totalSecs = timeEntries.reduce((s, e) => s + (e.duration || 0), 0)
+  const myOnly = document.getElementById('timeMyOnly')?.checked
+
+  const entries = timeEntries.filter(e => !myOnly || e.userId === currentUser.id)
+
+  let totalSecs = entries.reduce((s, e) => s + (e.duration || 0), 0)
   let today = new Date().toISOString().split('T')[0]
-  let todaySecs = timeEntries.filter(e => e.date === today).reduce((s, e) => s + (e.duration||0), 0)
-  let weekSecs  = timeEntries.filter(e => {
+  let todaySecs = entries.filter(e => e.date === today).reduce((s, e) => s + (e.duration||0), 0)
+  let weekSecs  = entries.filter(e => {
     let d = new Date(e.date)
     return d >= new Date(Date.now() - 7*86400000)
   }).reduce((s, e) => s + (e.duration||0), 0)
-  let monthSecs = timeEntries.filter(e => {
+  let monthSecs = entries.filter(e => {
     let d = new Date(e.date)
     let now = new Date()
     return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear()
@@ -4651,21 +5304,24 @@ function renderTimeTracking() {
   `
 
   let list = document.getElementById('timeEntriesList')
-  if (!timeEntries.length) {
+  if (!entries.length) {
     list.innerHTML = `<div class="empty-state"><div class="empty-state-icon">⏱</div><h3>No time entries yet</h3><p>Start the timer above or log time manually to see entries here</p></div>`
     return
   }
 
-  list.innerHTML = timeEntries.slice(0, 30).map(e => {
+  list.innerHTML = entries.slice(0, 30).map(e => {
     let proj = e.projectId ? projects.find(p => p.id === e.projectId) : null
+    const who = e.userName || (e.userId === currentUser.id ? (currentUser.fullName || currentUser.username || 'Me') : '')
+    const dateLabel = e.date || (e.created ? e.created.split('T')[0] : '')
     return `
       <div class="time-entry">
         <div style="font-size:20px;">⏱</div>
         <div class="time-entry-desc">
           <div>${escapeHtml(e.description)}</div>
           ${proj ? `<div class="time-entry-project">📁 ${escapeHtml(proj.name)}</div>` : ''}
+          ${who ? `<div class="time-entry-user">By ${escapeHtml(who)}</div>` : ''}
         </div>
-        <div class="time-entry-date">${e.date || ''}</div>
+        <div class="time-entry-date">${escapeHtml(dateLabel)}</div>
         <div class="time-entry-duration">${formatHours(e.duration)}</div>
         <button class="btn-sm btn-danger btn-icon" onclick="deleteTimeEntry('${e.id}')" style="padding:5px;width:28px;height:28px;">✕</button>
       </div>
@@ -4674,10 +5330,12 @@ function renderTimeTracking() {
 }
 
 function deleteTimeEntry(id) {
+  let entry = timeEntries.find(e => e.id === id)
   timeEntries = timeEntries.filter(e => e.id !== id)
   save('time', timeEntries)
   renderTimeTracking()
   updateStats()
+  addAuditLog('delete', `Deleted time entry "${entry?.description || id}"`, 'delete')
   showToast('Entry deleted', 'success')
 }
 
@@ -4716,6 +5374,208 @@ function saveIdea() {
   updateStats()
 }
 
+/* ===================================================
+   OVERVIEW
+=================================================== */
+function renderOverview() {
+  renderOverviewSummary()
+  renderOverviewProjects()
+  renderOverviewGoals()
+  renderOverviewTimeline()
+}
+
+function renderOverviewSummary() {
+  const el = document.getElementById('overviewSummary')
+  if (!el) return
+
+  const activeProjects   = projects.filter(p => p.status === 'active').length
+  const completedProjects= projects.filter(p => p.status === 'completed').length
+
+  const onTrackGoals = goals.filter(g => g.status === 'on_track').length
+  const atRiskGoals  = goals.filter(g => g.status === 'at_risk').length
+  const offTrackGoals= goals.filter(g => g.status === 'off_track').length
+
+  const now = new Date()
+  const in7d = new Date(now.getTime() + 7*86400000)
+  const upcoming7 = getAllCalendarEvents()
+    .filter(e => {
+      const d = new Date(e.start)
+      return d >= now && d <= in7d
+    }).length
+
+  const myTasksThisWeek = tasks.filter(t => {
+    if (t.assignee !== currentUser.id || !t.dueDate) return false
+    const d = new Date(t.dueDate.includes('T') ? t.dueDate : t.dueDate + 'T09:00')
+    return d >= now && d <= in7d
+  }).length
+
+  el.innerHTML = `
+    <div class="stat-card">
+      <h3>Projects</h3>
+      <div class="value">${activeProjects}</div>
+      <div class="trend"><span class="trend-up">↑</span> ${completedProjects} completed</div>
+    </div>
+    <div class="stat-card">
+      <h3>Goals</h3>
+      <div class="value">${onTrackGoals}</div>
+      <div class="trend">${atRiskGoals} at risk • ${offTrackGoals} off track</div>
+    </div>
+    <div class="stat-card">
+      <h3>Next 7 days</h3>
+      <div class="value">${upcoming7}</div>
+      <div class="trend">Upcoming deadlines & events</div>
+    </div>
+    <div class="stat-card">
+      <h3>Your week</h3>
+      <div class="value">${myTasksThisWeek}</div>
+      <div class="trend">Tasks due for you</div>
+    </div>
+  `
+}
+
+function renderOverviewProjects() {
+  const el = document.getElementById('overviewProjects')
+  if (!el) return
+  if (!projects.length) {
+    el.innerHTML = '<p style="color:#6B7280;font-size:13px;">No projects yet. Create a project to see it here.</p>'
+    return
+  }
+  const filter = document.getElementById('overviewProjectFilter')?.value || ''
+  const filtered = projects.slice().filter(p => {
+    if (filter === 'active' && p.status !== 'active') return false
+    if (filter === 'client') {
+      const tags = (p.tags || []).map(t => (t || '').toLowerCase())
+      const hasClient = tags.some(t => t === 'client' || t.startsWith('client:'))
+      if (!hasClient) return false
+    }
+    return true
+  })
+  if (!filtered.length) {
+    el.innerHTML = '<p style="color:#6B7280;font-size:13px;">No projects match this filter.</p>'
+    return
+  }
+  const cards = filtered.slice().sort((a,b) => (a.status === 'active' ? -1 : 1)).map(p => {
+    const taskCount = tasks.filter(t => t.projectId === p.id).length
+    const doneCount = tasks.filter(t => t.projectId === p.id && t.status === 'done').length
+    const progress  = taskCount > 0 ? Math.round((doneCount / taskCount) * 100) : 0
+    const owner     = p.owner && team.find(m => m.id === p.owner)?.email || (currentUser && currentUser.id === p.owner ? (currentUser.fullName || currentUser.username) : '')
+    let daysLeft  = null
+    if (p.deadline) {
+      const d = new Date(p.deadline)
+      if (!isNaN(d.getTime())) {
+        daysLeft = Math.ceil((d - new Date()) / 86400000)
+      }
+    }
+    let deadlineHtml = ''
+    if (daysLeft !== null) {
+      deadlineHtml = daysLeft < 0
+        ? `<span style="color:#ef4444;">Overdue by ${Math.abs(daysLeft)}d</span>`
+        : daysLeft === 0 ? `<span style="color:#f59e0b;">Due today</span>`
+        : `<span>${daysLeft}d left</span>`
+    }
+    // Simple health signal
+    let healthLabel = 'On track'
+    let healthColor = '#22c55e'
+    if (daysLeft !== null) {
+      if (daysLeft < 0 && progress < 80) { healthLabel = 'Off track'; healthColor = '#ef4444' }
+      else if (daysLeft <= 2 && progress < 50) { healthLabel = 'At risk'; healthColor = '#f97316' }
+    }
+    return `
+      <div style="padding:10px 0;border-bottom:1px solid #1F2937;cursor:pointer;" onclick="switchPage('projects', null)">
+        <div style="display:flex;justify-content:space-between;gap:8px;align-items:center;">
+          <div style="min-width:0;">
+            <div style="font-size:14px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(p.name)}</div>
+            <div style="font-size:11px;color:#6B7280;margin-top:2px;">
+              ${owner ? `Owner: ${escapeHtml(owner)} • ` : ''}${escapeHtml(p.status)}
+            </div>
+          </div>
+          <div style="font-size:11px;color:#9CA3AF;text-align:right;display:flex;flex-direction:column;align-items:flex-end;gap:3px;">
+            <span style="padding:2px 8px;border-radius:999px;background:${healthColor};color:white;font-weight:600;">${healthLabel}</span>
+            ${deadlineHtml || ''}
+          </div>
+        </div>
+        <div style="font-size:11px;color:#6B7280;margin-top:4px;">${doneCount}/${taskCount} tasks • ${progress}%</div>
+        <div class="progress-bar" style="margin-top:4px;"><div class="progress-fill" style="width:${progress}%;"></div></div>
+      </div>
+    `
+  }).join('')
+  el.innerHTML = cards
+}
+
+function renderOverviewGoals() {
+  const el = document.getElementById('overviewGoals')
+  if (!el) return
+  if (!goals.length) {
+    el.innerHTML = '<p style="color:#6B7280;font-size:13px;">No goals defined yet.</p>'
+    return
+  }
+  const cards = goals.slice().sort((a,b) => (a.status === 'completed' ? 1 : -1)).map(g => {
+    const owner = g.ownerId === currentUser.id
+      ? (currentUser.fullName || currentUser.username || 'Me')
+      : (team.find(m => m.id === g.ownerId)?.email || 'Unassigned')
+    const project = g.projectId ? projects.find(p => p.id === g.projectId) : null
+    const dueLabel = g.dueDate
+      ? new Date(g.dueDate.includes('T') ? g.dueDate : g.dueDate + 'T09:00').toLocaleDateString(undefined,{ month:'short', day:'numeric', year:'numeric' })
+      : 'No target date'
+    const status = g.status || 'on_track'
+    let healthColor = '#22c55e'
+    if (status === 'at_risk') healthColor = '#f97316'
+    else if (status === 'off_track') healthColor = '#ef4444'
+    return `
+      <div style="padding:10px 0;border-bottom:1px solid #1F2937;cursor:pointer;" onclick="switchPage('goals', null)">
+        <div style="display:flex;justify-content:space-between;gap:8px;align-items:flex-start;">
+          <div style="min-width:0;">
+            <div style="font-size:14px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(g.title)}</div>
+            <div style="font-size:11px;color:#6B7280;margin-top:2px;">Owner: ${escapeHtml(owner)}</div>
+            ${project ? `<div style="font-size:11px;color:#6B7280;">Project: ${escapeHtml(project.name)}</div>` : ''}
+          </div>
+          <div style="text-align:right;font-size:11px;color:#9CA3AF;">
+            <span style="display:inline-block;padding:2px 8px;border-radius:999px;background:${healthColor};color:white;font-weight:600;margin-bottom:3px;">
+              ${escapeHtml(status)}
+            </span>
+            <div>${escapeHtml(dueLabel)}</div>
+          </div>
+        </div>
+        ${g.description ? `<div style="font-size:12px;color:#9CA3AF;margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(g.description)}</div>` : ''}
+      </div>
+    `
+  }).join('')
+  el.innerHTML = cards
+}
+
+function renderOverviewTimeline() {
+  const el = document.getElementById('overviewTimeline')
+  if (!el) return
+  const eventsAll = getAllCalendarEvents()
+  const upcoming = eventsAll
+    .filter(e => new Date(e.start) >= new Date())
+    .sort((a,b) => new Date(a.start) - new Date(b.start))
+    .slice(0, 10)
+  if (!upcoming.length) {
+    el.innerHTML = '<p style="color:#6B7280;font-size:13px;">No upcoming deadlines or events.</p>'
+    return
+  }
+  el.innerHTML = upcoming.map(e => {
+    const d = new Date(e.start)
+    const dateLabel = d.toLocaleDateString(undefined,{ month:'short', day:'numeric' })
+    let kind = 'Event'
+    if (e.source === 'project_deadline') kind = 'Project'
+    else if (e.source === 'goal_deadline') kind = 'Goal'
+    else if (e.source === 'google') kind = 'Google'
+    return `
+      <div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid #1F2937;">
+        <div style="background:#111827;border-radius:8px;padding:6px 10px;font-size:12px;font-weight:600;color:#E5E7EB;min-width:54px;text-align:center;">
+          ${dateLabel}
+        </div>
+        <div style="min-width:0;">
+          <div style="font-size:13px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(e.title || '')}</div>
+          <div style="font-size:11px;color:#6B7280;">${kind}</div>
+        </div>
+      </div>
+    `
+  }).join('')
+}
+
 function buildIdeaCard(idea) {
   let impactStars = '⭐'.repeat(idea.impact || 1)
   let hasVoted    = (idea.voters || []).includes(currentUser.id)
@@ -4733,7 +5593,7 @@ function buildIdeaCard(idea) {
         <span style="font-size:11px;padding:2px 8px;background:#1F2937;border-radius:12px;border:1px solid #374151;">${escapeHtml(idea.category)}</span>
       </div>
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
-        <span class="idea-votes" style="font-size:18px;font-weight:700;">${(idea.votes != null ? idea.votes : (idea.voters && idea.voters.length) ? idea.voters.length : 0)} 👍</span>
+        <span class="idea-votes" style="font-size:18px;font-weight:700;">${idea.votes} 👍</span>
         <span style="font-size:11px;color:#4B5563;">${timeAgo(idea.created)}</span>
       </div>
       <div class="idea-actions">
@@ -4747,7 +5607,7 @@ function buildIdeaCard(idea) {
 }
 
 function renderIdeas() {
-  var sorted = ideas.slice().sort(function (a, b) { return (b.votes != null ? b.votes : (b.voters && b.voters.length) || 0) - (a.votes != null ? a.votes : (a.voters && a.voters.length) || 0) })
+  let sorted = [...ideas].sort((a, b) => b.votes - a.votes)
   let html = sorted.map(buildIdeaCard).join('')
   document.getElementById('ideasList').innerHTML = html ||
     `<div class="empty-state"><div class="empty-state-icon">💡</div><h3>No ideas yet</h3><p>Be the first to submit an idea!</p><button class="btn-primary btn-sm" onclick="openCreateIdeaModal()">+ New Idea</button></div>`
@@ -4769,7 +5629,7 @@ function filterIdeas() {
     let mc = !category || i.category === category
     return ms && mc
   })
-  var sorted = filtered.slice().sort(function (a, b) { return (b.votes != null ? b.votes : (b.voters && b.voters.length) || 0) - (a.votes != null ? a.votes : (a.voters && a.voters.length) || 0) })
+  let sorted = [...filtered].sort((a, b) => b.votes - a.votes)
   let html = sorted.map(buildIdeaCard).join('')
   if (html) {
     document.getElementById('ideasList').innerHTML = html
@@ -4830,24 +5690,97 @@ function convertIdeaToTask(id) {
 }
 
 function deleteIdea(id) {
-  var idea = ideas.find(function (i) { return i.id === id })
+  let idea = ideas.find(i => i.id === id)
   if (!idea) return
-  showConfirmModal('Delete idea', 'Delete idea "' + (idea.title || '') + '"?', function () {
-    ideas = ideas.filter(function (i) { return i.id !== id })
-    save('ideas', ideas)
-    renderIdeas()
-    addAuditLog('delete', 'Deleted idea "' + (idea.title || '') + '"', 'delete')
-    showToast('Idea deleted', 'success')
-    updateStats()
+  openConfirmModal({
+    type: 'delete_idea',
+    id,
+    title: 'Delete idea',
+    message: `This will delete idea "${idea.title}".`,
+    level: 'danger'
   })
+}
+
+function reallyDeleteIdea(id) {
+  let idea = ideas.find(i => i.id === id)
+  if (!idea) return
+  ideas = ideas.filter(i => i.id !== id)
+  save('ideas', ideas)
+  renderIdeas()
+  addAuditLog('delete', `Deleted idea "${idea.title}"`, 'delete')
+  showToast('Idea deleted', 'success')
+  updateStats()
 }
   /* ===================================================
    CALENDAR HELPERS
 =================================================== */
 function setCalendarToday() {
-  currentDate = new Date()
+  const now = new Date()
+  currentDate = new Date(now.getFullYear(), now.getMonth(), now.getDate())
   selectedCalendarDate = currentDate.toISOString().split('T')[0]
-  renderCalendar()
+  // Ensure calendar page is visible when jumping to today
+  if (document.getElementById('calendar')?.classList.contains('hidden')) {
+    switchPage('calendar', null)
+  } else {
+    renderCalendar()
+  }
+}
+
+// Combine internal events with (optional) Google Calendar + derived deadlines
+function getAllCalendarEvents() {
+  const showGoogle = document.getElementById('calendarShowGoogle')?.checked
+  let all = events.slice()
+
+  function toDateTimeLocal(dateOrDateTime, fallbackTime) {
+    if (!dateOrDateTime) return ''
+    if (typeof dateOrDateTime !== 'string') return ''
+    return dateOrDateTime.includes('T') ? dateOrDateTime : (dateOrDateTime + fallbackTime)
+  }
+
+  function plusHours(dateTimeLocal, hours) {
+    try {
+      const d = new Date(dateTimeLocal)
+      if (isNaN(d.getTime())) return dateTimeLocal
+      return new Date(d.getTime() + hours * 60 * 60 * 1000).toISOString().slice(0, 16)
+    } catch (e) {
+      return dateTimeLocal
+    }
+  }
+
+  // Add synthetic events for project deadlines
+  projects.forEach(p => {
+    if (!p.deadline) return
+    const start = toDateTimeLocal(p.deadline, 'T09:00')
+    all.push({
+      id: `project-deadline-${p.id}`,
+      title: `Project due: ${p.name}`,
+      description: p.description || '',
+      start: start,
+      end:   plusHours(start, 1),
+      color: 'event-orange',
+      source: 'project_deadline'
+    })
+  })
+
+  // Add synthetic events for goal due dates
+  goals.forEach(g => {
+    if (!g.dueDate) return
+    const start = toDateTimeLocal(g.dueDate, 'T09:00')
+    all.push({
+      id: `goal-deadline-${g.id}`,
+      title: `Goal due: ${g.title}`,
+      description: g.description || '',
+      start: start,
+      end:   plusHours(start, 1),
+      color: 'event-green',
+      source: 'goal_deadline'
+    })
+  })
+
+  if (googleCalendarConnected && showGoogle && Array.isArray(googleCalendarEvents)) {
+    all = all.concat(googleCalendarEvents)
+  }
+  return all
 }
 
 function setCalendarView(view) {
@@ -4857,9 +5790,6 @@ function setCalendarView(view) {
   if (monthBtn && weekBtn) {
     monthBtn.classList.toggle('btn-outline', view !== 'month')
     weekBtn.classList.toggle('btn-outline', view !== 'week')
-  }
-  if (view === 'week') {
-    showToast('Week view coming soon – showing month view for now.', 'info')
   }
   renderCalendar()
 }
@@ -4895,7 +5825,9 @@ function renderCalendarDayDetail(dateStr) {
     day: 'numeric'
   })
 
-  const dayEvents = events.filter(e => {
+  const allEvents = getAllCalendarEvents()
+
+  const dayEvents = allEvents.filter(e => {
     const ev = new Date(e.start)
     return ev.getFullYear() === d.getFullYear() &&
            ev.getMonth() === d.getMonth() &&
@@ -4909,15 +5841,14 @@ function renderCalendarDayDetail(dateStr) {
 
   listEl.innerHTML = dayEvents.map(ev => {
     const t = new Date(ev.start)
+    const isReadOnly = !!ev.source && ev.source !== 'local'
     return `
       <div class="calendar-day-event">
         <div class="calendar-day-event-time">${t.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})}</div>
         <div class="calendar-day-event-body">
           <div style="display:flex;align-items:center;gap:8px;">
             <div class="calendar-day-event-title">${escapeHtml(ev.title)}</div>
-            <button class="btn-xs btn-danger" style="margin-left:auto;padding:2px 6px;font-size:10px;"
-              onclick="deleteEvent('${ev.id}')"
-            >✕</button>
+            ${!isReadOnly ? `<button class="btn-xs btn-danger" style="margin-left:auto;padding:2px 6px;font-size:10px;" onclick="deleteEvent('${ev.id}')">✕</button>` : ''}
           </div>
           ${ev.description ? `<div class="calendar-day-event-desc">${escapeHtml(ev.description)}</div>` : ''}
         </div>
@@ -4942,12 +5873,28 @@ function saveEvent() {
   let start = document.getElementById('modalEventStart').value
   let end   = document.getElementById('modalEventEnd').value
   let color = document.getElementById('modalEventColor').value
+  let desc  = document.getElementById('modalEventDesc').value.trim()
+
   if (!title) return showToast('Please enter an event title', 'error')
 
-  let now = new Date().toISOString().slice(0, 16)
+  // Sensible defaults when times not provided
+  if (!start) {
+    if (selectedCalendarDate) start = selectedCalendarDate + 'T09:00'
+    else start = new Date().toISOString().slice(0, 16)
+  }
+
+  if (!end) {
+    let startDate = new Date(start)
+    end = new Date(startDate.getTime() + 60 * 60 * 1000).toISOString().slice(0, 16)
+  }
+
+  if (new Date(end) <= new Date(start)) {
+    return showToast('End time must be after start time', 'error')
+  }
+
   events.push({
-    id: genId(), title, description: document.getElementById('modalEventDesc').value.trim(),
-    start: start || now, end: end || now, color: color,
+    id: genId(), title, description: desc,
+    start, end, color,
     author: currentUser.id, created: new Date().toISOString()
   })
   save('events', events)
@@ -4960,6 +5907,11 @@ function saveEvent() {
 }
 
 function renderCalendar() {
+  // Fallback in case currentDate was not initialized correctly
+  if (!currentDate || typeof currentDate.getFullYear !== 'function') {
+    currentDate = new Date()
+  }
+
   let year     = currentDate.getFullYear()
   let month    = currentDate.getMonth()
   let first    = new Date(year, month, 1)
@@ -4968,40 +5920,84 @@ function renderCalendar() {
   let today    = new Date()
   let html     = ''
 
-  const filter = document.getElementById('calendarFilterRange')?.value || 'all'
+  const filter    = document.getElementById('calendarFilterRange')?.value || 'all'
+  const allEvents = getAllCalendarEvents()
 
-  for (let i = 0; i < startDow; i++) html += '<div class="calendar-day empty"></div>'
+  if (calendarView === 'week') {
+    // Determine current week (Sunday–Saturday) based on selected date or today
+    const base = selectedCalendarDate ? new Date(selectedCalendarDate + 'T00:00:00') : today
+    const weekStart = new Date(base)
+    weekStart.setDate(base.getDate() - weekStart.getDay())
+    const weekDays = []
+    for (let i = 0; i < 7; i++) {
+      const d = new Date(weekStart)
+      d.setDate(weekStart.getDate() + i)
+      weekDays.push(d)
+    }
 
-  for (let day = 1; day <= total; day++) {
-    const cellDate = new Date(year, month, day)
-    const cellIso  = cellDate.toISOString().split('T')[0]
+    weekDays.forEach(d => {
+      const day   = d.getDate()
+      const m     = d.getMonth()
+      const y     = d.getFullYear()
+      const cellIso = d.toISOString().split('T')[0]
 
-    let dayEvents = events.filter(e => {
-      const d = new Date(e.start)
-      return d.getDate() === day && d.getMonth() === month && d.getFullYear() === year &&
-             eventMatchesFilter(e, filter, year, month)
+      let dayEvents = allEvents.filter(e => {
+        const ev = new Date(e.start)
+        return ev.getDate() === day && ev.getMonth() === m && ev.getFullYear() === y &&
+               eventMatchesFilter(e, filter, y, m)
+      })
+
+      const isToday    = today.getDate() === day && today.getMonth() === m && today.getFullYear() === y
+      const isSelected = selectedCalendarDate === cellIso
+
+      html += `
+        <div class="calendar-day ${isToday ? 'today' : ''} ${isSelected ? 'selected-day' : ''}" onclick="calendarDayClick(${y}, ${m}, ${day})">
+          <div class="day-number">${d.toLocaleDateString(undefined,{ weekday:'short', day:'numeric' })}</div>
+          <div class="day-events">
+            ${dayEvents.slice(0, 4).map(e => `<div class="day-event ${escapeHtml(e.color||'')} ">${escapeHtml(e.title)}</div>`).join('')}
+            ${dayEvents.length > 4 ? `<div style="font-size:9px;color:#4B5563;">+${dayEvents.length - 4} more</div>` : ''}
+          </div>
+        </div>
+      `
     })
 
-    let isToday    = today.getDate() === day && today.getMonth() === month && today.getFullYear() === year
-    let isSelected = selectedCalendarDate === cellIso
+    document.getElementById('calendarGrid').innerHTML  = html
+    const titleRange = `${weekDays[0].toLocaleDateString('en-US',{ month:'short', day:'numeric' })} – ${weekDays[6].toLocaleDateString('en-US',{ month:'short', day:'numeric', year:'numeric' })}`
+    document.getElementById('calendarTitle').textContent = `Week of ${titleRange}`
+  } else {
+    for (let i = 0; i < startDow; i++) html += '<div class="calendar-day empty"></div>'
 
-    html += `
-      <div class="calendar-day ${isToday ? 'today' : ''} ${isSelected ? 'selected-day' : ''}" onclick="calendarDayClick(${year}, ${month}, ${day})">
-        <div class="day-number">${day}</div>
-        <div class="day-events">
-          ${dayEvents.slice(0, 2).map(e => `<div class="day-event ${escapeHtml(e.color||'')} ">${escapeHtml(e.title)}</div>`).join('')}
-          ${dayEvents.length > 2 ? `<div style="font-size:9px;color:#4B5563;">+${dayEvents.length - 2} more</div>` : ''}
+    for (let day = 1; day <= total; day++) {
+      const cellDate = new Date(year, month, day)
+      const cellIso  = cellDate.toISOString().split('T')[0]
+
+      let dayEvents = allEvents.filter(e => {
+        const d = new Date(e.start)
+        return d.getDate() === day && d.getMonth() === month && d.getFullYear() === year &&
+               eventMatchesFilter(e, filter, year, month)
+      })
+
+      let isToday    = today.getDate() === day && today.getMonth() === month && today.getFullYear() === year
+      let isSelected = selectedCalendarDate === cellIso
+
+      html += `
+        <div class="calendar-day ${isToday ? 'today' : ''} ${isSelected ? 'selected-day' : ''}" onclick="calendarDayClick(${year}, ${month}, ${day})">
+          <div class="day-number">${day}</div>
+          <div class="day-events">
+            ${dayEvents.slice(0, 2).map(e => `<div class="day-event ${escapeHtml(e.color||'')} ">${escapeHtml(e.title)}</div>`).join('')}
+            ${dayEvents.length > 2 ? `<div style="font-size:9px;color:#4B5563;">+${dayEvents.length - 2} more</div>` : ''}
+          </div>
         </div>
-      </div>
-    `
-  }
+      `
+    }
 
-  document.getElementById('calendarGrid').innerHTML  = html
-  document.getElementById('calendarTitle').textContent = currentDate.toLocaleDateString('en-US', { month:'long', year:'numeric' })
+    document.getElementById('calendarGrid').innerHTML  = html
+    document.getElementById('calendarTitle').textContent = currentDate.toLocaleDateString('en-US', { month:'long', year:'numeric' })
+  }
 
   renderCalendarDayDetail(selectedCalendarDate)
 
-  let upcoming = events
+  let upcoming = allEvents
     .filter(e => new Date(e.start) >= new Date())
     .sort((a, b) => new Date(a.start) - new Date(b.start))
     .slice(0, 5)
@@ -5009,18 +6005,24 @@ function renderCalendar() {
   let upcomingEl = document.getElementById('upcomingEvents')
   if (upcomingEl) {
     if (upcoming.length) {
-      upcomingEl.innerHTML = upcoming.map(e => `
-        <div style="display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid #1F2937;">
-          <div style="background:#4f46e5;color:white;padding:6px 10px;border-radius:8px;font-size:12px;font-weight:700;min-width:50px;text-align:center;">
-            ${new Date(e.start).toLocaleDateString('en-US',{month:'short',day:'numeric'})}
+      upcomingEl.innerHTML = upcoming.map(e => {
+        const d = new Date(e.start)
+        const dateLabel = d.toLocaleDateString('en-US',{month:'short',day:'numeric'})
+        const timeLabel = d.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})
+        const readOnly = !!e.source && e.source !== 'local'
+        return `
+          <div style="display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid #1F2937;">
+            <div style="background:#4f46e5;color:white;padding:6px 10px;border-radius:8px;font-size:12px;font-weight:700;min-width:50px;text-align:center;">
+              ${dateLabel}
+            </div>
+            <div>
+              <div style="font-size:14px;font-weight:500;">${escapeHtml(e.title)}</div>
+              <div style="font-size:12px;color:#6B7280;">${timeLabel}</div>
+            </div>
+            ${!readOnly ? `<button class="btn-sm btn-danger" style="margin-left:auto;" onclick="deleteEvent('${e.id}')">✕</button>` : ''}
           </div>
-          <div>
-            <div style="font-size:14px;font-weight:500;">${escapeHtml(e.title)}</div>
-            <div style="font-size:12px;color:#6B7280;">${new Date(e.start).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})}</div>
-          </div>
-          <button class="btn-sm btn-danger" style="margin-left:auto;" onclick="deleteEvent('${e.id}')">✕</button>
-        </div>
-      `).join('')
+        `
+      }).join('')
     } else {
       upcomingEl.innerHTML = `<div class="empty-state compact"><div class="empty-state-icon">📅</div><h3>No upcoming events</h3><p>Schedule an event from the calendar</p><button class="btn-sm btn-primary" onclick="switchPage('calendar',null); openCreateEventModal();">+ New Event</button></div>`
     }
@@ -5030,20 +6032,60 @@ function renderCalendar() {
 function calendarDayClick(y, m, d) {
   let dateStr = `${y}-${String(m+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`
   selectedCalendarDate = dateStr
-  renderCalendar() // updates highlight + side panel
-
-  // Prefill event modal for quick creation
-  document.getElementById('modalEventStart').value = dateStr + 'T09:00'
-  document.getElementById('modalEventEnd').value   = dateStr + 'T10:00'
-  openCreateEventModal()
+  // Re-render to update highlight and side panel, but do NOT auto-open modal
+  renderCalendar()
 }
 
 function deleteEvent(id) {
+  let ev = events.find(e => e.id === id)
   events = events.filter(e => e.id !== id)
   save('events', events)
   renderCalendar()
+  addAuditLog('delete', `Deleted event "${ev?.title || id}"`, 'delete')
   showToast('Event deleted', 'success')
   updateStats()
+}
+
+// Start Google Calendar OAuth flow via backend
+function connectGoogleCalendar() {
+  // Replace this with your real backend URL when ready
+  if (typeof ALTER_API_BASE === 'string' && ALTER_API_BASE) {
+    window.location.href = ALTER_API_BASE + '/auth/google/calendar'
+  } else {
+    window.location.href = '/auth/google/calendar'
+  }
+}
+
+// Fetch Google Calendar events for the visible month from backend
+async function refreshGoogleCalendarEvents() {
+  if (!googleCalendarConnected) return
+
+  try {
+    const year  = currentDate.getFullYear()
+    const month = currentDate.getMonth()
+    const start = new Date(year, month, 1).toISOString()
+    const end   = new Date(year, month + 1, 0, 23, 59, 59).toISOString()
+
+    const base = (typeof ALTER_API_BASE === 'string' && ALTER_API_BASE) ? ALTER_API_BASE : ''
+    const res  = await fetch(`${base}/api/calendar/events?start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}`, {
+      credentials: 'include'
+    })
+
+    if (!res.ok) throw new Error('Failed to load Google events')
+
+    const data = await res.json()
+    googleCalendarEvents = Array.isArray(data) ? data : (data.events || [])
+
+    const statusEl = document.getElementById('calendarGoogleStatus')
+    if (statusEl) statusEl.textContent = `Google Calendar synced (${googleCalendarEvents.length} events)`
+
+    renderCalendar()
+  } catch (err) {
+    console.error(err)
+    const statusEl = document.getElementById('calendarGoogleStatus')
+    if (statusEl) statusEl.textContent = 'Error syncing Google Calendar'
+    showToast('Could not load Google Calendar events right now.', 'error')
+  }
 }
 
 function prevMonth() { currentDate = new Date(currentDate.getFullYear(), currentDate.getMonth() - 1, 1); renderCalendar() }
@@ -5060,11 +6102,12 @@ function closeInviteTeamModal() {
 }
 
 function sendInvite() {
-  let email = document.getElementById('modalInviteEmail').value.trim()
+  let email = document.getElementById('modalInviteEmail').value.trim().toLowerCase()
   let role  = document.getElementById('modalInviteRole').value
   let dept  = document.getElementById('modalInviteDept').value.trim()
   if (!email) return showToast('Please enter an email address', 'error')
-  if (team.find(m => m.email === email)) return showToast('This email is already invited', 'warning')
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return showToast('Please enter a valid email', 'error')
+  if (team.find(m => (m.email || '').toLowerCase() === email)) return showToast('This email is already invited', 'warning')
 
   team.push({ id: genId(), email, role, department: dept, status: 'pending', created: new Date().toISOString() })
   save('team', team)
@@ -5076,13 +6119,340 @@ function sendInvite() {
   updateStats()
 }
 
+/* ===================================================
+   GOALS & OKRs
+=================================================== */
+function openCreateGoalModal() {
+  const ownerSelect  = document.getElementById('modalGoalOwner')
+  const projectSelect= document.getElementById('modalGoalProject')
+  if (ownerSelect) {
+    ownerSelect.innerHTML = ''
+    const optMe = document.createElement('option')
+    optMe.value = currentUser.id
+    optMe.textContent = currentUser.fullName || currentUser.username || 'Me'
+    ownerSelect.appendChild(optMe)
+    team.filter(m => m.status === 'accepted').forEach(m => {
+      const opt = document.createElement('option')
+      opt.value = m.id
+      opt.textContent = m.email || m.id
+      ownerSelect.appendChild(opt)
+    })
+    ownerSelect.value = currentUser.id
+  }
+  if (projectSelect) {
+    projectSelect.innerHTML = '<option value=\"\">None</option>'
+    projects.forEach(p => {
+      const opt = document.createElement('option')
+      opt.value = p.id
+      opt.textContent = p.name
+      projectSelect.appendChild(opt)
+    })
+  }
+  document.getElementById('modalGoalId').value    = ''
+  document.getElementById('modalGoalTitle').value = ''
+  document.getElementById('modalGoalDesc').value  = ''
+  document.getElementById('modalGoalKRs').value   = ''
+  document.getElementById('modalGoalStatus').value= 'on_track'
+  document.getElementById('modalGoalDue').value   = ''
+  document.getElementById('createGoalModal').classList.add('active')
+}
+
+function openEditGoalModal(id) {
+  const g = goals.find(x => x.id === id)
+  if (!g) return
+  const ownerSelect  = document.getElementById('modalGoalOwner')
+  const projectSelect= document.getElementById('modalGoalProject')
+  if (ownerSelect) {
+    ownerSelect.innerHTML = ''
+    const optMe = document.createElement('option')
+    optMe.value = currentUser.id
+    optMe.textContent = currentUser.fullName || currentUser.username || 'Me'
+    ownerSelect.appendChild(optMe)
+    team.filter(m => m.status === 'accepted').forEach(m => {
+      const opt = document.createElement('option')
+      opt.value = m.id
+      opt.textContent = m.email || m.id
+      ownerSelect.appendChild(opt)
+    })
+    ownerSelect.value = g.ownerId || currentUser.id
+  }
+  if (projectSelect) {
+    projectSelect.innerHTML = '<option value=\"\">None</option>'
+    projects.forEach(p => {
+      const opt = document.createElement('option')
+      opt.value = p.id
+      opt.textContent = p.name
+      projectSelect.appendChild(opt)
+    })
+    projectSelect.value = g.projectId || ''
+  }
+  document.getElementById('modalGoalId').value      = g.id
+  document.getElementById('modalGoalTitle').value   = g.title
+  document.getElementById('modalGoalDesc').value    = g.description || ''
+  document.getElementById('modalGoalStatus').value  = g.status || 'on_track'
+  // Backward compatibility for old date-only goal due dates
+  let due = g.dueDate || ''
+  if (due && typeof due === 'string' && !due.includes('T')) due = due + 'T09:00'
+  document.getElementById('modalGoalDue').value     = due
+  document.getElementById('modalGoalKRs').value     = (g.keyResults || []).join('\n')
+  document.getElementById('createGoalModal').classList.add('active')
+}
+
+function closeCreateGoalModal() {
+  document.getElementById('createGoalModal').classList.remove('active')
+}
+
+function saveGoal() {
+  const id    = document.getElementById('modalGoalId').value
+  const title = document.getElementById('modalGoalTitle').value.trim()
+  if (!title) return showToast('Please enter an objective', 'error')
+  const desc   = document.getElementById('modalGoalDesc').value.trim()
+  const owner  = document.getElementById('modalGoalOwner').value
+  const status = document.getElementById('modalGoalStatus').value
+  const due    = document.getElementById('modalGoalDue').value
+  const projId = document.getElementById('modalGoalProject').value
+  const krsRaw = document.getElementById('modalGoalKRs').value.split('\n').map(l => l.trim()).filter(Boolean)
+
+  if (id) {
+    // Update existing goal
+    const goal = goals.find(g => g.id === id)
+    if (!goal) return
+    goal.title       = title
+    goal.description = desc
+    goal.ownerId     = owner || currentUser.id
+    goal.status      = status
+    goal.dueDate     = due || null
+    goal.projectId   = projId || null
+    goal.keyResults  = krsRaw
+    goal.updated     = new Date().toISOString()
+    save('goals', goals)
+    closeCreateGoalModal()
+    renderGoals()
+    addAuditLog('update', `Updated goal \"${title}\"`, 'update')
+    showToast('Goal updated!', 'success')
+  } else {
+    // Create new goal
+    const goal = {
+      id: genId(),
+      title,
+      description: desc,
+      ownerId: owner || currentUser.id,
+      status,
+      dueDate: due || null,
+      projectId: projId || null,
+      keyResults: krsRaw,
+      updates: [],
+      created: new Date().toISOString()
+    }
+    goals.push(goal)
+    save('goals', goals)
+    closeCreateGoalModal()
+    renderGoals()
+    addActivity(`Created goal: ${title}`)
+    addAuditLog('create', `Created goal \"${title}\"`, 'create')
+    showToast('Goal created!', 'success')
+  }
+}
+
+function renderGoals() {
+  const search = (document.getElementById('goalSearch')?.value || '').toLowerCase()
+  const statusFilter = document.getElementById('goalStatusFilter')?.value || ''
+  const ownerFilter  = document.getElementById('goalOwnerFilter')?.value || ''
+  const myOnly       = document.getElementById('goalMyOnly')?.checked
+
+  // Populate owner filter once from goals + currentUser + team
+  const ownerSelect = document.getElementById('goalOwnerFilter')
+  if (ownerSelect && ownerSelect.options.length === 1 && goals.length) {
+    const seen = new Set()
+    goals.forEach(g => {
+      const id = g.ownerId
+      if (!id || seen.has(id)) return
+      seen.add(id)
+      const opt = document.createElement('option')
+      opt.value = id
+      const owner = (id === currentUser.id)
+        ? (currentUser.fullName || currentUser.username || 'Me')
+        : (team.find(m => m.id === id)?.email || id)
+      opt.textContent = owner
+      ownerSelect.appendChild(opt)
+    })
+  }
+
+  let filtered = goals.slice().filter(g => {
+    if (search && !(g.title.toLowerCase().includes(search) || (g.description||'').toLowerCase().includes(search))) return false
+    if (statusFilter && g.status !== statusFilter) return false
+    if (ownerFilter && g.ownerId !== ownerFilter) return false
+    if (myOnly && g.ownerId !== currentUser.id) return false
+    return true
+  })
+
+  const listEl = document.getElementById('goalsList')
+  if (!listEl) return
+
+  if (!filtered.length) {
+    listEl.innerHTML = `<div class=\"empty-state compact\"><div class=\"empty-state-icon\">🎯</div><h3>No goals yet</h3><p>Create your first objective to align the team.</p><button class=\"btn-primary btn-sm\" onclick=\"openCreateGoalModal()\">+ New Goal</button></div>`
+  } else {
+    listEl.innerHTML = filtered.map(buildGoalCard).join('')
+  }
+
+  const summaryEl = document.getElementById('goalsSummary')
+  if (summaryEl) {
+    const total = goals.length
+    const completed = goals.filter(g => g.status === 'completed').length
+    const onTrack   = goals.filter(g => g.status === 'on_track').length
+    const atRisk    = goals.filter(g => g.status === 'at_risk').length
+    const offTrack  = goals.filter(g => g.status === 'off_track').length
+    const mine      = goals.filter(g => g.ownerId === currentUser.id).length
+    summaryEl.innerHTML = `
+      <p>Total goals: <strong>${total}</strong></p>
+      <p>On track: <span style=\"color:#22c55e;\">${onTrack}</span></p>
+      <p>At risk: <span style=\"color:#f97316;\">${atRisk}</span></p>
+      <p>Off track: <span style=\"color:#ef4444;\">${offTrack}</span></p>
+      <p>Completed: <span style=\"color:#38bdf8;\">${completed}</span></p>
+      <p>You own: <span style=\"color:#4f46e5;\">${mine}</span> goal${mine === 1 ? '' : 's'}</p>
+    `
+  }
+}
+
+function buildGoalCard(g) {
+  const ownerLabel = (g.ownerId === currentUser.id)
+    ? (currentUser.fullName || currentUser.username || 'Me')
+    : (team.find(m => m.id === g.ownerId)?.email || 'Unassigned')
+  const project = g.projectId ? projects.find(p => p.id === g.projectId) : null
+  const statusLabel = {
+    on_track:'On track',
+    at_risk:'At risk',
+    off_track:'Off track',
+    completed:'Completed'
+  }[g.status] || g.status
+  const statusColor = g.status === 'completed'
+    ? '#1e3a5f'
+    : g.status === 'on_track'
+      ? '#1b4332'
+      : g.status === 'at_risk'
+        ? '#78350f'
+        : '#7f1d1d'
+
+  const statusTextColor = g.status === 'completed'
+    ? '#93c5fd'
+    : g.status === 'on_track'
+      ? '#86efac'
+      : g.status === 'at_risk'
+        ? '#fcd34d'
+        : '#fecaca'
+
+  const dueHtml = g.dueDate
+    ? `<span style=\"font-size:11px;color:#9CA3AF;\">Due ${new Date(g.dueDate).toLocaleDateString()}</span>`
+    : '<span style=\"font-size:11px;color:#4B5563;\">No target date</span>'
+
+  const krsHtml = (g.keyResults || []).slice(0, 3).map(kr => `<li>${escapeHtml(kr)}</li>`).join('')
+
+  const updates = Array.isArray(g.updates) ? g.updates.slice().sort((a,b) => new Date(b.createdAt||b.created_at||b.created) - new Date(a.createdAt||a.created_at||a.created)) : []
+  const recentUpdates = updates.slice(0, 3)
+
+  // Derive progress from linked project's tasks, if any
+  let progressHtml = '<span style=\"font-size:11px;color:#4B5563;\">No linked tasks</span>'
+  if (project) {
+    const projectTasks = tasks.filter(t => t.projectId === project.id)
+    if (projectTasks.length) {
+      const done = projectTasks.filter(t => t.status === 'done' || t.status === 'completed').length
+      const pct  = Math.round((done / projectTasks.length) * 100)
+      progressHtml = `
+        <div style=\"font-size:11px;margin-bottom:4px;\">${done}/${projectTasks.length} project tasks done (${pct}%)</div>
+        <div style=\"width:140px;height:6px;border-radius:999px;background:#111827;overflow:hidden;\">
+          <div style=\"width:${pct}%;height:100%;background:#4f46e5;\"></div>
+        </div>
+      `
+    }
+  }
+
+  return `
+    <div class=\"card\" style=\"margin-bottom:10px;\">
+      <div style=\"display:flex;align-items:flex-start;gap:10px;margin-bottom:8px;\">
+        <div style=\"flex:1;min-width:0;\">
+          <h3 style=\"font-size:15px;margin-bottom:4px;\">${escapeHtml(g.title)}</h3>
+          <div style=\"font-size:12px;color:#9CA3AF;margin-bottom:4px;\">Owner: ${escapeHtml(ownerLabel)}</div>
+          ${g.description ? `<p style=\"font-size:13px;color:#9CA3AF;margin-bottom:4px;\">${escapeHtml(g.description)}</p>` : ''}
+          ${project ? `<div style=\"font-size:12px;color:#9CA3AF;\">Linked project: ${escapeHtml(project.name)}</div>` : ''}
+        </div>
+        <div style=\"display:flex;flex-direction:column;align-items:flex-end;gap:6px;\">
+          <span style=\"font-size:11px;padding:3px 10px;border-radius:999px;background:${statusColor};color:${statusTextColor};white-space:nowrap;\">${escapeHtml(statusLabel)}</span>
+          <div style=\"display:flex;gap:4px;\">
+            <button class=\"btn-xs btn-secondary\" onclick=\"openEditGoalModal('${g.id}')\">Edit</button>
+            <button class=\"btn-xs btn-danger\" onclick=\"deleteGoal('${g.id}')\">Delete</button>
+          </div>
+        </div>
+      </div>
+      <div style=\"display:flex;justify-content:space-between;align-items:flex-start;font-size:12px;color:#9CA3AF;gap:16px;\">
+        <div>
+          ${(g.keyResults && g.keyResults.length) ? `<div style=\"font-size:11px;margin-bottom:2px;\">Key results:</div><ul style=\"padding-left:18px;margin:0;\">${krsHtml}</ul>` : '<span style=\"font-size:11px;\">No key results added</span>'}
+          ${recentUpdates.length ? `
+            <div style=\"font-size:11px;margin-top:8px;\">
+              <div style=\"margin-bottom:2px;\">Recent updates:</div>
+              <ul style=\"padding-left:16px;margin:0;display:flex;flex-direction:column;gap:2px;\">
+                ${recentUpdates.map(u => {
+                  const d = u.createdAt || u.created_at || u.created
+                  const label = d ? new Date(d).toLocaleDateString(undefined,{ month:'short', day:'numeric' }) : ''
+                  return `<li>${label ? `<span style=\"color:#6B7280;\">${label} • </span>` : ''}${escapeHtml(u.text || '')}</li>`
+                }).join('')}
+              </ul>
+            </div>
+          ` : ''}
+          <button class=\"btn-xs btn-secondary\" style=\"margin-top:6px;\" onclick=\"openGoalUpdateModal('${g.id}')\">+ Add update</button>
+        </div>
+        <div style=\"text-align:right;display:flex;flex-direction:column;align-items:flex-end;gap:4px;\">
+          ${progressHtml}
+          ${dueHtml}
+        </div>
+      </div>
+    </div>
+  `
+}
+
+function deleteGoal(id) {
+  const g = goals.find(x => x.id === id)
+  if (!g) return
+  openConfirmModal({
+    type: 'delete_goal',
+    id,
+    title: 'Delete goal',
+    message: `This will delete goal "${g.title}".`,
+    level: 'danger'
+  })
+}
+
+function reallyDeleteGoal(id) {
+  const g = goals.find(x => x.id === id)
+  if (!g) return
+  goals = goals.filter(x => x.id !== id)
+  save('goals', goals)
+  renderGoals()
+  addAuditLog('delete', `Deleted goal \"${g.title}\"`, 'delete')
+  showToast('Goal deleted', 'success')
+}
+
 function renderTeam() {
   let activeHtml  = buildCurrentUserCard()
   let pendingHtml = ''
 
+  const roleFilter   = document.getElementById('teamRoleFilter')?.value || ''
+  const statusFilter = document.getElementById('teamStatusFilter')?.value || ''
+
+  // Only admins/owners can invite or remove members or change roles
+  const canManageTeam = currentUser && (currentUser.role === 'admin' || currentUser.role === 'owner')
+  const inviteBtn = document.getElementById('teamInviteBtn')
+  if (inviteBtn) inviteBtn.style.display = canManageTeam ? '' : 'none'
+
   team.forEach(m => {
+    const isAccepted = m.status === 'accepted'
+    const isPending  = m.status === 'pending'
+
+    if (statusFilter === 'accepted' && !isAccepted) return
+    if (statusFilter === 'pending' && !isPending) return
+    if (roleFilter && m.role !== roleFilter) return
+
     let taskCount = tasks.filter(t => t.assignee === m.id).length
-    if (m.status === 'accepted') {
+    if (isAccepted) {
       activeHtml += `
         <div class="member-card">
           <div class="member-avatar">
@@ -5094,7 +6464,18 @@ function renderTeam() {
           <div class="member-stats">
             <div><span class="member-stat-val">${taskCount}</span>tasks</div>
           </div>
-          <button class="btn-sm btn-danger" onclick="removeMember('${m.id}')">Remove</button>
+          ${canManageTeam ? `
+            <div style="margin-bottom:8px;">
+              <select style="padding:6px 10px;background:#020617;border:1px solid #1F2937;color:white;border-radius:6px;font-size:11px;"
+                onchange="updateMemberRole('${m.id}', this.value)">
+                <option value="owner"   ${m.role==='owner'?'selected':''}>Owner</option>
+                <option value="admin"   ${m.role==='admin'?'selected':''}>Admin</option>
+                <option value="manager" ${m.role==='manager'?'selected':''}>Manager</option>
+                <option value="member"  ${m.role==='member'?'selected':''}>Member</option>
+              </select>
+            </div>
+            <button class="btn-sm btn-danger" onclick="removeMember('${m.id}')">Remove</button>
+          ` : ''}
         </div>
       `
     } else {
@@ -5104,10 +6485,12 @@ function renderTeam() {
           <h4 style="font-size:13px;">${escapeHtml(m.email)}</h4>
           <div class="member-role"><span class="role-badge ${escapeHtml(m.role)}">${escapeHtml(m.role)}</span></div>
           <div style="font-size:12px;color:#6B7280;margin-bottom:12px;">Pending invitation</div>
-          <div style="display:flex;gap:6px;justify-content:center;">
-            <button class="btn-sm btn-success" onclick="acceptInvite('${m.id}')">Accept</button>
-            <button class="btn-sm btn-danger" onclick="removeMember('${m.id}')">Remove</button>
-          </div>
+          ${canManageTeam ? `
+            <div style="display:flex;gap:6px;justify-content:center;">
+              <button class="btn-sm btn-success" onclick="acceptInvite('${m.id}')">Accept</button>
+              <button class="btn-sm btn-danger" onclick="removeMember('${m.id}')">Remove</button>
+            </div>
+          ` : ''}
         </div>
       `
     }
@@ -5128,6 +6511,7 @@ function renderTeam() {
 
 function buildCurrentUserCard() {
   let taskCount = tasks.filter(t => t.assignee === currentUser.id).length
+  const role = currentUser.role || 'owner'
   return `
     <div class="member-card">
       <div class="member-avatar">
@@ -5135,29 +6519,62 @@ function buildCurrentUserCard() {
         ${(currentUser.fullName || currentUser.username).charAt(0).toUpperCase()}
       </div>
       <h4>${escapeHtml(currentUser.fullName || currentUser.username)}</h4>
-      <div class="member-role"><span class="role-badge owner">Owner</span></div>
+      <div class="member-role"><span class="role-badge ${escapeHtml(role)}">${escapeHtml(role)}</span></div>
       <div class="member-stats"><div><span class="member-stat-val">${taskCount}</span>tasks</div></div>
       <button class="btn-sm btn-secondary" onclick="switchPage('settings',null)">Profile</button>
     </div>
   `
 }
 
+function updateMemberRole(id, newRole) {
+  if (!currentUser || (currentUser.role !== 'admin' && currentUser.role !== 'owner')) {
+    showToast('You do not have permission to change roles.', 'error')
+    renderTeam()
+    return
+  }
+  let m = team.find(x => x.id === id)
+  if (!m) return
+  const oldRole = m.role
+  if (oldRole === newRole) return
+  m.role = newRole
+  save('team', team)
+  renderTeam()
+  addAuditLog('update', `Changed role for ${m.email} from ${oldRole} to ${newRole}`, 'update')
+  showToast('Role updated', 'success')
+}
+
 function acceptInvite(id) {
   let m = team.find(x => x.id === id)
-  if (m) { m.status = 'accepted'; save('team', team); renderTeam(); showToast('Member accepted!', 'success') }
+  if (!m) return
+
+  m.status = 'accepted'
+  save('team', team)
+  renderTeam()
+  addNotification(`${m.email} joined the workspace`, 'team')
+  addAuditLog('update', `Accepted invite for ${m.email}`, 'update')
+  showToast('Member accepted!', 'success')
 }
 
 function removeMember(id) {
-  var m = team.find(function (x) { return x.id === id })
+  let m = team.find(x => x.id === id)
   if (!m) return
-  showConfirmModal('Remove member', 'Remove ' + (m.email || 'this member') + '?', function () {
-    team = team.filter(function (x) { return x.id !== id })
-    save('team', team)
-    renderTeam()
-    addAuditLog('delete', 'Removed team member ' + (m.email || ''), 'delete')
-    showToast('Member removed', 'success')
-    updateStats()
+  openConfirmModal({
+    type: 'remove_member',
+    id,
+    title: 'Remove team member',
+    message: `This will remove ${m.email || 'this member'} from the workspace.`,
+    level: 'danger'
   })
+}
+
+function reallyRemoveMember(id) {
+  let m = team.find(x => x.id === id)
+  team = team.filter(x => x.id !== id)
+  save('team', team)
+  renderTeam()
+  addAuditLog('delete', `Removed team member ${m?.email}`, 'delete')
+  showToast('Member removed', 'success')
+  updateStats()
 }
 
 function resendInvite(id) {
@@ -5209,7 +6626,16 @@ function filterNotifs(type, el) {
   renderNotifications(type)
 }
 
-function toggleNotifications() { document.getElementById('notificationsPanel').classList.toggle('active') }
+function toggleNotifications() {
+  let panel = document.getElementById('notificationsPanel')
+  if (!panel) return
+  let willOpen = !panel.classList.contains('active')
+  panel.classList.toggle('active')
+  if (willOpen) {
+    // Ensure list & badge are up to date when opening
+    renderNotifications()
+  }
+}
 
 function markNotifRead(id) {
   let n = notifications.find(x => x.id === id)
@@ -5311,9 +6737,8 @@ function exportAuditLog() {
    BILLING
 =================================================== */
 function renderBilling() {
-  if (!currentUser) return
-  var currentPlan = currentUser.plan || 'free'
-  var planInfo = (typeof PLANS !== 'undefined' && PLANS && PLANS.find) ? PLANS.find(function (p) { return p.id === currentPlan }) : null
+  let currentPlan = currentUser.plan || 'free'
+  let planInfo    = PLANS.find(p => p.id === currentPlan)
 
   // Top summary card values
   let billingPlanNameEl = document.getElementById('billingPlanName')
@@ -5413,56 +6838,117 @@ function setBillingPeriod(period) {
 function upgradePlan(planId) {
   let plan = PLANS.find(p => p.id === planId)
   if (!plan) return
+  if (ALTER_API_BASE && getAuthToken()) {
+    fetch(ALTER_API_BASE + '/api/me/plan', {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer ' + getAuthToken()
+      },
+      body: JSON.stringify({ plan: planId, billingPeriod })
+    })
+    .then(r => r.json().then(body => ({ ok: r.ok, body })))
+    .then(res => {
+      if (!res.ok) return showToast(res.body.error || 'Failed to update plan', 'error')
+      currentUser.plan = planId
+      save('session', currentUser)
+      document.getElementById('sidebarPlanBadge').textContent = planId.toUpperCase()
+      renderBilling()
+      addAuditLog('update', `Upgraded plan to ${plan.name}`, 'update')
+      showToast(`Plan updated to ${plan.name}!`, 'success')
+    })
+    .catch(() => showToast('Network error while updating plan', 'error'))
+    return
+  }
+
   if (plan.price > 0) {
     showToast('Redirecting to payment... (demo mode)', 'info')
-    setTimeout(function () {
+    setTimeout(() => {
       currentUser.plan = planId
-      var idx = users.findIndex(function (u) { return u.id === currentUser.id })
-      if (idx >= 0) { users[idx] = currentUser; save('users', users) }
-      save('session', currentUser)
-      var badge = document.getElementById('sidebarPlanBadge')
-      if (badge) badge.textContent = (planId || 'free').toUpperCase()
+      let idx = users.findIndex(u => u.id === currentUser.id)
+      if (idx >= 0) { users[idx] = currentUser; save('users', users); save('session', currentUser) }
+      document.getElementById('sidebarPlanBadge').textContent = planId.toUpperCase()
       renderBilling()
       addAuditLog('update', `Upgraded plan to ${plan.name}`, 'update')
       showToast(`🎉 Upgraded to ${plan.name}!`, 'success')
     }, 1000)
   } else {
     currentUser.plan = planId
-    var idx = users.findIndex(function (u) { return u.id === currentUser.id })
-    if (idx >= 0) { users[idx] = currentUser; save('users', users) }
-    save('session', currentUser)
-    var badge = document.getElementById('sidebarPlanBadge')
-    if (badge) badge.textContent = (planId || 'free').toUpperCase()
+    let idx = users.findIndex(u => u.id === currentUser.id)
+    if (idx >= 0) { users[idx] = currentUser; save('users', users); save('session', currentUser) }
+    document.getElementById('sidebarPlanBadge').textContent = planId.toUpperCase()
     renderBilling()
-    showToast('Downgraded to ' + plan.name, 'info')
+    showToast(`Downgraded to ${plan.name}`, 'info')
   }
 }
 
 /* ===================================================
    CHARTS
 =================================================== */
-function destroyChart(id) { if (charts[id]) { try { charts[id].destroy() } catch(e){} delete charts[id] } }
+function destroyChart(id) {
+  // Ensure charts store exists
+  if (!charts || typeof charts !== 'object') {
+    charts = {}
+    return
+  }
+  if (charts[id]) {
+    try { charts[id].destroy() } catch (e) {}
+    delete charts[id]
+  }
+}
 
 function makeChart(id, config) {
+  // Gracefully skip if Chart.js failed to load
+  if (typeof Chart === 'undefined') {
+    return
+  }
+
   let el = document.getElementById(id)
   if (!el) return
+
   destroyChart(id)
+
+  config = config || {}
+  config.type = config.type || 'bar'
+  config.data = config.data || { labels: [], datasets: [] }
+
   config.options = config.options || {}
   config.options.maintainAspectRatio = false
   config.options.responsive          = true
-  config.options.animation           = { duration: 400 }
+  config.options.animation           = config.options.animation || { duration: 400 }
+
   if (!config.options.plugins) config.options.plugins = {}
-  config.options.plugins.legend = config.options.plugins.legend || { labels:{ color:'#9CA3AF', font:{ size:11 } } }
+  config.options.plugins.legend = config.options.plugins.legend || {
+    labels: { color:'#9CA3AF', font:{ size:11 } }
+  }
+
   if (!['doughnut','pie','radar','polarArea'].includes(config.type)) {
-    config.options.scales = {
+    config.options.scales = config.options.scales || {
       x: { ticks:{ color:'#6B7280', font:{ size:11 } }, grid:{ color:'#1F2937' } },
       y: { ticks:{ color:'#6B7280', font:{ size:11 } }, grid:{ color:'#1F2937' } }
     }
   }
-  charts[id] = new Chart(el, config)
+
+  try {
+    charts[id] = new Chart(el, config)
+  } catch (e) {
+    // Avoid breaking the rest of the app if a chart config is invalid
+    logAppError({ type: 'chart', id, message: String(e && e.message || e), stack: e && e.stack })
+  }
 }
 
 function renderDashboardCharts() {
+  if (typeof Chart === 'undefined') {
+    ['projectsChart','tasksChart','completionChart','activityChart'].forEach(function (id) {
+      var el = document.getElementById(id)
+      if (!el) return
+      var parent = el.closest('.chart-container') || el.parentElement
+      if (!parent) return
+      parent.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;font-size:12px;color:#9CA3AF;text-align:center;padding:12px;">Charts are unavailable. Check your internet connection and reload.</div>'
+    })
+    return
+  }
+
   makeChart('projectsChart', {
     type: 'bar',
     data: {
@@ -5582,14 +7068,14 @@ function renderAnalyticsCharts() {
   })
 
   // Ideas votes
-  var topIdeas = ideas.slice().sort(function (a, b) { return (b.votes != null ? b.votes : (b.voters && b.voters.length) || 0) - (a.votes != null ? a.votes : (a.voters && a.voters.length) || 0) }).slice(0, 5)
+  let topIdeas = [...ideas].sort((a,b) => b.votes - a.votes).slice(0, 5)
   makeChart('ideasChart', {
     type: 'bar',
     data: {
       labels: topIdeas.length ? topIdeas.map(i => i.title.substring(0, 20)) : ['No ideas'],
       datasets: [{
         label: 'Votes',
-        data: topIdeas.length ? topIdeas.map(function (i) { return i.votes != null ? i.votes : (i.voters && i.voters.length) || 0 }) : [0],
+        data: topIdeas.length ? topIdeas.map(i => i.votes) : [0],
         backgroundColor: 'rgba(124,58,237,0.7)',
         borderRadius: 6
       }]
@@ -5610,6 +7096,99 @@ function renderAnalyticsCharts() {
       }]
     }
   })
+
+  // My Productivity (tasks done + hours logged per week)
+  if (charts.myProductivityChart) {
+    charts.myProductivityChart.destroy()
+  }
+
+  const now = new Date()
+  const weeks = []
+  for (let i = 5; i >= 0; i--) {
+    const start = new Date(now)
+    start.setHours(0,0,0,0)
+    start.setDate(start.getDate() - (start.getDay() + 7 * i))
+    const end = new Date(start)
+    end.setDate(start.getDate() + 7)
+    weeks.push({ start, end })
+  }
+
+  const weekLabels = weeks.map(w =>
+    w.start.toLocaleDateString(undefined, { month:'short', day:'numeric' })
+  )
+
+  const myDoneByWeek = weeks.map(w => {
+    return tasks.filter(t => {
+      if (t.assignee !== currentUser.id || t.status !== 'done' || !t.updated) return false
+      const d = new Date(t.updated)
+      return d >= w.start && d < w.end
+    }).length
+  })
+
+  const myHoursByWeek = weeks.map(w => {
+    const secs = timeEntries
+      .filter(e => {
+        // optional per-user filtering if userId is present
+        if (e.userId && e.userId !== currentUser.id) return false
+        const d = new Date(e.date || e.created || e.start)
+        return d >= w.start && d < w.end
+      })
+      .reduce((sum, e) => sum + (e.duration || 0), 0)
+    return +(secs / 3600).toFixed(1)
+  })
+
+  const ctxMyProd = document.getElementById('myProductivityChart')
+  if (ctxMyProd) {
+    charts.myProductivityChart = new Chart(ctxMyProd, {
+      type: 'bar',
+      data: {
+        labels: weekLabels,
+        datasets: [
+          {
+            label: 'Tasks done',
+            data: myDoneByWeek,
+            backgroundColor: 'rgba(56,189,248,0.7)',
+            borderRadius: 4,
+            yAxisID: 'y'
+          },
+          {
+            label: 'Hours logged',
+            data: myHoursByWeek,
+            type: 'line',
+            borderColor: '#a855f7',
+            backgroundColor: 'rgba(168,85,247,0.2)',
+            borderWidth: 2,
+            tension: 0.3,
+            yAxisID: 'y1'
+          }
+        ]
+      },
+      options: {
+        responsive: true,
+        plugins: {
+          legend: {
+            labels: { color: '#9CA3AF', font: { size: 11 } }
+          }
+        },
+        scales: {
+          x: {
+            ticks: { color: '#6B7280', font: { size: 11 } },
+            grid: { color: '#111827' }
+          },
+          y: {
+            position: 'left',
+            ticks: { color: '#6B7280', stepSize: 1 },
+            grid: { color: '#1F2937' }
+          },
+          y1: {
+            position: 'right',
+            ticks: { color: '#a855f7' },
+            grid: { drawOnChartArea: false }
+          }
+        }
+      }
+    })
+  }
 }
 
 /* ===================================================
@@ -5644,10 +7223,39 @@ function switchSettingsTab(tabId, el) {
 }
 
 function saveProfileSettings() {
-  currentUser.email    = document.getElementById('settingsEmail').value.trim()
-  currentUser.fullName = document.getElementById('settingsFullName').value.trim()
-  currentUser.bio      = document.getElementById('settingsBio').value.trim()
-  currentUser.timezone = document.getElementById('settingsTimezone').value
+  let payload = {
+    email: document.getElementById('settingsEmail').value.trim(),
+    fullName: document.getElementById('settingsFullName').value.trim(),
+    bio: document.getElementById('settingsBio').value.trim(),
+    timezone: document.getElementById('settingsTimezone').value
+  }
+
+  if (ALTER_API_BASE && getAuthToken()) {
+    fetch(ALTER_API_BASE + '/api/me/profile', {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer ' + getAuthToken()
+      },
+      body: JSON.stringify(payload)
+    })
+    .then(r => r.json().then(body => ({ ok: r.ok, body })))
+    .then(res => {
+      if (!res.ok) return showToast(res.body.error || 'Failed to save profile', 'error')
+      currentUser = { ...currentUser, ...payload }
+      save('session', currentUser)
+      updateSidebarUser()
+      addAuditLog('update', 'Updated profile settings', 'update')
+      showToast('Profile saved!', 'success')
+    })
+    .catch(() => showToast('Network error while saving profile', 'error'))
+    return
+  }
+
+  currentUser.email    = payload.email
+  currentUser.fullName = payload.fullName
+  currentUser.bio      = payload.bio
+  currentUser.timezone = payload.timezone
 
   let idx = users.findIndex(u => u.id === currentUser.id)
   if (idx >= 0) { users[idx] = currentUser; save('users', users); save('session', currentUser) }
@@ -5678,9 +7286,33 @@ function changePassword() {
   let confirm = document.getElementById('confirmPassword').value
 
   if (!current) return showToast('Enter your current password', 'error')
-  if (current !== currentUser.password) return showToast('Current password is incorrect', 'error')
   if (np.length < 6) return showToast('New password must be at least 6 characters', 'error')
   if (np !== confirm) return showToast('Passwords do not match', 'error')
+
+  if (ALTER_API_BASE && getAuthToken()) {
+    fetch(ALTER_API_BASE + '/api/auth/change-password', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer ' + getAuthToken()
+      },
+      body: JSON.stringify({ currentPassword: current, newPassword: np })
+    })
+    .then(r => r.json().then(body => ({ ok: r.ok, body })))
+    .then(res => {
+      if (!res.ok) return showToast(res.body.error || 'Failed to change password', 'error')
+      ;['currentPassword','newPassword','confirmPassword'].forEach(id => {
+        let el = document.getElementById(id)
+        if (el) el.value = ''
+      })
+      addAuditLog('update', 'Changed account password', 'update')
+      showToast('Password changed!', 'success')
+    })
+    .catch(() => showToast('Network error while changing password', 'error'))
+    return
+  }
+
+  if (current !== currentUser.password) return showToast('Current password is incorrect', 'error')
 
   currentUser.password = np
   let idx = users.findIndex(u => u.id === currentUser.id)
@@ -5693,25 +7325,170 @@ function changePassword() {
 
 function enableTwoFactor() { showToast('Two-factor authentication setup coming soon!', 'info') }
 
+function openGoalUpdateModal(id) {
+  const g = goals.find(x => x.id === id)
+  if (!g) return
+  document.getElementById('modalGoalUpdateId').value = id
+  document.getElementById('modalGoalUpdateText').value = ''
+  document.getElementById('goalUpdateModal').classList.add('active')
+}
+
+function closeGoalUpdateModal() {
+  document.getElementById('goalUpdateModal').classList.remove('active')
+}
+
+function saveGoalUpdate() {
+  const id   = document.getElementById('modalGoalUpdateId').value
+  const text = document.getElementById('modalGoalUpdateText').value.trim()
+  if (!id || !text) { showToast('Please enter an update first.', 'error'); return }
+  const g = goals.find(x => x.id === id)
+  if (!g) return
+  if (!Array.isArray(g.updates)) g.updates = []
+  g.updates.unshift({ text, createdAt: new Date().toISOString() })
+  save('goals', goals)
+  closeGoalUpdateModal()
+  renderGoals()
+  addActivity(`Goal update: ${g.title} – ${text}`)
+  addAuditLog('update', `Updated goal \"${g.title}\"`, 'update')
+  showToast('Goal update added.', 'success')
+}
+
+function openConfirmModal(opts) {
+  pendingConfirm = opts || null
+  const titleEl = document.getElementById('confirmTitle')
+  const msgEl   = document.getElementById('confirmMessage')
+  const btnEl   = document.getElementById('confirmPrimaryBtn')
+  if (titleEl) titleEl.textContent = opts.title || 'Are you sure?'
+  if (msgEl) msgEl.textContent     = opts.message || ''
+  if (btnEl) {
+    btnEl.textContent = opts.level === 'danger' ? 'Delete' : 'Confirm'
+    btnEl.className = opts.level === 'danger' ? 'btn-danger' : 'btn-primary'
+  }
+  document.getElementById('confirmModal').classList.add('active')
+}
+
+function closeConfirmModal() {
+  pendingConfirm = null
+  document.getElementById('confirmModal').classList.remove('active')
+}
+
+function confirmAction() {
+  if (!pendingConfirm) {
+    closeConfirmModal()
+    return
+  }
+  const cfg = pendingConfirm
+  pendingConfirm = null
+  closeConfirmModal()
+  switch (cfg.type) {
+    case 'logout':
+      clearAuthToken()
+      localStorage.removeItem('alco_session')
+      Object.keys(charts).forEach(function (k) { try { if (charts[k]) charts[k].destroy() } catch(e){} })
+      charts = {}
+      stopTimer()
+      currentUser = null
+      document.getElementById('app').classList.add('hidden')
+      document.getElementById('loginScreen').classList.remove('hidden')
+      document.getElementById('usernameInput').value = ''
+      document.getElementById('passwordInput').value = ''
+      break
+    case 'delete_project':
+      reallyDeleteProject(cfg.id)
+      break
+    case 'delete_task':
+      reallyDeleteTask(cfg.id)
+      break
+    case 'delete_idea':
+      reallyDeleteIdea(cfg.id)
+      break
+    case 'delete_goal':
+      reallyDeleteGoal(cfg.id)
+      break
+    case 'remove_member':
+      reallyRemoveMember(cfg.id)
+      break
+    case 'delete_account':
+      reallyDeleteAccount()
+      break
+    case 'reset_workspace':
+      reallyResetWorkspace()
+      break
+    default:
+      break
+  }
+}
+
 function deleteAccount() {
-  showConfirmModal('Delete account', 'This will permanently delete your account and ALL data. This cannot be undone.', function () {
-    var confirm2 = prompt('Type your username to confirm:')
-    if (confirm2 !== currentUser.username) return showToast('Username does not match', 'error')
-    users = users.filter(function (u) { return u.id !== currentUser.id })
-    save('users', users)
-    ;['projects','tasks','ideas','events','team','notifications','activity','time','audit','apikeys'].forEach(function (k) { localStorage.removeItem('alco_' + k) })
-    doLogout()
+  if (ALTER_API_BASE && getAuthToken()) {
+    fetch(ALTER_API_BASE + '/api/me', {
+      method: 'DELETE',
+      headers: {
+        'Authorization': 'Bearer ' + getAuthToken()
+      }
+    })
+    .then(r => {
+      if (!r.ok) throw new Error('Delete failed')
+      clearAuthToken()
+      localStorage.removeItem('alco_session')
+
+      Object.keys(charts).forEach(function (k) {
+        try { if (charts[k]) charts[k].destroy() } catch (e) {}
+      })
+      charts = {}
+
+      stopTimer()
+      currentUser = null
+
+      document.getElementById('app').classList.add('hidden')
+      document.getElementById('loginScreen').classList.remove('hidden')
+      document.getElementById('usernameInput').value = ''
+      document.getElementById('passwordInput').value = ''
+
+      showToast('Account deleted', 'success')
+    })
+    .catch(() => showToast('Failed to delete account on server', 'error'))
+    return
+  }
+
+  users = users.filter(u => u.id !== currentUser.id)
+  save('users', users)
+  ;['projects','tasks','ideas','events','team','notifications','activity','time','audit','apikeys','usersettings'].forEach(k => {
+    localStorage.removeItem('alco_' + k)
   })
+
+  Object.keys(charts).forEach(function (k) {
+    try { if (charts[k]) charts[k].destroy() } catch (e) {}
+  })
+  charts = {}
+
+  stopTimer()
+  currentUser = null
+  localStorage.removeItem('alco_session')
+
+  document.getElementById('app').classList.add('hidden')
+  document.getElementById('loginScreen').classList.remove('hidden')
+  document.getElementById('usernameInput').value = ''
+  document.getElementById('passwordInput').value = ''
+
+  showToast('Account deleted', 'success')
 }
 
 function resetWorkspace() {
-  showConfirmModal('Reset workspace', 'This will delete ALL projects, tasks, ideas, and events. Are you sure?', function () {
-    projects = []; tasks = []; ideas = []; events = []; timeEntries = []; activity = []
-    ;['projects','tasks','ideas','events','time','activity'].forEach(function (k) { save(k, []) })
-    renderAllPages()
-    addAuditLog('delete', 'Reset entire workspace', 'delete')
-    showToast('Workspace reset!', 'warning')
+  openConfirmModal({
+    type: 'reset_workspace',
+    title: 'Reset workspace',
+    message: 'This will delete ALL projects, tasks, ideas, events, and activity in this workspace.',
+    level: 'danger'
   })
+}
+
+function reallyResetWorkspace() {
+  projects = []; tasks = []; ideas = []; events = []; timeEntries = []; activity = []
+  ;['projects','tasks','ideas','events','time','activity'].forEach(k => save(k, []))
+  renderAllPages()
+  addAuditLog('delete', 'Reset entire workspace', 'delete')
+  showToast('Workspace reset!', 'warning')
 }
 
 /* ===================================================
@@ -5760,16 +7537,26 @@ function deleteApiKey(id) {
    SEARCH
 =================================================== */
 function searchAll() {
-  let q = document.getElementById('globalSearch')?.value.toLowerCase().trim()
-  if (!q) { renderProjects(); renderTasks(); renderIdeas(); return }
+  let input = document.getElementById('globalSearch')
+  if (!input) return
 
-  let fp = projects.filter(p => p.name.toLowerCase().includes(q) || (p.description||'').toLowerCase().includes(q))
-  let ft = tasks.filter(t => t.title.toLowerCase().includes(q) || (t.description||'').toLowerCase().includes(q))
-  let fi = ideas.filter(i => i.title.toLowerCase().includes(q) || (i.description||'').toLowerCase().includes(q))
+  let q = input.value.toLowerCase().trim()
+  if (!q) {
+    renderProjects()
+    renderTasks()
+    renderIdeas()
+    return
+  }
+
+  let fp = projects.filter(p => p.name.toLowerCase().includes(q) || (p.description || '').toLowerCase().includes(q))
+  let ft = tasks.filter(t => t.title.toLowerCase().includes(q) || (t.description || '').toLowerCase().includes(q))
+  let fi = ideas.filter(i => i.title.toLowerCase().includes(q) || (i.description || '').toLowerCase().includes(q))
 
   document.getElementById('projectsList').innerHTML = fp.map(buildProjectCard).join('') ||
     `<div class="empty-state"><div class="empty-state-icon">🔍</div><h3>No projects matching "${escapeHtml(q)}"</h3></div>`
+
   renderTasks(ft)
+
   document.getElementById('ideasList').innerHTML = fi.map(buildIdeaCard).join('') ||
     `<div class="empty-state"><div class="empty-state-icon">🔍</div><h3>No ideas matching "${escapeHtml(q)}"</h3></div>`
 }
@@ -5852,93 +7639,53 @@ function exportData() {
   }
 }
 
-function restoreFromBackupFile(event) {
-  var file = event.target.files[0]
-  if (!file) return
-  var reader = new FileReader()
-  reader.onload = function () {
-    try {
-      var data = JSON.parse(reader.result)
-      if (Array.isArray(data.projects)) { projects = data.projects; save('projects', projects) }
-      if (Array.isArray(data.tasks)) { tasks = data.tasks; save('tasks', tasks) }
-      if (Array.isArray(data.ideas)) { ideas = data.ideas; save('ideas', ideas) }
-      if (Array.isArray(data.events)) { events = data.events; save('events', events) }
-      if (Array.isArray(data.timeEntries)) { timeEntries = data.timeEntries; save('time', timeEntries) }
-      if (Array.isArray(data.team)) { team = data.team; save('team', team) }
-      if (Array.isArray(data.notifications)) { notifications = data.notifications; save('notifications', notifications) }
-      if (Array.isArray(data.activity)) { activity = data.activity; save('activity', activity) }
-      if (Array.isArray(data.auditLogs)) { auditLogs = data.auditLogs; save('audit', auditLogs) }
-      if (Array.isArray(data.invoices)) { invoices = data.invoices; save('invoices', invoices) }
-      if (Array.isArray(data.apiKeys)) { apiKeys = data.apiKeys; save('apikeys', apiKeys) }
-      if (data.userSettings && typeof data.userSettings === 'object') { userSettings = data.userSettings; save('usersettings', userSettings) }
-      renderAllPages()
-      updateStats()
-      addAuditLog('other', 'Restored workspace from backup', 'other')
-      showToast('Backup restored!', 'success')
-    } catch (e) {
-      showToast('Invalid backup file', 'error')
-      console.error(e)
-    }
-    event.target.value = ''
-  }
-  reader.readAsText(file)
-}
-
 function generateReport() {
-  if (!currentUser) return showToast('Sign in to generate report', 'error')
-  var done = tasks.filter(function (t) { return t.status === 'done' }).length
-  var rate = tasks.length > 0 ? Math.round((done / tasks.length) * 100) : 0
-  var totalHours = (timeEntries.reduce(function (s, e) { return s + (e.duration || 0) }, 0) / 3600).toFixed(1)
-  var userName = (currentUser && (currentUser.fullName || currentUser.username)) || 'User'
-  var report = 'ALTER.CO WORKSPACE REPORT\n' +
-'Generated: ' + new Date().toLocaleDateString() + '\n' +
-'Workspace: ' + (localStorage.getItem('alco_workspace_name') || 'My Workspace') + '\n' +
-'User: ' + userName + '\n' +
-'\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━\nSUMMARY\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n' +
-'Projects:        ' + projects.length + '\n' +
-'  Active:        ' + projects.filter(function (p) { return p.status === 'active' }).length + '\n' +
-'  Completed:     ' + projects.filter(function (p) { return p.status === 'completed' }).length + '\n' +
-'  On Hold:       ' + projects.filter(function (p) { return p.status === 'on-hold' }).length + '\n\n' +
-'Tasks:           ' + tasks.length + '\n' +
-'  Completed:     ' + done + ' (' + rate + '%)\n' +
-'  In Progress:   ' + tasks.filter(function (t) { return t.status === 'in-progress' }).length + '\n' +
-'  To Do:         ' + tasks.filter(function (t) { return t.status === 'todo' }).length + '\n' +
-'  In Review:     ' + tasks.filter(function (t) { return t.status === 'review' }).length + '\n\n' +
-'Ideas Submitted: ' + ideas.length + '\n' +
-'Events:          ' + events.length + '\n' +
-'Team Members:    ' + (team.length + 1) + '\n' +
-'Hours Tracked:   ' + totalHours + 'h\n' +
-'━━━━━━━━━━━━━━━━━━━━━━━━━━━━'
-  alert(report)
+  let done = tasks.filter(t => t.status === 'done').length
+  let rate = tasks.length > 0 ? Math.round((done / tasks.length) * 100) : 0
+  let totalHours = (timeEntries.reduce((s, e) => s + (e.duration||0), 0) / 3600).toFixed(1)
+
+  let report = `ALTER.CO WORKSPACE REPORT
+Generated: ${new Date().toLocaleDateString()}
+Workspace: ${localStorage.getItem('alco_workspace_name') || 'My Workspace'}
+User: ${currentUser.fullName || currentUser.username}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+SUMMARY
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Projects:        ${projects.length}
+  Active:        ${projects.filter(p=>p.status==='active').length}
+  Completed:     ${projects.filter(p=>p.status==='completed').length}
+  On Hold:       ${projects.filter(p=>p.status==='on-hold').length}
+
+Tasks:           ${tasks.length}
+  Completed:     ${done} (${rate}%)
+  In Progress:   ${tasks.filter(t=>t.status==='in-progress').length}
+  To Do:         ${tasks.filter(t=>t.status==='todo').length}
+  In Review:     ${tasks.filter(t=>t.status==='review').length}
+
+Ideas Submitted: ${ideas.length}
+Events:          ${events.length}
+Team Members:    ${team.length + 1}
+Hours Tracked:   ${totalHours}h
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━`
+
+  try {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(report)
+      showToast('Workspace report copied to clipboard.', 'success')
+    } else {
+      console.log('Workspace report:\\n' + report)
+      showToast('Workspace report logged to console.', 'success')
+    }
+  } catch (e) {
+    console.log('Workspace report:\\n' + report)
+    showToast('Could not copy report, logged in console.', 'error')
+  }
   addAuditLog('other', 'Generated workspace report', 'other')
-  showToast('Report generated!', 'success')
 }
 
 function handleModalBackdrop(e) {
   if (e.target.classList.contains('modal')) e.target.classList.remove('active')
-}
-
-var confirmModalCallback = null
-function showConfirmModal(title, message, onConfirm, okLabel) {
-  document.getElementById('confirmModalTitle').textContent = title || 'Confirm'
-  document.getElementById('confirmModalMsg').textContent = message || 'Are you sure?'
-  var okBtn = document.getElementById('confirmModalOk')
-  okBtn.textContent = okLabel || 'Confirm'
-  okBtn.className = okLabel === 'Sign out' ? 'btn-secondary' : 'btn-danger'
-  confirmModalCallback = onConfirm
-  document.getElementById('confirmModal').classList.add('active')
-  okBtn.onclick = function () {
-    if (confirmModalCallback) confirmModalCallback()
-    confirmModalCallback = null
-    document.getElementById('confirmModal').classList.remove('active')
-  }
-}
-function closeConfirmModal() {
-  confirmModalCallback = null
-  document.getElementById('confirmModal').classList.remove('active')
-}
-function handleConfirmModalBackdrop(e) {
-  if (e.target.id === 'confirmModal') closeConfirmModal()
 }
 
 // Close notifications panel on outside click
@@ -5951,6 +7698,10 @@ document.addEventListener('click', e => {
   let cmd = document.getElementById('commandPalette')
   if (cmd && cmd.classList.contains('active') && e.target === cmd) closeCommandPalette(e)
 })
+
+// Enable basic touch move for tasks on mobile
+document.addEventListener('touchstart', handleTaskTouchStart, { passive: true })
+document.addEventListener('touchend', handleTaskTouchEnd)
 </script>
 </body>
 </html>
