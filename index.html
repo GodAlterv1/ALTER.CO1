@@ -2129,6 +2129,32 @@ kbd {
     grid-template-columns: 1fr;
   }
 }
+
+/* ===== PAGES (Notion-style blocks) ===== */
+.pages-editor-layout { display: grid; grid-template-columns: 320px 1fr; gap: 20px; margin-top: 10px; }
+.pages-sidebar { min-width: 0; }
+.pages-list { margin-top: 8px; display: flex; flex-direction: column; gap: 8px; }
+.pages-row { padding: 10px 12px; border: 1px solid #1F2937; border-radius: 12px; cursor: pointer; background: #0B0F18; color: #E5E7EB; }
+.pages-row:hover { border-color: #4f46e5; }
+.pages-row.active { border-color: #4f46e5; box-shadow: 0 0 0 1px rgba(79,70,229,.35) inset; }
+
+.blocks-container { margin-top: 8px; display: flex; flex-direction: column; gap: 10px; }
+.block-row { border: 1px solid transparent; padding: 6px 10px; border-radius: 12px; }
+.block-row:hover { border-color: #1F2937; background: rgba(17,24,39,.4); }
+.block-row.active { border-color: #4f46e5; background: rgba(79,70,229,.08); }
+.block-text { outline: none; color: #E5E7EB; font-size: 14px; line-height: 1.5; }
+.block-text[contenteditable="true"]:empty:before { content: attr(data-placeholder); color: #6B7280; }
+.block-heading { font-size: 20px; font-weight: 800; color: #fff; }
+.block-divider { height: 1px; background: #1F2937; margin: 6px 0; }
+.block-checklist { display: flex; align-items: flex-start; gap: 10px; }
+.block-checklist input[type="checkbox"] { margin-top: 4px; }
+.block-checklist .check-text { flex: 1; }
+
+.block-insert-menu { position: fixed; z-index: 9999; right: 20px; top: 120px; width: 260px; background: #0B0F18; border: 1px solid #1F2937; border-radius: 14px; padding: 12px; box-shadow: 0 20px 60px rgba(0,0,0,0.6); }
+.block-insert-menu.hidden { display: none; }
+.block-insert-menu button { width: 100%; text-align: left; margin-bottom: 8px; padding: 10px 12px; border-radius: 12px; border: 1px solid #1F2937; background: #111827; color: #E5E7EB; cursor: pointer; }
+.block-insert-menu button:hover { border-color: #4f46e5; }
+
 </style>
 <meta name="alter-api-base" content="http://localhost:3000" id="alterApiBaseMeta">
 </head>
@@ -2202,6 +2228,10 @@ kbd {
         <div class="nav-item" onclick="switchPage('tasks', this)">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
           Tasks
+        </div>
+        <div class="nav-item" onclick="switchPage('pages', this)">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="16" y2="17"/></svg>
+          Pages
         </div>
         <div class="nav-item" onclick="switchPage('timetracking', this)">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
@@ -2857,6 +2887,39 @@ kbd {
       </div>
 
       <!-- ANALYTICS -->
+      <!-- PAGES (Notion-style block editor) -->
+      <div id="pages" class="page page-content hidden">
+        <div class="workspace-header">
+          <div>
+            <h1>Pages</h1>
+            <p>Write with blocks: text, headings, checklists, dividers</p>
+          </div>
+          <button onclick="createNewPage()">+ New Page</button>
+        </div>
+
+        <div class="pages-editor-layout">
+          <div class="pages-sidebar">
+            <div class="search-container" style="margin-bottom:10px;">
+              <input id="pagesSearch" placeholder="Search pages..." oninput="renderPagesList()" style="width:100%;">
+            </div>
+            <div class="pages-list" id="pagesList"></div>
+          </div>
+
+          <div class="pages-main">
+            <div class="card" style="padding:16px;">
+              <input id="pageTitleInput" placeholder="Page title" type="text" style="width:100%;padding:12px 14px;background:#111827;border:1px solid #1F2937;color:white;border-radius:10px;font-size:14px;margin-bottom:12px;">
+              <div id="blocksContainer" class="blocks-container"></div>
+              <div style="margin-top:10px;font-size:12px;color:#6B7280;">
+                Tip: type <b>/</b> to insert a block menu. Press <b>Enter</b> on a text block to add a new paragraph.
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Insert Block Menu -->
+        <div id="blockInsertMenu" class="block-insert-menu hidden"></div>
+      </div>
+
       <div id="analytics" class="page page-content hidden">
         <div class="workspace-header">
           <div>
@@ -3725,6 +3788,7 @@ let auditLogs     = JSON.parse(localStorage.getItem('alco_audit'))         || []
 let apiKeys       = JSON.parse(localStorage.getItem('alco_apikeys'))       || []
 let invoices      = JSON.parse(localStorage.getItem('alco_invoices'))      || []
 let userSettings  = JSON.parse(localStorage.getItem('alco_usersettings'))  || {}
+let pages         = JSON.parse(localStorage.getItem('alco_pages'))         || []
 // Ensure calendar state exists before any boot logic runs
 var currentDate  = new Date()
 
@@ -3803,6 +3867,7 @@ function applyWorkspaceToState(data) {
   if (Array.isArray(data.auditLogs)) auditLogs = data.auditLogs
   if (Array.isArray(data.invoices)) invoices = data.invoices
   if (Array.isArray(data.apiKeys)) apiKeys = data.apiKeys
+  if (Array.isArray(data.pages)) pages = data.pages
   if (data.userSettings && typeof data.userSettings === 'object') userSettings = data.userSettings
 }
 
@@ -3821,7 +3886,8 @@ function syncWorkspaceToBackend() {
     auditLogs: auditLogs,
     invoices: invoices,
     apiKeys: apiKeys,
-    userSettings: userSettings
+    userSettings: userSettings,
+    pages: pages
   }
   return fetch(ALTER_API_BASE + '/api/workspace', {
     method: 'PUT',
@@ -3851,6 +3917,11 @@ var selectedCalendarDate = null      // 'YYYY-MM-DD'
 
 // Billing state
 let billingPeriod = 'monthly' // 'monthly' or 'yearly'
+
+// Pages / Blocks editor state
+let currentPageId = null
+let blockInsertIndex = null
+let blockInsertMenuVisible = false
 
 // Timer state
 let timerRunning   = false
@@ -4095,7 +4166,7 @@ function register() {
         setAuthToken(res.body.token)
         save('session', res.body.user)
         currentUser = res.body.user
-        applyWorkspaceToState({ projects: [], tasks: [], ideas: [], events: [], timeEntries: [], team: [], notifications: [], activity: [], auditLogs: [], invoices: [], apiKeys: [], userSettings: {} })
+        applyWorkspaceToState({ projects: [], tasks: [], ideas: [], events: [], timeEntries: [], team: [], notifications: [], activity: [], auditLogs: [], invoices: [], apiKeys: [], userSettings: {}, pages: [] })
         addAuditLog('login', 'Account created', 'login')
         showApp()
       })
@@ -4292,6 +4363,7 @@ function switchPage(pageId, el) {
     profile:'Profile',
     projects:'Projects',
     tasks:'Tasks',
+    pages:'Pages',
     timetracking:'Time Tracking',
     ideas:'Ideas',
     calendar:'Calendar',
@@ -4307,6 +4379,7 @@ function switchPage(pageId, el) {
 
   if (pageId === 'analytics')   renderAnalyticsCharts()
   if (pageId === 'timetracking') renderTimeTracking()
+  if (pageId === 'pages')       renderPagesEditor()
   if (pageId === 'billing')      renderBilling()
   if (pageId === 'auditlog')     renderAuditLog()
   if (pageId === 'goals')        renderGoals()
@@ -6803,6 +6876,365 @@ function exportAuditLog() {
   let a    = Object.assign(document.createElement('a'), { href: URL.createObjectURL(blob), download: `audit-log-${Date.now()}.txt` })
   a.click()
   showToast('Audit log exported!', 'success')
+}
+
+/* ===================================================
+   PAGES (Notion-style blocks)
+=================================================== */
+let blocksEditorHandlersBound = false
+
+function ensurePageInitialized() {
+  if (!pages || !pages.length) {
+    pages = [{
+      id: genId(),
+      title: 'Untitled',
+      created: new Date().toISOString(),
+      updated: new Date().toISOString(),
+      blocks: [
+        { id: genId(), type: 'paragraph', text: '' }
+      ]
+    }]
+    save('pages', pages)
+  }
+}
+
+function createNewPage() {
+  ensurePageInitialized()
+  const newPage = {
+    id: genId(),
+    title: 'Untitled',
+    created: new Date().toISOString(),
+    updated: new Date().toISOString(),
+    blocks: [{ id: genId(), type: 'paragraph', text: '' }]
+  }
+  pages.unshift(newPage)
+  save('pages', pages)
+  currentPageId = newPage.id
+  renderPagesEditor()
+}
+
+function renderPagesList() {
+  ensurePageInitialized()
+  const search = (document.getElementById('pagesSearch')?.value || '').toLowerCase().trim()
+  let list = pages
+  if (search) list = pages.filter(p => (p.title || '').toLowerCase().includes(search))
+
+  const el = document.getElementById('pagesList')
+  if (!el) return
+
+  el.innerHTML = list.map(p => `
+    <div class="pages-row ${p.id === currentPageId ? 'active' : ''}" onclick="openPage('${p.id}')">
+      <div style="font-weight:700;font-size:13px;">${escapeHtml(p.title || 'Untitled')}</div>
+      <div style="font-size:11px;color:#6B7280;margin-top:4px;">${new Date(p.updated || p.created).toLocaleDateString()}</div>
+    </div>
+  `).join('')
+}
+
+function openPage(pageId) {
+  currentPageId = pageId
+  const p = pages.find(x => x.id === pageId)
+  if (!p) return
+
+  // Keep title input in sync
+  const titleInput = document.getElementById('pageTitleInput')
+  if (titleInput) titleInput.value = p.title || ''
+
+  renderBlocksForCurrentPage()
+  renderPagesList()
+}
+
+function newBlockOfType(type) {
+  if (type === 'divider') return { id: genId(), type }
+  if (type === 'checklist') return { id: genId(), type, checked: false, text: '' }
+  if (type === 'heading') return { id: genId(), type, text: '' }
+  if (type === 'quote') return { id: genId(), type, text: '' }
+  // default paragraph
+  return { id: genId(), type: 'paragraph', text: '' }
+}
+
+function focusBlockIndex(index) {
+  const container = document.getElementById('blocksContainer')
+  if (!container) return
+  const el = container.querySelector(`[data-block-index="${index}"][data-block-field="text"]`) ||
+             container.querySelector(`[data-block-index="${index}"][data-block-field="checkText"]`)
+  if (el && el.focus) {
+    el.focus()
+    // Move caret to end for better UX
+    try {
+      const range = document.createRange()
+      range.selectNodeContents(el)
+      range.collapse(false)
+      const sel = window.getSelection()
+      sel.removeAllRanges()
+      sel.addRange(range)
+    } catch (e) {}
+  }
+}
+
+function updateCurrentPageAndPersist(mutator) {
+  ensurePageInitialized()
+  const page = pages.find(x => x.id === currentPageId)
+  if (!page) return
+
+  mutator(page)
+  page.updated = new Date().toISOString()
+  save('pages', pages)
+}
+
+function renderBlocksForCurrentPage() {
+  ensurePageInitialized()
+  if (!currentPageId) currentPageId = pages[0]?.id || null
+
+  const page = pages.find(x => x.id === currentPageId)
+  if (!page) return
+
+  const container = document.getElementById('blocksContainer')
+  if (!container) return
+
+  if (!Array.isArray(page.blocks)) page.blocks = []
+  if (!page.blocks.length) page.blocks.push({ id: genId(), type: 'paragraph', text: '' })
+
+  container.innerHTML = page.blocks.map((b, i) => {
+    if (b.type === 'divider') {
+      return `
+        <div class="block-row" data-block-index="${i}" data-block-type="divider" onclick="setTimeout(()=>{},0)">
+          <div class="block-divider"></div>
+        </div>
+      `
+    }
+
+    if (b.type === 'checklist') {
+      return `
+        <div class="block-row" data-block-index="${i}" data-block-type="checklist">
+          <div class="block-checklist">
+            <input type="checkbox" ${b.checked ? 'checked' : ''} class="check-input" aria-label="Checklist item checkbox" />
+            <div class="check-text block-text"
+                 contenteditable="true"
+                 data-block-index="${i}"
+                 data-block-field="checkText"
+                 data-placeholder="Checklist item">
+              ${escapeHtml(b.text || '')}
+            </div>
+          </div>
+        </div>
+      `
+    }
+
+    if (b.type === 'heading') {
+      return `
+        <div class="block-row" data-block-index="${i}" data-block-type="heading">
+          <div class="block-text block-heading"
+               contenteditable="true"
+               data-block-index="${i}"
+               data-block-field="text"
+               data-placeholder="Heading 1">
+            ${escapeHtml(b.text || '')}
+          </div>
+        </div>
+      `
+    }
+
+    if (b.type === 'quote') {
+      return `
+        <div class="block-row" data-block-index="${i}" data-block-type="quote">
+          <div class="block-text"
+               contenteditable="true"
+               data-block-index="${i}"
+               data-block-field="text"
+               data-placeholder="Quote"
+               style="border-left:2px solid #4f46e5;padding-left:12px;">
+            ${escapeHtml(b.text || '')}
+          </div>
+        </div>
+      `
+    }
+
+    // paragraph default
+    return `
+      <div class="block-row" data-block-index="${i}" data-block-type="paragraph">
+        <div class="block-text"
+             contenteditable="true"
+             data-block-index="${i}"
+             data-block-field="text"
+             data-placeholder="Type something...">
+          ${escapeHtml(b.text || '')}
+        </div>
+      </div>
+    `
+  }).join('')
+
+  bindBlocksEditorHandlersIfNeeded()
+}
+
+function addBlockAt(index, type) {
+  updateCurrentPageAndPersist(page => {
+    if (!Array.isArray(page.blocks)) page.blocks = []
+    const newBlock = newBlockOfType(type)
+    const insertAt = Math.max(0, Math.min(index, page.blocks.length))
+    page.blocks.splice(insertAt, 0, newBlock)
+  })
+}
+
+function removeBlockAt(index) {
+  updateCurrentPageAndPersist(page => {
+    if (!Array.isArray(page.blocks)) return
+    if (page.blocks.length <= 1) return // keep at least one block
+    page.blocks.splice(index, 1)
+  })
+}
+
+function showBlockInsertMenu(afterIndex) {
+  const menu = document.getElementById('blockInsertMenu')
+  if (!menu) return
+  blockInsertIndex = afterIndex
+  if (!menu.innerHTML) {
+    menu.innerHTML = `
+      <button onclick="insertBlockFromMenu('paragraph')">Paragraph</button>
+      <button onclick="insertBlockFromMenu('heading')">Heading</button>
+      <button onclick="insertBlockFromMenu('checklist')">Checklist</button>
+      <button onclick="insertBlockFromMenu('quote')">Quote</button>
+      <button onclick="insertBlockFromMenu('divider')">Divider</button>
+    `
+  }
+  menu.classList.remove('hidden')
+  blockInsertMenuVisible = true
+}
+
+function hideBlockInsertMenu() {
+  const menu = document.getElementById('blockInsertMenu')
+  if (!menu) return
+  menu.classList.add('hidden')
+  blockInsertMenuVisible = false
+  blockInsertIndex = null
+}
+
+function insertBlockFromMenu(type) {
+  if (blockInsertIndex == null) return
+  addBlockAt(blockInsertIndex, type)
+  hideBlockInsertMenu()
+  renderBlocksForCurrentPage()
+  focusBlockIndex(blockInsertIndex)
+}
+
+function bindBlocksEditorHandlersIfNeeded() {
+  if (blocksEditorHandlersBound) return
+  blocksEditorHandlersBound = true
+
+  const container = document.getElementById('blocksContainer')
+  if (!container) return
+
+  // Input updates
+  container.addEventListener('input', e => {
+    const target = e.target
+    if (!target) return
+    const idx = Number(target.getAttribute('data-block-index'))
+    const field = target.getAttribute('data-block-field')
+    if (Number.isNaN(idx) || !field) return
+
+    const text = target.innerText || ''
+    updateCurrentPageAndPersist(page => {
+      const b = page.blocks[idx]
+      if (!b) return
+      if (field === 'text') b.text = text
+      if (field === 'checkText') b.text = text
+    })
+  })
+
+  // Key shortcuts
+  container.addEventListener('keydown', e => {
+    const t = e.target
+    if (!t || !t.getAttribute) return
+    const idx = Number(t.getAttribute('data-block-index'))
+    const field = t.getAttribute('data-block-field')
+    if (Number.isNaN(idx)) return
+
+    // Close menu
+    if (e.key === 'Escape' && blockInsertMenuVisible) {
+      e.preventDefault()
+      hideBlockInsertMenu()
+      return
+    }
+
+    // '/' inserts block menu
+    if (e.key === '/' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+      const text = (t.innerText || '').replace(/\u00A0/g, ' ').trim()
+      // Only trigger when user isn't in the middle of text
+      if (!text) {
+        e.preventDefault()
+        showBlockInsertMenu(idx + 1)
+      }
+      return
+    }
+
+    // Enter creates next paragraph block
+    if (e.key === 'Enter') {
+      e.preventDefault()
+      addBlockAt(idx + 1, 'paragraph')
+      renderBlocksForCurrentPage()
+      focusBlockIndex(idx + 1)
+      hideBlockInsertMenu()
+      return
+    }
+
+    // Backspace on empty removes the block
+    if (e.key === 'Backspace') {
+      const text = (t.innerText || '').replace(/\u00A0/g, ' ').trim()
+      if (!text) {
+        if (idx > 0) {
+          e.preventDefault()
+          removeBlockAt(idx)
+          renderBlocksForCurrentPage()
+          focusBlockIndex(Math.max(0, idx - 1))
+        }
+      }
+    }
+  })
+
+  // Checklist checkbox toggles
+  container.addEventListener('change', e => {
+    const target = e.target
+    if (!target || target.type !== 'checkbox') return
+    const blockRow = target.closest('.block-row')
+    if (!blockRow) return
+    const idx = Number(blockRow.getAttribute('data-block-index'))
+    if (Number.isNaN(idx)) return
+    const checked = !!target.checked
+
+    updateCurrentPageAndPersist(page => {
+      const b = page.blocks[idx]
+      if (!b || b.type !== 'checklist') return
+      b.checked = checked
+    })
+  })
+
+  // Click outside closes menu
+  document.addEventListener('click', e => {
+    if (!blockInsertMenuVisible) return
+    const menu = document.getElementById('blockInsertMenu')
+    if (!menu) return
+    if (menu.contains(e.target)) return
+    hideBlockInsertMenu()
+  })
+}
+
+function renderPagesEditor() {
+  ensurePageInitialized()
+  if (!currentPageId) currentPageId = pages[0]?.id || null
+
+  renderPagesList()
+
+  const page = pages.find(x => x.id === currentPageId)
+  if (!page) return
+
+  const titleInput = document.getElementById('pageTitleInput')
+  if (titleInput) {
+    titleInput.value = page.title || ''
+    titleInput.oninput = () => {
+      updateCurrentPageAndPersist(p => { p.title = titleInput.value })
+    }
+  }
+
+  renderBlocksForCurrentPage()
 }
 
 /* ===================================================
