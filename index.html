@@ -3894,6 +3894,18 @@ function getAuthToken() { return localStorage.getItem('alco_token') || '' }
 function setAuthToken(t) { if (t) localStorage.setItem('alco_token', t); else localStorage.removeItem('alco_token') }
 function clearAuthToken() { localStorage.removeItem('alco_token') }
 
+function ensureCurrentUser() {
+  if (currentUser && currentUser.id) return currentUser
+  try {
+    const session = JSON.parse(localStorage.getItem('alco_session'))
+    if (session && session.id) {
+      currentUser = session
+      return currentUser
+    }
+  } catch (e) {}
+  return null
+}
+
 function loadWorkspaceFromBackend() {
   var token = getAuthToken()
   if (!ALTER_API_BASE || !token) return Promise.resolve(null)
@@ -4278,6 +4290,12 @@ function demoLogin() {
 }
 
 function showApp() {
+  if (!ensureCurrentUser()) {
+    // If we can't restore a session, stay on login screen.
+    document.getElementById('app').classList.add('hidden')
+    document.getElementById('loginScreen').classList.remove('hidden')
+    return
+  }
   document.getElementById('loginScreen').classList.add('hidden')
   document.getElementById('app').classList.remove('hidden')
   initGlobalErrorCapture()
@@ -4731,7 +4749,7 @@ function updateStats() {
    PROJECTS
 =================================================== */
 function openCreateProjectModal() {
-  if (!currentUser) {
+  if (!ensureCurrentUser()) {
     showToast('Please sign in to create a project', 'error')
     return
   }
@@ -4748,7 +4766,7 @@ function closeCreateProjectModal() {
 }
 
 function saveProject() {
-  if (!currentUser) {
+  if (!ensureCurrentUser()) {
     showToast('Please sign in to create a project', 'error')
     return
   }
@@ -4960,7 +4978,7 @@ function populateProjectSelect(selectId) {
 }
 
 function openCreateTaskModal() {
-  if (!currentUser) {
+  if (!ensureCurrentUser()) {
     showToast('Please sign in to create a task', 'error')
     return
   }
@@ -4985,7 +5003,7 @@ function closeCreateTaskModal() {
 }
 
 function saveTask() {
-  if (!currentUser) {
+  if (!ensureCurrentUser()) {
     showToast('Please sign in to create a task', 'error')
     return
   }
