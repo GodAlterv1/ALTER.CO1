@@ -238,6 +238,51 @@ app.post('/api/auth/login', (req, res) => {
   res.json({ token, user })
 })
 
+app.post('/api/auth/forgot-password', async (req, res) => {
+  try {
+    const { email } = req.body || {}
+    if (!email) {
+      return res.status(400).json({ error: 'Email is required' })
+    }
+
+    const users = readUsers()
+    const row = users.find(u => (u.email || '').toLowerCase() === String(email).toLowerCase())
+
+    // Always respond 200 to avoid leaking which emails exist
+    if (!row) {
+      return res.json({ ok: true })
+    }
+
+    // Generate a temporary password
+    const tempPassword = Math.random().toString(36).slice(-10)
+    row.password_hash = hashPassword(tempPassword)
+    writeUsers(users)
+
+    const ok = await sendEmailSafe({
+      to: row.email,
+      subject: 'Your ALTER.CO temporary password',
+      text:
+        `Hi ${row.full_name || row.username},\n\n` +
+        `A password reset was requested for your ALTER.CO account.\n\n` +
+        `Temporary password: ${tempPassword}\n\n` +
+        `Use this temporary password to sign in, then change it from Settings → Account.\n` +
+        `If you did NOT request this, we recommend signing in and changing your password.\n\n` +
+        `— ALTER.CO`
+    })
+
+    if (!ok) {
+      // Still return ok, but log on server for debugging
+      console.error('Forgot password email could not be sent (SMTP not configured).')
+    }
+
+    res.json({ ok: true })
+  } catch (e) {
+    console.error('Error in /api/auth/forgot-password', e)
+    // Don't expose details to client
+    res.json({ ok: true })
+  }
+})
+
 // ----- Routes: Workspace -----
 app.get('/api/workspace', authMiddleware, (req, res) => {
   let data = readWorkspace(req.userId)
