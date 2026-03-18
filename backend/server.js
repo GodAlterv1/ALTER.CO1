@@ -64,15 +64,30 @@ function writeWorkspace(userId, data) {
 
 // ----- Email (SMTP via Nodemailer) -----
 let mailTransporter = null
+let smtpConfigWarningLogged = false
 
 function getMailTransporter() {
   if (mailTransporter) return mailTransporter
 
   const { SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, SMTP_SECURE } = process.env
-  if (!SMTP_HOST || !SMTP_PORT || !SMTP_USER || !SMTP_PASS) {
+  const missing = []
+  if (!SMTP_HOST) missing.push('SMTP_HOST')
+  if (!SMTP_PORT) missing.push('SMTP_PORT')
+  if (!SMTP_USER) missing.push('SMTP_USER')
+  if (!SMTP_PASS) missing.push('SMTP_PASS')
+
+  if (missing.length) {
+    if (!smtpConfigWarningLogged) {
+      console.error('SMTP not configured. Missing env vars:', missing.join(', '))
+      smtpConfigWarningLogged = true
+    }
     return null
   }
-  if (!nodemailer) return null
+
+  if (!nodemailer) {
+    console.error('nodemailer dependency missing; cannot send email.')
+    return null
+  }
 
   mailTransporter = nodemailer.createTransport({
     host: SMTP_HOST,
@@ -90,7 +105,10 @@ function getMailTransporter() {
 async function sendEmailSafe({ to, subject, text }) {
   try {
     const transporter = getMailTransporter()
-    if (!transporter || !to) return false
+    if (!transporter || !to) {
+      if (!transporter) console.error('sendEmailSafe: transporter null (SMTP not configured?)')
+      return false
+    }
     const from = process.env.EMAIL_FROM || process.env.SMTP_USER
     await transporter.sendMail({ from, to, subject, text })
     return true
@@ -251,6 +269,10 @@ app.post('/api/auth/forgot-password', async (req, res) => {
     // Always respond 200 to avoid leaking which emails exist
     if (!row) {
       return res.json({ ok: true })
+    }
+
+    if (String(row.email || '').indexOf('@') === -1) {
+      console.error('Forgot password: stored user email is invalid:', row.email)
     }
 
     // Generate a temporary password
