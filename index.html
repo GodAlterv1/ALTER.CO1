@@ -4731,6 +4731,10 @@ function updateStats() {
    PROJECTS
 =================================================== */
 function openCreateProjectModal() {
+  if (!currentUser) {
+    showToast('Please sign in to create a project', 'error')
+    return
+  }
   document.getElementById('createProjectModal').classList.add('active')
   document.getElementById('modalProjectDeadline').value = ''
   document.getElementById('modalProjectStart').value    = new Date().toISOString().split('T')[0]
@@ -4744,6 +4748,10 @@ function closeCreateProjectModal() {
 }
 
 function saveProject() {
+  if (!currentUser) {
+    showToast('Please sign in to create a project', 'error')
+    return
+  }
   let name     = document.getElementById('modalProjectName').value.trim()
   let desc     = document.getElementById('modalProjectDesc').value.trim()
   let deadline = document.getElementById('modalProjectDeadline').value
@@ -4952,6 +4960,10 @@ function populateProjectSelect(selectId) {
 }
 
 function openCreateTaskModal() {
+  if (!currentUser) {
+    showToast('Please sign in to create a task', 'error')
+    return
+  }
   populateProjectSelect('modalTaskProject')
   document.getElementById('modalTaskStatus').value    = 'todo'
   document.getElementById('modalTaskInitStatus').value= 'todo'
@@ -4973,6 +4985,10 @@ function closeCreateTaskModal() {
 }
 
 function saveTask() {
+  if (!currentUser) {
+    showToast('Please sign in to create a task', 'error')
+    return
+  }
   let title    = document.getElementById('modalTaskTitle').value.trim()
   let desc     = document.getElementById('modalTaskDesc').value.trim()
   let projId   = document.getElementById('modalTaskProject').value
@@ -5016,8 +5032,8 @@ function buildTaskCard(t) {
   let tracked = timeEntries.filter(e => e.taskId === t.id).reduce((s, e) => s + (e.duration || 0), 0)
   let timeHtml = tracked > 0 ? `<span class="time-badge" style="font-size:10px;color:#4f46e5;">⏱ ${formatHours(tracked)}</span>` : ''
 
-  let assigneeName = currentUser.username
-  if (t.assignee && t.assignee !== currentUser.id) {
+  let assigneeName = currentUser ? (currentUser.username || '') : '—'
+  if (currentUser && t.assignee && t.assignee !== currentUser.id) {
     let member = team.find(m => m.id === t.assignee)
     if (member) assigneeName = member.email || 'Member'
   }
