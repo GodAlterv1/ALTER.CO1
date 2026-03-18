@@ -2209,6 +2209,9 @@ kbd {
       <div class="form-group">
         <input id="passwordInput" placeholder="Password" type="password" onkeydown="if(event.key==='Enter') login()">
       </div>
+      <div style="display:flex;justify-content:flex-end;margin-bottom:6px;">
+        <button type="button" onclick="forgotPassword()" style="background:none;border:none;color:#60a5fa;font-size:12px;cursor:pointer;padding:0;">Forgot password?</button>
+      </div>
       <button class="btn-primary-login" onclick="login()">Sign In</button>
       <div class="login-divider">or continue with</div>
       <div class="social-login">
@@ -4274,6 +4277,29 @@ function login() {
   save('session', acc)
   addAuditLog('login', u + ' signed in', 'login')
   showApp()
+}
+
+function forgotPassword() {
+  if (!ALTER_API_BASE) {
+    showLoginMessage('Password reset is only available when connected to the backend.', 'info')
+    return
+  }
+  var email = window.prompt('Enter the email associated with your ALTER.CO account:')
+  if (!email) return
+  email = email.trim()
+  if (!email) return
+
+  fetch(ALTER_API_BASE + '/api/auth/forgot-password', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email: email })
+  })
+    .then(function () {
+      showLoginMessage('If an account exists for that email, a temporary password has been sent.', 'success')
+    })
+    .catch(function () {
+      showLoginMessage('Unable to process reset right now. Try again later.', 'error')
+    })
 }
 
 function demoLogin() {
