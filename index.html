@@ -4523,7 +4523,15 @@ function forgotPassword() {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ email: email })
   })
-    .then(function () {
+    .then(function (r) {
+      if (r.status === 429) {
+        showLoginMessage('Too many attempts. Wait a few minutes and try again.', 'error')
+        return
+      }
+      if (!r.ok) {
+        showLoginMessage('Unable to process reset right now. Try again later.', 'error')
+        return
+      }
       showLoginMessage('If an account exists for that email, a temporary password has been sent.', 'success')
     })
     .catch(function () {

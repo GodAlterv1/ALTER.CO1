@@ -126,7 +126,10 @@ function getMailTransporter() {
     return null
   }
 
-  const { SMTP_SERVICE, SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, SMTP_SECURE } = process.env
+  const SMTP_USER = (process.env.SMTP_USER || '').trim()
+  const SMTP_PASS = (process.env.SMTP_PASS || '').trim()
+  const { SMTP_SERVICE, SMTP_HOST, SMTP_PORT, SMTP_SECURE } = process.env
+
   if (!SMTP_USER || !SMTP_PASS) {
     if (!smtpConfigWarningLogged) {
       console.error(
@@ -139,10 +142,21 @@ function getMailTransporter() {
 
   const svc = String(SMTP_SERVICE || '').toLowerCase()
   if (svc === 'gmail') {
-    mailTransporter = nodemailer.createTransport({
-      service: 'gmail',
-      auth: { user: SMTP_USER, pass: SMTP_PASS }
-    })
+    // Explicit host often works more reliably on hosts like Render than service: "gmail".
+    // Set SMTP_GMAIL_USE_SERVICE=true to use nodemailer's built-in Gmail preset instead.
+    if (String(process.env.SMTP_GMAIL_USE_SERVICE || '').toLowerCase() === 'true') {
+      mailTransporter = nodemailer.createTransport({
+        service: 'gmail',
+        auth: { user: SMTP_USER, pass: SMTP_PASS }
+      })
+    } else {
+      mailTransporter = nodemailer.createTransport({
+        host: 'smtp.gmail.com',
+        port: 465,
+        secure: true,
+        auth: { user: SMTP_USER, pass: SMTP_PASS }
+      })
+    }
     return mailTransporter
   }
 
@@ -174,8 +188,10 @@ function getMailTransporter() {
 }
 
 function isSmtpConfigured() {
-  const { SMTP_SERVICE, SMTP_USER, SMTP_PASS, SMTP_HOST, SMTP_PORT } = process.env
-  if (!SMTP_USER || !SMTP_PASS) return false
+  const u = (process.env.SMTP_USER || '').trim()
+  const p = (process.env.SMTP_PASS || '').trim()
+  const { SMTP_SERVICE, SMTP_HOST, SMTP_PORT } = process.env
+  if (!u || !p) return false
   if (String(SMTP_SERVICE || '').toLowerCase() === 'gmail') return true
   return Boolean(SMTP_HOST && SMTP_PORT)
 }
@@ -187,13 +203,38 @@ async function sendEmailSafe({ to, subject, text }) {
       if (!transporter) console.error('sendEmailSafe: transporter null (SMTP not configured?)')
       return false
     }
-    const from = process.env.EMAIL_FROM || process.env.SMTP_USER
+    const from = (process.env.EMAIL_FROM || process.env.SMTP_USER || '').trim()
     await transporter.sendMail({ from, to, subject, text })
     return true
   } catch (e) {
-    console.error('sendEmailSafe failed', e)
+    const msg = e && (e.message || String(e))
+    console.error('sendEmailSafe failed:', msg)
+    if (e && e.response) console.error('sendEmailSafe SMTP response:', e.response)
+    if (/invalid login|authentication failed|535|534/i.test(String(msg))) {
+      console.error(
+        '[SMTP] Gmail usually needs an App Password (Google Account → Security → 2-Step Verification → App passwords), not your normal Gmail password.'
+      )
+    }
     return false
   }
+}
+
+/** Logs success/failure to console so Render logs show whether Gmail accepts credentials */
+function verifySmtpOnStartup() {
+  if (!isSmtpConfigured() || !nodemailer) return
+  const t = getMailTransporter()
+  if (!t || typeof t.verify !== 'function') return
+  t.verify()
+    .then(() => {
+      console.log('[SMTP] Verify OK — Gmail accepted SMTP_USER / SMTP_PASS.')
+    })
+    .catch(err => {
+      console.error('[SMTP] VERIFY FAILED — forgot-password and other mail will not work until this passes.')
+      console.error('[SMTP]', err && err.message ? err.message : err)
+      console.error(
+        '[SMTP] Check: SMTP_SERVICE=gmail, SMTP_USER=full@gmail.com, SMTP_PASS=16-char App Password (no spaces). Optional: set EMAIL_FROM to the same address as SMTP_USER.'
+      )
+    })
 }
 
 // Must match keys the frontend sends in PUT /api/workspace (see index.html syncWorkspaceToBackend)
@@ -355,12 +396,10 @@ app.post('/api/auth/forgot-password', authBurstLimiter, async (req, res) => {
       console.error('Forgot password: stored user email is invalid:', row.email)
     }
 
-    // Generate a temporary password
+    // Generate a temporary password — only apply it after email sends successfully,
+    // otherwise the user would be locked out with a password they never received.
     const tempPassword = Math.random().toString(36).slice(-10)
-    row.password_hash = hashPassword(tempPassword)
-    writeUsers(users)
-
-    const ok = await sendEmailSafe({
+    const emailed = await sendEmailSafe({
       to: row.email,
       subject: 'Your ALTER.CO temporary password',
       text:
@@ -372,10 +411,15 @@ app.post('/api/auth/forgot-password', authBurstLimiter, async (req, res) => {
         `— ALTER.CO`
     })
 
-    if (!ok) {
-      // Still return ok, but log on server for debugging
-      console.error('Forgot password email could not be sent (SMTP not configured).')
+    if (!emailed) {
+      console.error(
+        'Forgot password: email could not be sent. Check SMTP env (SMTP_SERVICE=gmail, SMTP_USER, SMTP_PASS) and Render logs. Password was NOT changed.'
+      )
+      return res.json({ ok: true })
     }
+
+    row.password_hash = hashPassword(tempPassword)
+    writeUsers(users)
 
     res.json({ ok: true })
   } catch (e) {
@@ -464,7 +508,7 @@ app.post('/api/public/contact', contactLimiter, async (req, res) => {
       return res.status(400).json({ error: 'Valid email is required' })
     }
 
-    const to = process.env.CONTACT_INBOX || process.env.SMTP_USER
+    const to = (process.env.CONTACT_INBOX || process.env.SMTP_USER || '').trim()
     if (!to) {
       return res.status(503).json({ error: 'Contact email is not configured on this server' })
     }
@@ -525,7 +569,7 @@ app.post('/api/integrations/email/send-invite', authMiddleware, async (req, res)
       return res.status(400).json({ error: 'Missing "to" email address' })
     }
 
-    const from = process.env.EMAIL_FROM || process.env.SMTP_USER
+    const from = (process.env.EMAIL_FROM || process.env.SMTP_USER || '').trim()
     const mailSubject = subject || 'You are invited to join ALTER.CO'
     const textBody =
       message ||
@@ -617,4 +661,5 @@ if (fs.existsSync(indexPath)) {
 app.listen(PORT, () => {
   console.log('ALTER.CO API running on http://localhost:' + PORT)
   console.log('Storage: JSON files in ' + DATA_DIR)
+  verifySmtpOnStartup()
 })
