@@ -1458,15 +1458,17 @@ button:disabled { opacity: 0.5; cursor: not-allowed; transform: none; box-shadow
 }
 /* ===== TEAM ===== */
 .team-page {
-  max-width: 1120px;
+  width: 100%;
+  max-width: min(1680px, 100%);
   margin: 0 auto;
+  box-sizing: border-box;
 }
 
 .team-invite-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-  gap: 16px;
-  margin-bottom: 20px;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr));
+  gap: 18px;
+  margin-bottom: 22px;
 }
 
 .team-panel {
@@ -1618,6 +1620,13 @@ button:disabled { opacity: 0.5; cursor: not-allowed; transform: none; box-shadow
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
   gap: 14px;
+}
+
+@media (min-width: 1200px) {
+  .team-page .team-grid {
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 16px;
+  }
 }
 
 .member-card {
@@ -2472,11 +2481,43 @@ kbd {
 .pulse-card.warning { border-color: rgba(239, 68, 68, 0.4); }
 .pulse-card.ok { border-color: rgba(34, 197, 94, 0.28); }
 .onboarding-panel {
+  position: relative;
   background: linear-gradient(135deg, rgba(79, 70, 229, 0.12), rgba(124, 58, 237, 0.08));
   border: 1px solid rgba(79, 70, 229, 0.35);
   border-radius: 12px;
   padding: 20px 22px;
+  padding-top: 18px;
   margin-bottom: 20px;
+}
+.onboarding-panel-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+.onboarding-panel-head h4 { margin: 0; font-size: 15px; color: #E5E7EB; flex: 1; min-width: 0; }
+.onboarding-dismiss {
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  border: 1px solid rgba(255,255,255,0.12);
+  background: rgba(2, 6, 23, 0.6);
+  color: #9CA3AF;
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  font-family: inherit;
+  transition: color 0.15s, border-color 0.15s, background 0.15s;
+}
+.onboarding-dismiss:hover {
+  color: #F3F4F6;
+  border-color: #4B5563;
+  background: rgba(31, 41, 55, 0.9);
 }
 .onboarding-panel h4 { margin: 0 0 8px 0; font-size: 15px; color: #E5E7EB; }
 .onboarding-panel .onboarding-lead { font-size: 13px; color: #9CA3AF; margin: 0 0 14px 0; line-height: 1.45; }
@@ -2499,7 +2540,8 @@ kbd {
 .onboarding-step:disabled { opacity: 0.85; }
 
 .workspace-actions-card {
-  margin-bottom: 20px;
+  margin-top: 8px;
+  margin-bottom: 0;
   padding: 18px 20px 20px;
 }
 .workspace-actions-grid {
@@ -3108,7 +3150,7 @@ kbd {
         <div class="workspace-header">
           <div>
             <h1 id="dashboardGreeting">Good morning 👋</h1>
-            <p id="dashboardSubline">Your workspace is where work lives — use the actions below to create tasks, time, and docs, or press <kbd style="font-size:11px;padding:2px 7px;border-radius:4px;background:#1F2937;color:#9CA3AF;">Ctrl+K</kbd> to jump anywhere.</p>
+            <p id="dashboardSubline">Your workspace is where work lives — scan stats and activity above, or scroll down for quick actions. Press <kbd style="font-size:11px;padding:2px 7px;border-radius:4px;background:#1F2937;color:#9CA3AF;">Ctrl+K</kbd> to jump anywhere.</p>
           </div>
           <div class="header-actions">
             <button onclick="refreshDashboard()" class="btn-secondary">↻ Refresh</button>
@@ -3116,61 +3158,11 @@ kbd {
           </div>
         </div>
 
-        <div class="card workspace-actions-card">
-          <div style="margin-bottom:14px;">
-            <h3 style="margin:0 0 6px 0;font-size:16px;">What do you want to do?</h3>
-            <p style="margin:0;font-size:12px;color:#9CA3AF;line-height:1.45;max-width:640px;">Concrete actions — each opens the right place. Suggestions under the grid adapt to what is still empty in your workspace.</p>
-          </div>
-          <div class="workspace-actions-grid">
-            <button type="button" class="workspace-action-tile" onclick="openCreateProjectModal()">
-              <span class="wa-icon">📁</span>
-              <span class="wa-title">New project</span>
-              <span class="wa-hint">Group tasks, time & goals</span>
-            </button>
-            <button type="button" class="workspace-action-tile" onclick="switchPage('tasks', null); setTimeout(function () { openCreateTaskModal() }, 120)">
-              <span class="wa-icon">✅</span>
-              <span class="wa-title">New task</span>
-              <span class="wa-hint">Kanban board</span>
-            </button>
-            <button type="button" class="workspace-action-tile" onclick="switchPage('timetracking', null)">
-              <span class="wa-icon">⏱</span>
-              <span class="wa-title">Track time</span>
-              <span class="wa-hint">Timer or manual log</span>
-            </button>
-            <button type="button" class="workspace-action-tile" onclick="switchPage('pages', null); setTimeout(function () { createNewPage() }, 120)">
-              <span class="wa-icon">📄</span>
-              <span class="wa-title">New page</span>
-              <span class="wa-hint">Notes & specs</span>
-            </button>
-            <button type="button" class="workspace-action-tile" onclick="switchPage('goals', null); setTimeout(function () { openCreateGoalModal() }, 120)">
-              <span class="wa-icon">🎯</span>
-              <span class="wa-title">New goal</span>
-              <span class="wa-hint">OKRs & outcomes</span>
-            </button>
-            <button type="button" class="workspace-action-tile" onclick="switchPage('ideas', null); setTimeout(function () { openCreateIdeaModal() }, 120)">
-              <span class="wa-icon">💡</span>
-              <span class="wa-title">Submit idea</span>
-              <span class="wa-hint">Vote & prioritize</span>
-            </button>
-            <button type="button" class="workspace-action-tile" onclick="switchPage('calendar', null); setTimeout(function () { openCreateEventModal() }, 120)">
-              <span class="wa-icon">📅</span>
-              <span class="wa-title">Add event</span>
-              <span class="wa-hint">Deadlines & meetings</span>
-            </button>
-            <button type="button" class="workspace-action-tile" onclick="switchPage('team', null)">
-              <span class="wa-icon">👥</span>
-              <span class="wa-title">Team</span>
-              <span class="wa-hint">Invites, roles & codes</span>
-            </button>
-          </div>
-          <div class="workspace-suggestions-wrap">
-            <div class="section-label" style="margin-bottom:8px;">Suggested next steps</div>
-            <div id="dashboardSuggestions" class="workspace-suggestions"></div>
-          </div>
-        </div>
-
         <div id="dashboardOnboarding" class="onboarding-panel hidden">
-          <h4>Get your workspace ready</h4>
+          <div class="onboarding-panel-head">
+            <h4>Get your workspace ready</h4>
+            <button type="button" class="onboarding-dismiss" onclick="dismissDashboardOnboarding()" title="Dismiss">×</button>
+          </div>
           <p class="onboarding-lead">Complete these steps so ALTER.CO reflects real work — not an empty shell.</p>
           <div class="onboarding-steps" id="dashboardOnboardingSteps"></div>
         </div>
@@ -3276,6 +3268,59 @@ kbd {
                 </div>
               </div>
             </div>
+          </div>
+        </div>
+
+        <div class="card workspace-actions-card">
+          <div style="margin-bottom:14px;">
+            <h3 style="margin:0 0 6px 0;font-size:16px;">What do you want to do?</h3>
+            <p style="margin:0;font-size:12px;color:#9CA3AF;line-height:1.45;max-width:640px;">Concrete actions — each opens the right place. Suggestions under the grid adapt to what is still empty in your workspace.</p>
+          </div>
+          <div class="workspace-actions-grid">
+            <button type="button" class="workspace-action-tile" onclick="openCreateProjectModal()">
+              <span class="wa-icon">📁</span>
+              <span class="wa-title">New project</span>
+              <span class="wa-hint">Group tasks, time & goals</span>
+            </button>
+            <button type="button" class="workspace-action-tile" onclick="switchPage('tasks', null); setTimeout(function () { openCreateTaskModal() }, 120)">
+              <span class="wa-icon">✅</span>
+              <span class="wa-title">New task</span>
+              <span class="wa-hint">Kanban board</span>
+            </button>
+            <button type="button" class="workspace-action-tile" onclick="switchPage('timetracking', null)">
+              <span class="wa-icon">⏱</span>
+              <span class="wa-title">Track time</span>
+              <span class="wa-hint">Timer or manual log</span>
+            </button>
+            <button type="button" class="workspace-action-tile" onclick="switchPage('pages', null); setTimeout(function () { createNewPage() }, 120)">
+              <span class="wa-icon">📄</span>
+              <span class="wa-title">New page</span>
+              <span class="wa-hint">Notes & specs</span>
+            </button>
+            <button type="button" class="workspace-action-tile" onclick="switchPage('goals', null); setTimeout(function () { openCreateGoalModal() }, 120)">
+              <span class="wa-icon">🎯</span>
+              <span class="wa-title">New goal</span>
+              <span class="wa-hint">OKRs & outcomes</span>
+            </button>
+            <button type="button" class="workspace-action-tile" onclick="switchPage('ideas', null); setTimeout(function () { openCreateIdeaModal() }, 120)">
+              <span class="wa-icon">💡</span>
+              <span class="wa-title">Submit idea</span>
+              <span class="wa-hint">Vote & prioritize</span>
+            </button>
+            <button type="button" class="workspace-action-tile" onclick="switchPage('calendar', null); setTimeout(function () { openCreateEventModal() }, 120)">
+              <span class="wa-icon">📅</span>
+              <span class="wa-title">Add event</span>
+              <span class="wa-hint">Deadlines & meetings</span>
+            </button>
+            <button type="button" class="workspace-action-tile" onclick="switchPage('team', null)">
+              <span class="wa-icon">👥</span>
+              <span class="wa-title">Team</span>
+              <span class="wa-hint">Invites, roles & codes</span>
+            </button>
+          </div>
+          <div class="workspace-suggestions-wrap">
+            <div class="section-label" style="margin-bottom:8px;">Suggested next steps</div>
+            <div id="dashboardSuggestions" class="workspace-suggestions"></div>
           </div>
         </div>
       </div>
@@ -4345,6 +4390,10 @@ kbd {
       <label>Tags (comma separated)</label>
       <input id="modalProjectTags" placeholder="e.g. design, frontend, Q4" type="text">
     </div>
+    <div class="form-group">
+      <label>Project lead</label>
+      <select id="modalProjectOwner"></select>
+    </div>
     <div style="display:flex;gap:10px;margin-top:20px;">
       <button onclick="saveProject()">Create Project</button>
       <button onclick="closeCreateProjectModal()" class="btn-secondary">Cancel</button>
@@ -4386,6 +4435,10 @@ kbd {
           <option value="completed">Completed</option>
         </select>
       </div>
+    </div>
+    <div class="form-group">
+      <label>Project lead</label>
+      <select id="editProjectOwner"></select>
     </div>
     <div class="form-group">
       <label>Deadline (date & time)</label>
@@ -4446,6 +4499,10 @@ kbd {
     <div class="form-group">
       <label>Estimated Hours</label>
       <input id="modalTaskEstimate" type="number" min="0" step="0.5" placeholder="e.g. 4">
+    </div>
+    <div class="form-group">
+      <label>Assigned to</label>
+      <select id="modalTaskAssignee"></select>
     </div>
     <div style="display:flex;gap:10px;margin-top:20px;">
       <button onclick="saveTask()">Create Task</button>
@@ -5060,33 +5117,48 @@ function greeting() {
 =================================================== */
 ;(function boot() {
   if (ALTER_API_BASE && getAuthToken()) {
-    loadWorkspaceFromBackend()
-      .then(function (data) {
-        if (data) applyWorkspaceToState(data)
-        return fetch(ALTER_API_BASE + '/api/me', {
-          headers: { Authorization: 'Bearer ' + getAuthToken() }
-        })
-      })
+    fetch(ALTER_API_BASE + '/api/me', {
+      headers: { Authorization: 'Bearer ' + getAuthToken() }
+    })
       .then(function (r) {
-        if (!r.ok) throw new Error('session')
+        if (r.status === 401) throw new Error('Unauthorized')
+        if (!r.ok) throw new Error('me_failed')
         return r.json()
       })
       .then(function (me) {
         currentUser = me
         save('session', currentUser)
+        return loadWorkspaceFromBackend()
+      })
+      .then(function (data) {
+        if (data) applyWorkspaceToState(data)
         showApp()
       })
-      .catch(function () {
-        clearAuthToken()
-        localStorage.removeItem('alco_session')
+      .catch(function (err) {
+        if (err && err.message === 'Unauthorized') {
+          clearAuthToken()
+          localStorage.removeItem('alco_session')
+          try {
+            var lm = document.getElementById('loginMessage')
+            if (lm) {
+              lm.textContent = 'Session expired. Please sign in again.'
+              lm.className = 'login-message error'
+              lm.classList.remove('hidden')
+            }
+          } catch (e) {}
+          return
+        }
+        if (currentUser) {
+          showApp()
+          return
+        }
         try {
-          var lm = document.getElementById('loginMessage')
-          if (lm) {
-            lm.textContent = 'Session expired or server unavailable. Please sign in again.'
-            lm.className = 'login-message error'
-            lm.classList.remove('hidden')
+          var sess = JSON.parse(localStorage.getItem('alco_session') || 'null')
+          if (sess && sess.id && getAuthToken()) {
+            currentUser = sess
+            showApp()
           }
-        } catch (e) {}
+        } catch (e2) {}
       })
     return
   }
@@ -5784,6 +5856,26 @@ function parseTaskDueDate(t) {
   return isNaN(d.getTime()) ? null : d
 }
 
+function onboardingDismissStorageKey() {
+  return 'alter_dashboard_onboarding_dismissed_' + (currentUser && currentUser.id ? String(currentUser.id) : 'anon')
+}
+
+function isDashboardOnboardingDismissed() {
+  try {
+    return localStorage.getItem(onboardingDismissStorageKey()) === '1'
+  } catch (e) {
+    return false
+  }
+}
+
+function dismissDashboardOnboarding() {
+  try {
+    localStorage.setItem(onboardingDismissStorageKey(), '1')
+  } catch (e) {}
+  const onboard = document.getElementById('dashboardOnboarding')
+  if (onboard) onboard.classList.add('hidden')
+}
+
 function renderDashboardPulseAndOnboarding() {
   const startOfToday = new Date()
   startOfToday.setHours(0, 0, 0, 0)
@@ -5818,6 +5910,11 @@ function renderDashboardPulseAndOnboarding() {
   const onboard = document.getElementById('dashboardOnboarding')
   const stepsEl = document.getElementById('dashboardOnboardingSteps')
   if (!onboard || !stepsEl) return
+
+  if (isDashboardOnboardingDismissed()) {
+    onboard.classList.add('hidden')
+    return
+  }
 
   const hasProject = projects.length > 0
   const hasTask = tasks.length > 0
@@ -5995,6 +6092,7 @@ function openCreateProjectModal() {
     showToast('Please sign in to create a project', 'error')
     return
   }
+  fillAssigneeSelect(document.getElementById('modalProjectOwner'), currentUser.id)
   document.getElementById('createProjectModal').classList.add('active')
   document.getElementById('modalProjectDeadline').value = ''
   document.getElementById('modalProjectStart').value    = new Date().toISOString().split('T')[0]
@@ -6024,9 +6122,10 @@ function saveProject() {
   if (!name) return showToast('Please enter a project name', 'error')
 
   const nowIso = new Date().toISOString()
+  const ownerId = (document.getElementById('modalProjectOwner') && document.getElementById('modalProjectOwner').value) || currentUser.id
   let project = {
     id: genId(), name, description: desc, deadline, startDate: start,
-    priority, status, tags, owner: currentUser.id, progress: 0,
+    priority, status, tags, owner: ownerId, progress: 0,
     created: nowIso,
     updated: nowIso
   }
@@ -6303,6 +6402,25 @@ function populateTaskProjectFilter() {
   if (prev && projects.some(p => p.id === prev)) sel.value = prev
 }
 
+/** Me + accepted teammates — for tasks, goals, project lead */
+function fillAssigneeSelect(selectEl, selectedId) {
+  if (!selectEl || !currentUser) return
+  selectEl.innerHTML = ''
+  const me = document.createElement('option')
+  me.value = currentUser.id
+  me.textContent = currentUser.fullName || currentUser.username || 'Me'
+  selectEl.appendChild(me)
+  team.filter(m => m.status === 'accepted').forEach(m => {
+    const opt = document.createElement('option')
+    opt.value = m.id
+    const em = (m.email || '').trim()
+    opt.textContent = em ? (em.split('@')[0] + ' · ' + em) : (m.id || 'Teammate')
+    selectEl.appendChild(opt)
+  })
+  const want = selectedId || currentUser.id
+  selectEl.value = [...selectEl.options].some(o => o.value === want) ? want : currentUser.id
+}
+
 function goToTasksForProject(projectId) {
   switchPage('tasks', null)
   setTimeout(() => {
@@ -6321,6 +6439,7 @@ function editProject(id) {
   document.getElementById('editProjectDesc').value      = p.description || ''
   document.getElementById('editProjectPriority').value  = p.priority
   document.getElementById('editProjectStatus').value    = p.status
+  fillAssigneeSelect(document.getElementById('editProjectOwner'), p.owner || currentUser.id)
   // Keep backward compatibility with old date-only deadlines
   let dl = p.deadline || ''
   if (dl && typeof dl === 'string' && !dl.includes('T')) dl = dl + 'T09:00'
@@ -6339,6 +6458,8 @@ function saveEditProject() {
   proj.description = document.getElementById('editProjectDesc').value.trim()
   proj.priority    = document.getElementById('editProjectPriority').value
   proj.status      = document.getElementById('editProjectStatus').value
+  const leadEl = document.getElementById('editProjectOwner')
+  proj.owner       = (leadEl && leadEl.value) || currentUser.id
   proj.deadline    = document.getElementById('editProjectDeadline').value
   proj.updated     = new Date().toISOString()
 
@@ -6413,6 +6534,7 @@ function openCreateTaskModal() {
     return
   }
   populateProjectSelect('modalTaskProject')
+  fillAssigneeSelect(document.getElementById('modalTaskAssignee'), currentUser.id)
   document.getElementById('modalTaskStatus').value    = 'todo'
   document.getElementById('modalTaskInitStatus').value= 'todo'
   document.getElementById('createTaskModal').classList.add('active')
@@ -6444,12 +6566,13 @@ function saveTask() {
   let status   = document.getElementById('modalTaskStatus').value
   let dueDate  = document.getElementById('modalTaskDue').value
   let estimate = parseFloat(document.getElementById('modalTaskEstimate').value) || 0
+  const assignTo = (document.getElementById('modalTaskAssignee') && document.getElementById('modalTaskAssignee').value) || currentUser.id
 
   if (!title) return showToast('Please enter a task title', 'error')
 
   let task = {
     id: genId(), title, description: desc, projectId: projId,
-    priority, status, dueDate, assignee: currentUser.id,
+    priority, status, dueDate, assignee: assignTo,
     estimatedHours: estimate, created: new Date().toISOString()
   }
 
@@ -6480,10 +6603,13 @@ function buildTaskCard(t) {
   let tracked = timeEntries.filter(e => e.taskId === t.id).reduce((s, e) => s + (e.duration || 0), 0)
   let timeHtml = tracked > 0 ? `<span class="time-badge" style="font-size:10px;color:#4f46e5;">⏱ ${formatHours(tracked)}</span>` : ''
 
-  let assigneeName = currentUser ? (currentUser.username || '') : '—'
-  if (currentUser && t.assignee && t.assignee !== currentUser.id) {
-    let member = team.find(m => m.id === t.assignee)
-    if (member) assigneeName = member.email || 'Member'
+  let assigneeName = '—'
+  if (t.assignee && currentUser && t.assignee === currentUser.id) {
+    assigneeName = currentUser.fullName || currentUser.username || 'Me'
+  } else if (t.assignee) {
+    const member = team.find(m => m.id === t.assignee)
+    const em = member && (member.email || '').trim()
+    assigneeName = em ? em.split('@')[0] : 'Member'
   }
 
   return `
@@ -6628,18 +6754,7 @@ function openTaskDetail(id) {
   // Assignee select
   let assigneeSel = document.getElementById('taskDetailAssignee')
   if (assigneeSel) {
-    assigneeSel.innerHTML = ''
-    let meOpt = document.createElement('option')
-    meOpt.value = currentUser.id
-    meOpt.textContent = currentUser.fullName || currentUser.username || 'Me'
-    assigneeSel.appendChild(meOpt)
-    team.filter(m => m.status === 'accepted').forEach(m => {
-      let opt = document.createElement('option')
-      opt.value = m.id
-      opt.textContent = m.email || m.id
-      assigneeSel.appendChild(opt)
-    })
-    assigneeSel.value = task.assignee || currentUser.id
+    fillAssigneeSelect(assigneeSel, task.assignee || currentUser.id)
   }
 
   // Due
@@ -8039,18 +8154,7 @@ function openCreateGoalModal() {
   const ownerSelect  = document.getElementById('modalGoalOwner')
   const projectSelect= document.getElementById('modalGoalProject')
   if (ownerSelect) {
-    ownerSelect.innerHTML = ''
-    const optMe = document.createElement('option')
-    optMe.value = currentUser.id
-    optMe.textContent = currentUser.fullName || currentUser.username || 'Me'
-    ownerSelect.appendChild(optMe)
-    team.filter(m => m.status === 'accepted').forEach(m => {
-      const opt = document.createElement('option')
-      opt.value = m.id
-      opt.textContent = m.email || m.id
-      ownerSelect.appendChild(opt)
-    })
-    ownerSelect.value = currentUser.id
+    fillAssigneeSelect(ownerSelect, currentUser.id)
   }
   if (projectSelect) {
     projectSelect.innerHTML = '<option value=\"\">None</option>'
@@ -8076,18 +8180,7 @@ function openEditGoalModal(id) {
   const ownerSelect  = document.getElementById('modalGoalOwner')
   const projectSelect= document.getElementById('modalGoalProject')
   if (ownerSelect) {
-    ownerSelect.innerHTML = ''
-    const optMe = document.createElement('option')
-    optMe.value = currentUser.id
-    optMe.textContent = currentUser.fullName || currentUser.username || 'Me'
-    ownerSelect.appendChild(optMe)
-    team.filter(m => m.status === 'accepted').forEach(m => {
-      const opt = document.createElement('option')
-      opt.value = m.id
-      opt.textContent = m.email || m.id
-      ownerSelect.appendChild(opt)
-    })
-    ownerSelect.value = g.ownerId || currentUser.id
+    fillAssigneeSelect(ownerSelect, g.ownerId || currentUser.id)
   }
   if (projectSelect) {
     projectSelect.innerHTML = '<option value=\"\">None</option>'

@@ -67,6 +67,8 @@ git push -u origin main
    - **Key:** `JWT_SECRET`  
    - **Value:** a long random string (e.g. from [randomkeygen.com](https://randomkeygen.com) – “CodeIgniter Encryption Keys” or similar).
 
+   **Important:** Keep the same `JWT_SECRET` across every deploy. If you change it or omit it, existing login tokens stop working and everyone must sign in again.
+
 6. Click **Create Web Service**.
 
 ---

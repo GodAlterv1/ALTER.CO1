@@ -536,7 +536,7 @@ app.post('/api/auth/register', authBurstLimiter, async (req, res) => {
     addUserToOwnerTeam(ownerFromCode, id)
   }
 
-  const token = jwt.sign({ userId: id, username }, JWT_SECRET, { expiresIn: '30d' })
+  const token = jwt.sign({ userId: id, username }, JWT_SECRET, { expiresIn: '90d' })
   const user = userToClient(newUser)
 
   // Fire-and-forget welcome email (does not block registration)
@@ -568,7 +568,7 @@ app.post('/api/auth/login', authBurstLimiter, (req, res) => {
     return res.status(401).json({ error: 'Invalid username or password' })
   }
 
-  const token = jwt.sign({ userId: row.id, username: row.username }, JWT_SECRET, { expiresIn: '30d' })
+  const token = jwt.sign({ userId: row.id, username: row.username }, JWT_SECRET, { expiresIn: '90d' })
   res.json({ token, user: userToClient(row) })
 })
 
