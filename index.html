@@ -4386,17 +4386,18 @@ function greeting() {
     loadWorkspaceFromBackend()
       .then(function (data) {
         if (data) applyWorkspaceToState(data)
-        var session = null
-        try {
-          session = JSON.parse(localStorage.getItem('alco_session') || 'null')
-        } catch (e) {}
-        if (session && session.id) {
-          currentUser = session
-          showApp()
-        } else {
-          clearAuthToken()
-          localStorage.removeItem('alco_session')
-        }
+        return fetch(ALTER_API_BASE + '/api/me', {
+          headers: { Authorization: 'Bearer ' + getAuthToken() }
+        })
+      })
+      .then(function (r) {
+        if (!r.ok) throw new Error('session')
+        return r.json()
+      })
+      .then(function (me) {
+        currentUser = me
+        save('session', currentUser)
+        showApp()
       })
       .catch(function () {
         clearAuthToken()

@@ -390,7 +390,7 @@ function genId() {
   return Date.now().toString(36) + Math.random().toString(36).substr(2, 5)
 }
 
-// Auth middleware
+// Auth middleware — role always loaded from users.json (source of truth), not only from JWT
 function authMiddleware(req, res, next) {
   const header = req.headers.authorization
   if (!header || !header.startsWith('Bearer ')) {
@@ -399,12 +399,24 @@ function authMiddleware(req, res, next) {
   const token = header.slice(7)
   try {
     const payload = jwt.verify(token, JWT_SECRET)
-    req.userId = payload.userId
-    req.username = payload.username
+    const users = readUsers()
+    const row = users.find(u => u.id === payload.userId)
+    if (!row) {
+      return res.status(401).json({ error: 'User not found' })
+    }
+    req.userId = row.id
+    req.username = row.username
+    req.userRole = String(row.role || 'member').toLowerCase()
     next()
   } catch (e) {
     return res.status(401).json({ error: 'Invalid or expired token' })
   }
+}
+
+function requireAdmin(req, res, next) {
+  const r = req.userRole
+  if (r === 'admin' || r === 'owner') return next()
+  return res.status(403).json({ error: 'Admin access required' })
 }
 
 // ----- Routes: Auth -----
@@ -620,6 +632,21 @@ app.delete('/api/me', authMiddleware, (req, res) => {
   }
   deleteWorkspaceFile(req.userId)
   res.status(204).end()
+})
+
+// ----- Admin (authoritative role in users.json; JWT does not carry role alone) -----
+app.get('/api/admin/users', authMiddleware, requireAdmin, (req, res) => {
+  const users = readUsers()
+  res.json({
+    users: users.map(u => ({
+      id: u.id,
+      username: u.username,
+      email: u.email || '',
+      role: u.role || 'member',
+      plan: u.plan || 'free',
+      created_at: u.created_at
+    }))
+  })
 })
 
 // ----- Routes: Public -----
