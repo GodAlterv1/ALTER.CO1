@@ -108,6 +108,62 @@ function writeWorkspace(userId, data) {
   fs.writeFileSync(file, JSON.stringify(data, null, 2), 'utf8')
 }
 
+function normalizeInviteCode(raw) {
+  return String(raw || '')
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z0-9]/g, '')
+}
+
+function findWorkspaceOwnerByInviteCode(rawCode) {
+  const normalized = normalizeInviteCode(rawCode)
+  if (normalized.length < 4) return null
+  if (!fs.existsSync(WORKSPACE_DIR)) return null
+  let files
+  try {
+    files = fs.readdirSync(WORKSPACE_DIR)
+  } catch (e) {
+    return null
+  }
+  for (const f of files) {
+    if (!f.endsWith('.json')) continue
+    const userId = f.slice(0, -5)
+    const ws = readWorkspace(userId)
+    if (!ws || !ws.userSettings || typeof ws.userSettings.workspaceInviteCode !== 'string') continue
+    const c = normalizeInviteCode(ws.userSettings.workspaceInviteCode)
+    if (c && c === normalized) return userId
+  }
+  return null
+}
+
+/** Adds an existing user account to another user's workspace team (accepted). */
+function addUserToOwnerTeam(ownerId, joinerUserId) {
+  if (!ownerId) return { ok: false, error: 'invalid_code' }
+  if (ownerId === joinerUserId) return { ok: false, error: 'self' }
+  const users = readUsers()
+  const joiner = users.find(u => u.id === joinerUserId)
+  if (!joiner) return { ok: false, error: 'no_user' }
+  const ownerWs = readWorkspace(ownerId) || emptyWorkspace()
+  if (!ownerWs.userSettings || typeof ownerWs.userSettings !== 'object') ownerWs.userSettings = {}
+  const team = Array.isArray(ownerWs.team) ? ownerWs.team.slice() : []
+  const emailLower = (joiner.email || '').toLowerCase()
+  if (team.some(m => (m.email || '').toLowerCase() === emailLower || m.id === joiner.id)) {
+    return { ok: false, error: 'already_member' }
+  }
+  team.push({
+    id: joiner.id,
+    email: joiner.email || '',
+    role: 'member',
+    department: '',
+    status: 'accepted',
+    created: new Date().toISOString()
+  })
+  ownerWs.team = team
+  writeWorkspace(ownerId, ownerWs)
+  const owner = users.find(u => u.id === ownerId)
+  return { ok: true, ownerUsername: owner ? owner.username : '' }
+}
+
 function deleteWorkspaceFile(userId) {
   const file = path.join(WORKSPACE_DIR, userId + '.json')
   try {
@@ -438,7 +494,7 @@ function requireAdmin(req, res, next) {
 
 // ----- Routes: Auth -----
 app.post('/api/auth/register', authBurstLimiter, async (req, res) => {
-  const { username, email, password, fullName } = req.body || {}
+  const { username, email, password, fullName, inviteCode } = req.body || {}
   if (!username || !email || !password) {
     return res.status(400).json({ error: 'Username, email, and password required' })
   }
@@ -474,6 +530,11 @@ app.post('/api/auth/register', authBurstLimiter, async (req, res) => {
 
   // Create empty workspace for new user
   writeWorkspace(id, emptyWorkspace())
+
+  const ownerFromCode = inviteCode ? findWorkspaceOwnerByInviteCode(inviteCode) : null
+  if (ownerFromCode) {
+    addUserToOwnerTeam(ownerFromCode, id)
+  }
 
   const token = jwt.sign({ userId: id, username }, JWT_SECRET, { expiresIn: '30d' })
   const user = userToClient(newUser)
@@ -741,6 +802,26 @@ app.put('/api/workspace', authMiddleware, (req, res) => {
   }
   writeWorkspace(req.userId, current)
   res.json({ ok: true })
+})
+
+// Join another user's workspace team using their workspace invite code (from userSettings.workspaceInviteCode)
+app.post('/api/team/join-with-code', authMiddleware, authBurstLimiter, (req, res) => {
+  const { code } = req.body || {}
+  const ownerId = findWorkspaceOwnerByInviteCode(code || '')
+  if (!ownerId) {
+    return res.status(404).json({ error: 'Invalid invite code' })
+  }
+  const result = addUserToOwnerTeam(ownerId, req.userId)
+  if (!result.ok) {
+    if (result.error === 'already_member') {
+      return res.status(409).json({ error: 'You are already on this team' })
+    }
+    if (result.error === 'self') {
+      return res.status(400).json({ error: 'You cannot use your own workspace code' })
+    }
+    return res.status(400).json({ error: 'Could not join workspace' })
+  }
+  res.json({ ok: true, workspaceOwnerUsername: result.ownerUsername || '' })
 })
 
 // ----- Routes: Integrations - Email -----

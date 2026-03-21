@@ -1086,6 +1086,47 @@ button:disabled { opacity: 0.5; cursor: not-allowed; transform: none; box-shadow
 .task-priority-badge.medium { background: #78350f; color: #fcd34d; }
 .task-priority-badge.high   { background: #7c2d12; color: #fdba74; }
 
+.task-card-actions {
+  margin-top: 8px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+}
+.task-delete-btn {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  font-size: 13px;
+  line-height: 1;
+  background: transparent;
+  border: 1px solid rgba(239, 68, 68, 0.35);
+  color: #f87171;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background 0.15s, border-color 0.15s;
+}
+.task-delete-btn:hover {
+  background: rgba(239, 68, 68, 0.12);
+  border-color: rgba(239, 68, 68, 0.55);
+  color: #fca5a5;
+}
+.task-delete-confirm {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  font-size: 11px;
+  color: #fca5a5;
+  max-width: 100%;
+}
+.task-delete-confirm .btn-xs { flex-shrink: 0; }
+
 .task-time-badge {
   font-size: 10px;
   color: #6B7280;
@@ -1144,6 +1185,14 @@ button:disabled { opacity: 0.5; cursor: not-allowed; transform: none; box-shadow
 }
 
 .timer-display.running { color: #22c55e; }
+.timer-display.paused { color: #f59e0b; }
+
+.timer-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
 
 .time-entries { margin-top: 20px; }
 
@@ -2602,6 +2651,9 @@ kbd {
       <div class="form-group">
         <input id="regConfirm" placeholder="Confirm Password" type="password" onkeydown="if(event.key==='Enter') register()">
       </div>
+      <div class="form-group">
+        <input id="regInviteCode" placeholder="Workspace invite code (optional)" type="text" autocomplete="off" style="text-transform:uppercase;font-family:monospace;letter-spacing:0.06em;" oninput="this.value=this.value.toUpperCase()">
+      </div>
       <button class="btn-primary-login" onclick="register()">Create Account</button>
     </div>
 
@@ -3088,7 +3140,11 @@ kbd {
             <option value="">No project</option>
           </select>
           <div class="timer-display" id="timerDisplay">00:00:00</div>
-          <button id="timerBtn" onclick="toggleTimer()" class="btn-success">▶ Start</button>
+          <div class="timer-controls" id="timerControls">
+            <button type="button" id="timerBtn" onclick="timerStartOrResume()" class="btn-success">▶ Start</button>
+            <button type="button" id="timerPauseBtn" onclick="pauseTimer()" class="btn-secondary hidden">⏸ Pause</button>
+            <button type="button" id="timerStopBtn" onclick="stopTimer()" class="btn-danger hidden">⏹ Stop</button>
+          </div>
         </div>
 
         <div class="time-summary" id="timeSummary"></div>
@@ -3316,6 +3372,27 @@ kbd {
           </div>
           <button id="teamInviteBtn" onclick="openInviteTeamModal()">+ Invite Member</button>
         </div>
+
+        <div id="teamInviteCodePanel" class="card" style="margin-bottom:20px;padding:18px 20px;display:none;">
+          <h3 style="font-size:15px;margin:0 0 8px 0;">Invite by code</h3>
+          <p style="font-size:12px;color:#9CA3AF;margin:0 0 12px 0;line-height:1.45;">Share this code so teammates can join your workspace team after they sign up, or from Team while signed in (server-connected accounts).</p>
+          <div style="display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin-bottom:12px;">
+            <code id="teamInviteCodeDisplay" style="font-size:18px;font-weight:700;letter-spacing:0.12em;padding:8px 14px;background:#020617;border:1px solid #1F2937;border-radius:8px;color:#E5E7EB;">—</code>
+            <button type="button" class="btn-secondary btn-sm" onclick="copyWorkspaceInviteCode()">Copy</button>
+            <button type="button" class="btn-sm" onclick="generateWorkspaceInviteCode()">Generate new code</button>
+          </div>
+          <p style="font-size:11px;color:#6B7280;margin:0;">Regenerating invalidates the previous code.</p>
+        </div>
+
+        <div id="teamJoinByCodePanel" class="card" style="margin-bottom:20px;padding:18px 20px;display:none;">
+          <h3 style="font-size:15px;margin:0 0 8px 0;">Join a workspace with a code</h3>
+          <p style="font-size:12px;color:#9CA3AF;margin:0 0 12px 0;line-height:1.45;">Enter the code your admin shared. You will be added to their team list (requires backend).</p>
+          <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;">
+            <input id="teamJoinCodeInput" type="text" placeholder="e.g. K7X9M2P4" autocomplete="off" style="flex:1;min-width:180px;max-width:280px;padding:8px 12px;background:#020617;border:1px solid #1F2937;color:white;border-radius:8px;font-size:14px;font-family:monospace;letter-spacing:0.08em;text-transform:uppercase;" oninput="this.value=this.value.toUpperCase()">
+            <button type="button" class="btn-sm" onclick="joinTeamWithInviteCode()">Join workspace</button>
+          </div>
+        </div>
+
         <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px;margin-bottom:24px;">
           <div class="stat-card">
             <h3>Total Members</h3>
@@ -4087,6 +4164,7 @@ kbd {
       <h2>👋 Invite Team Member</h2>
       <button class="modal-close" onclick="closeInviteTeamModal()">✕</button>
     </div>
+    <p style="font-size:12px;color:#9CA3AF;margin:-4px 0 14px 0;line-height:1.45;">Prefer not to use email? Generate an <strong style="color:#E5E7EB;">invite code</strong> on the Team page and share it — teammates can enter it when they sign up or under “Join a workspace with a code.”</p>
     <div class="form-group">
       <label>Email Address *</label>
       <input id="modalInviteEmail" placeholder="colleague@company.com" type="email">
@@ -4434,8 +4512,9 @@ let currentPageId = null
 let blockInsertIndex = null
 let blockInsertMenuVisible = false
 
-// Timer state
+// Timer state (session = started but not finished with Stop)
 let timerRunning   = false
+let timerSessionActive = false
 let timerStartTime = null
 let timerInterval  = null
 let timerSeconds   = 0
@@ -4665,6 +4744,7 @@ function register() {
   var e  = document.getElementById('regEmail').value.trim()
   var p  = document.getElementById('regPassword').value.trim()
   var c  = document.getElementById('regConfirm').value.trim()
+  var inv = (document.getElementById('regInviteCode') && document.getElementById('regInviteCode').value.trim()) || ''
   if (u.length < 4)     return showLoginMessage('Username must be at least 4 characters', 'error')
   if (e && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e)) return showLoginMessage('Please enter a valid email address', 'error')
   if (p.length < 6)     return showLoginMessage('Password must be at least 6 characters', 'error')
@@ -4673,18 +4753,29 @@ function register() {
     fetch(ALTER_API_BASE + '/api/auth/register', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username: u, email: e, password: p, fullName: '' })
+      body: JSON.stringify({ username: u, email: e, password: p, fullName: '', inviteCode: inv })
     }).then(function (r) { return r.json().then(function (body) { return { ok: r.ok, status: r.status, body: body } }) })
       .then(function (res) {
-        if (!res.ok) return showLoginMessage(res.body.error || 'Registration failed', 'error')
+        if (!res.ok) {
+          showLoginMessage(res.body.error || 'Registration failed', 'error')
+          return Promise.reject('register_failed')
+        }
         setAuthToken(res.body.token)
         save('session', res.body.user)
         currentUser = res.body.user
-        applyWorkspaceToState({ projects: [], tasks: [], ideas: [], events: [], goals: [], timeEntries: [], team: [], notifications: [], activity: [], auditLogs: [], invoices: [], apiKeys: [], userSettings: {}, pages: [] })
+        return loadWorkspaceFromBackend()
+      })
+      .then(function (data) {
+        if (!currentUser) return
+        if (data) applyWorkspaceToState(data)
+        else applyWorkspaceToState({ projects: [], tasks: [], ideas: [], events: [], goals: [], timeEntries: [], team: [], notifications: [], activity: [], auditLogs: [], invoices: [], apiKeys: [], userSettings: {}, pages: [] })
         addAuditLog('login', 'Account created', 'login')
         showApp()
       })
-      .catch(function () { showLoginMessage('Network error. Is the backend running?', 'error') })
+      .catch(function (err) {
+        if (err === 'register_failed') return
+        showLoginMessage('Network error. Is the backend running?', 'error')
+      })
     return
   }
   if (users.find(function (x) { return x.username === u })) return showLoginMessage('Username already exists', 'error')
@@ -5068,6 +5159,7 @@ function switchPage(pageId, el) {
   if (pageId === 'tasks') {
     populateTaskProjectFilter()
   }
+  if (pageId === 'team') renderTeam()
 }
 
 /* ===================================================
@@ -5994,12 +6086,12 @@ function buildTaskCard(t) {
           <span class="task-assignee" title="${escapeHtml(assigneeName)}">${escapeHtml(assigneeName.charAt(0).toUpperCase())}</span>
         </div>
       </div>
-      <div style="margin-top:8px;display:flex;flex-direction:column;gap:6px;">
-        <button class="btn-xs btn-danger" onclick="showDeleteConfirm('${t.id}')">✕ Delete</button>
-        <div id="deleteConfirm-${t.id}" class="hidden" style="display:flex;align-items:center;gap:6px;font-size:11px;color:#fca5a5;">
-          <span>Delete this task?</span>
-          <button class="btn-xs btn-danger" onclick="confirmDeleteTask('${t.id}')">Yes</button>
-          <button class="btn-xs btn-secondary" onclick="hideDeleteConfirm('${t.id}')">Cancel</button>
+      <div class="task-card-actions">
+        <button type="button" class="task-delete-btn" id="taskDelTrigger-${t.id}" onclick="event.stopPropagation();showDeleteConfirm('${t.id}')" title="Delete task" aria-label="Delete task">🗑</button>
+        <div id="deleteConfirm-${t.id}" class="task-delete-confirm hidden">
+          <span>Delete?</span>
+          <button type="button" class="btn-xs btn-danger" onclick="event.stopPropagation();confirmDeleteTask('${t.id}')">Yes</button>
+          <button type="button" class="btn-xs btn-secondary" onclick="event.stopPropagation();hideDeleteConfirm('${t.id}')">No</button>
         </div>
       </div>
     </div>
@@ -6007,12 +6099,16 @@ function buildTaskCard(t) {
 }
 function showDeleteConfirm(id) {
   let row = document.getElementById('deleteConfirm-' + id)
+  let btn = document.getElementById('taskDelTrigger-' + id)
   if (row) row.classList.remove('hidden')
+  if (btn) btn.classList.add('hidden')
 }
 
 function hideDeleteConfirm(id) {
   let row = document.getElementById('deleteConfirm-' + id)
+  let btn = document.getElementById('taskDelTrigger-' + id)
   if (row) row.classList.add('hidden')
+  if (btn) btn.classList.remove('hidden')
 }
 
 function confirmDeleteTask(id) {
@@ -6368,40 +6464,95 @@ function populateTimerProjectSelect() {
   populateProjectSelect('manualTimeProject')
 }
 
-function toggleTimer() {
-  if (timerRunning) {
-    stopTimer()
+function updateTimerControlsUI() {
+  const startBtn = document.getElementById('timerBtn')
+  const pauseBtn = document.getElementById('timerPauseBtn')
+  const stopBtn = document.getElementById('timerStopBtn')
+  if (!startBtn || !pauseBtn || !stopBtn) return
+
+  if (!timerSessionActive) {
+    startBtn.classList.remove('hidden')
+    startBtn.textContent = '▶ Start'
+    startBtn.className = 'btn-success'
+    pauseBtn.classList.add('hidden')
+    stopBtn.classList.add('hidden')
+  } else if (timerRunning) {
+    startBtn.classList.add('hidden')
+    pauseBtn.classList.remove('hidden')
+    stopBtn.classList.remove('hidden')
   } else {
-    startTimer()
+    startBtn.classList.remove('hidden')
+    startBtn.textContent = '▶ Resume'
+    startBtn.className = 'btn-success'
+    pauseBtn.classList.add('hidden')
+    stopBtn.classList.remove('hidden')
   }
+}
+
+function timerStartOrResume() {
+  if (!timerSessionActive) startTimer()
+  else if (!timerRunning) resumeTimer()
 }
 
 function startTimer() {
   let desc = document.getElementById('timerDesc').value.trim()
   if (!desc) return showToast('Please describe what you are working on', 'warning')
-  timerRunning   = true
-  timerStartTime = Date.now() - timerSeconds * 1000
-  timerInterval  = setInterval(updateTimerDisplay, 1000)
-  document.getElementById('timerBtn').textContent = '⏹ Stop'
-  document.getElementById('timerBtn').className   = 'btn-danger'
-  document.getElementById('timerDisplay').classList.add('running')
+  timerSessionActive = true
+  timerRunning = true
+  timerSeconds = 0
+  timerStartTime = Date.now()
+  timerInterval = setInterval(updateTimerDisplay, 1000)
+  const disp = document.getElementById('timerDisplay')
+  disp.classList.remove('paused')
+  disp.classList.add('running')
+  updateTimerControlsUI()
 }
 
-function stopTimer() {
+function resumeTimer() {
+  if (!timerSessionActive || timerRunning) return
+  timerRunning = true
+  timerStartTime = Date.now() - timerSeconds * 1000
+  timerInterval = setInterval(updateTimerDisplay, 1000)
+  const disp = document.getElementById('timerDisplay')
+  disp.classList.remove('paused')
+  disp.classList.add('running')
+  updateTimerControlsUI()
+}
+
+function pauseTimer() {
   if (!timerRunning) return
   clearInterval(timerInterval)
   timerRunning = false
-  let elapsed  = Math.floor((Date.now() - timerStartTime) / 1000)
-  timerSeconds = 0
-  document.getElementById('timerBtn').textContent = '▶ Start'
-  document.getElementById('timerBtn').className   = 'btn-success'
-  document.getElementById('timerDisplay').textContent = '00:00:00'
+  timerSeconds = Math.floor((Date.now() - timerStartTime) / 1000)
+  document.getElementById('timerDisplay').textContent = formatDuration(timerSeconds)
   document.getElementById('timerDisplay').classList.remove('running')
+  document.getElementById('timerDisplay').classList.add('paused')
+  updateTimerControlsUI()
+}
 
-  if (elapsed < 10) return // ignore accidental stops
+function stopTimer() {
+  if (!timerSessionActive) return
 
-  let desc    = document.getElementById('timerDesc').value.trim()
-  let projId  = document.getElementById('timerProject').value
+  if (timerRunning) {
+    clearInterval(timerInterval)
+    timerRunning = false
+    timerSeconds = Math.floor((Date.now() - timerStartTime) / 1000)
+  }
+
+  const elapsed = timerSeconds
+  timerSessionActive = false
+  timerSeconds = 0
+  timerStartTime = null
+
+  const disp = document.getElementById('timerDisplay')
+  disp.textContent = '00:00:00'
+  disp.classList.remove('running', 'paused')
+  updateTimerControlsUI()
+
+  if (elapsed < 10) return
+
+  let desc = document.getElementById('timerDesc').value.trim()
+  let projId = document.getElementById('timerProject').value
 
   saveTimeEntry(desc, projId, '', elapsed, new Date().toISOString().split('T')[0])
   document.getElementById('timerDesc').value = ''
@@ -6410,6 +6561,22 @@ function stopTimer() {
 function updateTimerDisplay() {
   timerSeconds = Math.floor((Date.now() - timerStartTime) / 1000)
   document.getElementById('timerDisplay').textContent = formatDuration(timerSeconds)
+}
+
+/** Clear timer without saving (e.g. workspace reset). */
+function forceResetTimerSession() {
+  if (timerInterval) clearInterval(timerInterval)
+  timerInterval = null
+  timerRunning = false
+  timerSessionActive = false
+  timerStartTime = null
+  timerSeconds = 0
+  const disp = document.getElementById('timerDisplay')
+  if (disp) {
+    disp.textContent = '00:00:00'
+    disp.classList.remove('running', 'paused')
+  }
+  updateTimerControlsUI()
 }
 
 function saveTimeEntry(desc, projId, taskId, durationSecs, date) {
@@ -7323,6 +7490,78 @@ function closeInviteTeamModal() {
   document.getElementById('modalInviteRole').value = 'member'
 }
 
+function refreshTeamInvitePanels() {
+  const canManage = currentUser && (currentUser.role === 'admin' || currentUser.role === 'owner')
+  const invitePanel = document.getElementById('teamInviteCodePanel')
+  const joinPanel = document.getElementById('teamJoinByCodePanel')
+  const codeDisplay = document.getElementById('teamInviteCodeDisplay')
+  if (invitePanel) invitePanel.style.display = canManage ? 'block' : 'none'
+  if (joinPanel) joinPanel.style.display = (ALTER_API_BASE && getAuthToken()) ? 'block' : 'none'
+  if (codeDisplay && canManage) {
+    const code = (userSettings && userSettings.workspaceInviteCode) || ''
+    codeDisplay.textContent = code || 'Not generated — click Generate new code'
+  }
+}
+
+function generateWorkspaceInviteCode() {
+  if (!ensureCurrentUser()) return
+  if (!(currentUser.role === 'admin' || currentUser.role === 'owner')) {
+    showToast('Only admins can generate invite codes', 'error')
+    return
+  }
+  if (!userSettings || typeof userSettings !== 'object') userSettings = {}
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
+  let code = ''
+  for (let i = 0; i < 8; i++) code += chars[Math.floor(Math.random() * chars.length)]
+  userSettings.workspaceInviteCode = code
+  save('usersettings', userSettings)
+  scheduleSyncWorkspace()
+  const el = document.getElementById('teamInviteCodeDisplay')
+  if (el) el.textContent = code
+  showToast('Invite code saved', 'success')
+  addAuditLog('update', 'Generated workspace invite code', 'update')
+}
+
+function copyWorkspaceInviteCode() {
+  const code = (userSettings && userSettings.workspaceInviteCode) || ''
+  if (!code) return showToast('Generate a code first', 'warning')
+  const done = () => showToast('Copied to clipboard', 'success')
+  const fail = () => showToast('Could not copy — select the code and copy manually', 'error')
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(code).then(done).catch(fail)
+  } else {
+    window.prompt('Copy this code:', code)
+  }
+}
+
+function joinTeamWithInviteCode() {
+  if (!ensureCurrentUser()) return
+  if (!ALTER_API_BASE || !getAuthToken()) {
+    showToast('Join by code requires signing in with the server', 'error')
+    return
+  }
+  const raw = (document.getElementById('teamJoinCodeInput') && document.getElementById('teamJoinCodeInput').value.trim()) || ''
+  if (!raw) return showToast('Enter an invite code', 'warning')
+  fetch(ALTER_API_BASE + '/api/team/join-with-code', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': 'Bearer ' + getAuthToken()
+    },
+    body: JSON.stringify({ code: raw })
+  })
+    .then(function (r) { return r.json().then(function (body) { return { ok: r.ok, body: body } }) })
+    .then(function (res) {
+      if (!res.ok) return showToast(res.body.error || 'Could not join', 'error')
+      const u = res.body.workspaceOwnerUsername
+      showToast(u ? `Added to ${u}'s team` : 'Joined workspace team', 'success')
+      const inp = document.getElementById('teamJoinCodeInput')
+      if (inp) inp.value = ''
+      addAuditLog('update', 'Joined workspace via invite code', 'update')
+    })
+    .catch(function () { showToast('Network error', 'error') })
+}
+
 function sendInvite() {
   let email = document.getElementById('modalInviteEmail').value.trim().toLowerCase()
   let role  = document.getElementById('modalInviteRole').value
@@ -7769,6 +8008,7 @@ function renderTeam() {
   if (document.getElementById('teamStatTotal')) document.getElementById('teamStatTotal').textContent = team.filter(m=>m.status==='accepted').length + 1
   if (document.getElementById('teamStatPending')) document.getElementById('teamStatPending').textContent = pending
   if (document.getElementById('teamStatAdmins')) document.getElementById('teamStatAdmins').textContent = admins
+  refreshTeamInvitePanels()
 }
 
 function buildCurrentUserCard() {
@@ -9170,6 +9410,7 @@ function resetWorkspace() {
 }
 
 function reallyResetWorkspace() {
+  forceResetTimerSession()
   projects = []; tasks = []; ideas = []; events = []; goals = []; timeEntries = []; activity = []
   pages = []
   ;['projects','tasks','ideas','events','goals','time','activity','pages'].forEach(k => save(k, []))
