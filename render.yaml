@@ -12,6 +12,9 @@ services:
       - key: JWT_SECRET
         generateValue: true  # Render creates a random secret if you don't set one
       # Add in the Render dashboard (do not commit secrets):
+      # Google Calendar OAuth (optional): GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET,
+      # GOOGLE_CLIENT_REDIRECT_URI=https://<your-service>.onrender.com/auth/google/calendar/callback
+      # FRONTEND_URL=https://<your-service>.onrender.com  (if API and SPA share one URL, optional)
       # SMTP_SERVICE=gmail
       # SMTP_USER=your@gmail.com
       # SMTP_PASS=app-password

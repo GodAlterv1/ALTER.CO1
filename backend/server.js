@@ -9,6 +9,7 @@ const compression = require('compression')
 const rateLimit = require('express-rate-limit')
 const bcrypt = require('bcryptjs')
 const jwt = require('jsonwebtoken')
+const crypto = require('crypto')
 const fs = require('fs')
 // Nodemailer is only required if SMTP email integration is enabled.
 // This keeps the backend running even if dependencies aren't installed yet.
@@ -27,6 +28,205 @@ const JWT_SECRET = process.env.JWT_SECRET || 'alter-co-dev-secret-change-in-prod
 const DATA_DIR = path.join(__dirname, 'data')
 const USERS_FILE = path.join(DATA_DIR, 'users.json')
 const WORKSPACE_DIR = path.join(DATA_DIR, 'workspace')
+
+/** Google Calendar OAuth (optional). Set all three in .env to enable connect + sync. */
+const GOOGLE_CLIENT_ID = (process.env.GOOGLE_CLIENT_ID || '').trim()
+const GOOGLE_CLIENT_SECRET = (process.env.GOOGLE_CLIENT_SECRET || '').trim()
+const GOOGLE_CLIENT_REDIRECT_URI = (process.env.GOOGLE_CLIENT_REDIRECT_URI || '').trim()
+const GOOGLE_CALENDAR_SCOPES = (
+  process.env.GOOGLE_CALENDAR_SCOPES ||
+  'https://www.googleapis.com/auth/calendar.readonly'
+).trim()
+
+function isGoogleCalendarOAuthConfigured() {
+  return Boolean(GOOGLE_CLIENT_ID && GOOGLE_CLIENT_SECRET && GOOGLE_CLIENT_REDIRECT_URI)
+}
+
+/** In-memory access token cache: userId -> { accessToken, expiresAt } */
+const googleAccessTokenCache = new Map()
+
+function signGoogleOAuthState(userId) {
+  const payload = JSON.stringify({ userId, ts: Date.now() })
+  const sig = crypto.createHmac('sha256', JWT_SECRET).update(payload).digest('base64url')
+  const b64 = Buffer.from(payload, 'utf8').toString('base64url')
+  return `${b64}.${sig}`
+}
+
+function verifyGoogleOAuthState(state) {
+  if (!state || typeof state !== 'string') return null
+  const dot = state.indexOf('.')
+  if (dot < 0) return null
+  const b64 = state.slice(0, dot)
+  const sig = state.slice(dot + 1)
+  let payload
+  try {
+    payload = Buffer.from(b64, 'base64url').toString('utf8')
+  } catch (e) {
+    return null
+  }
+  const expected = crypto.createHmac('sha256', JWT_SECRET).update(payload).digest('base64url')
+  if (expected !== sig) return null
+  let obj
+  try {
+    obj = JSON.parse(payload)
+  } catch (e) {
+    return null
+  }
+  if (!obj.userId || !obj.ts) return null
+  if (Date.now() - obj.ts > 15 * 60 * 1000) return null
+  return obj.userId
+}
+
+function getGoogleRefreshTokenForUser(userId) {
+  const users = readUsers()
+  const row = users.find(u => u.id === userId)
+  if (!row || !row.integrations || typeof row.integrations !== 'object') return null
+  const g = row.integrations.googleCalendar
+  if (!g || typeof g !== 'object') return null
+  const t = g.refreshToken
+  return typeof t === 'string' && t ? t : null
+}
+
+function setUserGoogleCalendarTokens(userId, { refreshToken, merge }) {
+  const users = readUsers()
+  const row = users.find(u => u.id === userId)
+  if (!row) return false
+  if (!row.integrations || typeof row.integrations !== 'object') row.integrations = {}
+  if (!row.integrations.googleCalendar || typeof row.integrations.googleCalendar !== 'object') {
+    row.integrations.googleCalendar = {}
+  }
+  const prev = row.integrations.googleCalendar.refreshToken
+  if (refreshToken) {
+    row.integrations.googleCalendar.refreshToken = refreshToken
+  } else if (merge && prev) {
+    row.integrations.googleCalendar.refreshToken = prev
+  }
+  row.integrations.googleCalendar.connectedAt = new Date().toISOString()
+  writeUsers(users)
+  googleAccessTokenCache.delete(userId)
+  return true
+}
+
+function clearUserGoogleCalendar(userId) {
+  const users = readUsers()
+  const row = users.find(u => u.id === userId)
+  if (!row || !row.integrations || typeof row.integrations !== 'object') return
+  if (row.integrations.googleCalendar) delete row.integrations.googleCalendar
+  writeUsers(users)
+  googleAccessTokenCache.delete(userId)
+}
+
+async function exchangeGoogleAuthCode(code) {
+  const body = new URLSearchParams({
+    code,
+    client_id: GOOGLE_CLIENT_ID,
+    client_secret: GOOGLE_CLIENT_SECRET,
+    redirect_uri: GOOGLE_CLIENT_REDIRECT_URI,
+    grant_type: 'authorization_code'
+  })
+  const res = await fetch('https://oauth2.googleapis.com/token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body
+  })
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) {
+    const err = new Error(data.error_description || data.error || 'token_exchange_failed')
+    err.details = data
+    throw err
+  }
+  return data
+}
+
+async function getGoogleAccessTokenForUser(userId) {
+  const refreshToken = getGoogleRefreshTokenForUser(userId)
+  if (!refreshToken) return null
+
+  const cached = googleAccessTokenCache.get(userId)
+  if (cached && cached.expiresAt > Date.now() + 60 * 1000) {
+    return cached.accessToken
+  }
+
+  const body = new URLSearchParams({
+    client_id: GOOGLE_CLIENT_ID,
+    client_secret: GOOGLE_CLIENT_SECRET,
+    refresh_token: refreshToken,
+    grant_type: 'refresh_token'
+  })
+  const res = await fetch('https://oauth2.googleapis.com/token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body
+  })
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) {
+    console.error('[Google Calendar] refresh token failed:', data.error || res.status)
+    return null
+  }
+  const accessToken = data.access_token
+  const expiresIn = Number(data.expires_in) || 3600
+  if (!accessToken) return null
+  googleAccessTokenCache.set(userId, {
+    accessToken,
+    expiresAt: Date.now() + expiresIn * 1000
+  })
+  return accessToken
+}
+
+function mapGoogleEventToApp(ev) {
+  const startObj = ev.start || {}
+  const endObj = ev.end || {}
+  let start
+  let end
+  if (startObj.dateTime) {
+    start = new Date(startObj.dateTime).toISOString()
+  } else if (startObj.date) {
+    start = startObj.date + 'T00:00:00.000Z'
+  } else {
+    start = new Date().toISOString()
+  }
+  if (endObj.dateTime) {
+    end = new Date(endObj.dateTime).toISOString()
+  } else if (endObj.date) {
+    end = endObj.date + 'T23:59:59.999Z'
+  } else {
+    end = start
+  }
+  return {
+    id: 'google-' + String(ev.id || '').replace(/[^a-zA-Z0-9_-]/g, '_'),
+    title: ev.summary || '(No title)',
+    description: ev.description || '',
+    start,
+    end,
+    color: 'event-green',
+    source: 'google'
+  }
+}
+
+function htmlMessagePage(title, message, extraLink) {
+  return (
+    '<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">' +
+    `<title>${title}</title></head>` +
+    '<body style="font-family:system-ui,sans-serif;background:#0B0F18;color:#E5E7EB;margin:0;padding:2rem;line-height:1.6;text-align:center;">' +
+    `<h1 style="font-size:1.25rem;">${title}</h1>` +
+    `<p style="color:#9CA3AF;max-width:28rem;margin:1rem auto;">${message}</p>` +
+    (extraLink || '<p><a href="/" style="color:#60A5FA;">← Back to ALTER.CO</a></p>') +
+    '</body></html>'
+  )
+}
+
+function verifyGoogleCalendarOnStartup() {
+  if (!GOOGLE_CLIENT_ID && !GOOGLE_CLIENT_SECRET && !GOOGLE_CLIENT_REDIRECT_URI) {
+    return
+  }
+  if (!isGoogleCalendarOAuthConfigured()) {
+    console.warn(
+      '[Google Calendar] OAuth partially configured: set GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, and GOOGLE_CLIENT_REDIRECT_URI together.'
+    )
+  } else {
+    console.log('[Google Calendar] OAuth env present — connect flow enabled.')
+  }
+}
 
 // Hardening: custom CSP — Chart.js UMD may use eval(); inline script is the whole app
 const SPA_CONTENT_SECURITY_POLICY = [
@@ -937,22 +1137,177 @@ app.post('/api/integrations/email/task-assigned', authMiddleware, async (req, re
   }
 })
 
-// ----- Integrations: Google Calendar (stub until OAuth env is wired) -----
+// ----- Integrations: Google Calendar OAuth + read-only sync -----
+/**
+ * Start OAuth: GET /auth/google/calendar?token=JWT
+ * (Browser navigation cannot send Authorization headers; token is short-lived JWT from login.)
+ */
 app.get('/auth/google/calendar', (req, res) => {
   res.set('Content-Type', 'text/html; charset=utf-8')
-  res.send(
-    '<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">' +
-      '<title>Google Calendar · ALTER.CO</title></head>' +
-      '<body style="font-family:system-ui,sans-serif;background:#0B0F18;color:#E5E7EB;margin:0;padding:2rem;line-height:1.6;text-align:center;">' +
-      '<h1 style="font-size:1.25rem;">Google Calendar</h1>' +
-      '<p style="color:#9CA3AF;max-width:28rem;margin:1rem auto;">OAuth is not configured on this server yet. Add Google API credentials to the backend to enable sync.</p>' +
-      '<p><a href="/" style="color:#60A5FA;">← Back to ALTER.CO</a></p>' +
-      '</body></html>'
-  )
+  if (!isGoogleCalendarOAuthConfigured()) {
+    return res.send(
+      htmlMessagePage(
+        'Google Calendar',
+        'OAuth is not configured on this server yet. Add GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, and GOOGLE_CLIENT_REDIRECT_URI to the backend environment (see backend/.env.example), then restart.'
+      )
+    )
+  }
+
+  const token = typeof req.query.token === 'string' ? req.query.token.trim() : ''
+  if (!token) {
+    return res.send(
+      htmlMessagePage(
+        'Sign in required',
+        'Open ALTER.CO, sign in, then click “Connect Google Calendar” again so your session can be linked.'
+      )
+    )
+  }
+
+  let userId
+  try {
+    const payload = jwt.verify(token, JWT_SECRET)
+    userId = payload.userId
+  } catch (e) {
+    return res.status(401).send(htmlMessagePage('Session expired', 'Please sign in to ALTER.CO again, then retry connecting Google Calendar.'))
+  }
+
+  if (!userId) {
+    return res.status(401).send(htmlMessagePage('Invalid session', 'Please sign in again.'))
+  }
+
+  const state = signGoogleOAuthState(userId)
+  const params = new URLSearchParams({
+    client_id: GOOGLE_CLIENT_ID,
+    redirect_uri: GOOGLE_CLIENT_REDIRECT_URI,
+    response_type: 'code',
+    scope: GOOGLE_CALENDAR_SCOPES,
+    access_type: 'offline',
+    prompt: 'consent',
+    state
+  })
+  res.redirect(302, 'https://accounts.google.com/o/oauth2/v2/auth?' + params.toString())
 })
 
-app.get('/api/calendar/events', (req, res) => {
-  res.json({ events: [], configured: false })
+app.get('/auth/google/calendar/callback', async (req, res) => {
+  res.set('Content-Type', 'text/html; charset=utf-8')
+  const frontendBase = (process.env.FRONTEND_URL || '').trim().replace(/\/+$/, '')
+  const fallbackRedirect = `${req.protocol}://${req.get('host')}`
+  const appBase = frontendBase || fallbackRedirect
+
+  if (req.query.error) {
+    const msg = encodeURIComponent(String(req.query.error))
+    return res.redirect(302, `${appBase}/?google_calendar=error&reason=${msg}`)
+  }
+
+  if (!isGoogleCalendarOAuthConfigured()) {
+    return res.send(htmlMessagePage('Google Calendar', 'OAuth is not configured on this server.'))
+  }
+
+  const code = typeof req.query.code === 'string' ? req.query.code : ''
+  const state = typeof req.query.state === 'string' ? req.query.state : ''
+  const userId = verifyGoogleOAuthState(state)
+  if (!code || !userId) {
+    return res.send(htmlMessagePage('Google Calendar', 'Invalid or expired OAuth state. Try connecting again from ALTER.CO.'))
+  }
+
+  try {
+    const tokens = await exchangeGoogleAuthCode(code)
+    const refresh = tokens.refresh_token || null
+    const users = readUsers()
+    const existing = users.find(u => u.id === userId)
+    const existingRefresh =
+      existing &&
+      existing.integrations &&
+      existing.integrations.googleCalendar &&
+      existing.integrations.googleCalendar.refreshToken
+
+    if (!refresh && !existingRefresh) {
+      return res.redirect(
+        302,
+        `${appBase}/?google_calendar=error&reason=${encodeURIComponent('no_refresh_token')}`
+      )
+    }
+
+    setUserGoogleCalendarTokens(userId, {
+      refreshToken: refresh || undefined,
+      merge: true
+    })
+    return res.redirect(302, `${appBase}/?google_calendar=connected`)
+  } catch (e) {
+    console.error('[Google Calendar] callback error:', e && e.message ? e.message : e)
+    return res.redirect(302, `${appBase}/?google_calendar=error&reason=token_exchange`)
+  }
+})
+
+app.get('/api/integrations/google/calendar/status', authMiddleware, (req, res) => {
+  const configured = isGoogleCalendarOAuthConfigured()
+  const connected = Boolean(getGoogleRefreshTokenForUser(req.userId))
+  res.json({ configured, connected })
+})
+
+app.post('/api/integrations/google/calendar/disconnect', authMiddleware, (req, res) => {
+  clearUserGoogleCalendar(req.userId)
+  res.json({ ok: true })
+})
+
+app.get('/api/calendar/events', authMiddleware, async (req, res) => {
+  if (!isGoogleCalendarOAuthConfigured()) {
+    return res.status(503).json({
+      error: 'Google Calendar OAuth is not configured on this server',
+      configured: false,
+      connected: false,
+      events: []
+    })
+  }
+
+  const refresh = getGoogleRefreshTokenForUser(req.userId)
+  if (!refresh) {
+    return res.json({ configured: true, connected: false, events: [] })
+  }
+
+  const timeMin = typeof req.query.start === 'string' ? req.query.start : new Date().toISOString()
+  const timeMax = typeof req.query.end === 'string' ? req.query.end : new Date(Date.now() + 86400000 * 31).toISOString()
+
+  const accessToken = await getGoogleAccessTokenForUser(req.userId)
+  if (!accessToken) {
+    return res.status(401).json({
+      error: 'Could not refresh Google access token. Try disconnecting and connecting again.',
+      configured: true,
+      connected: true,
+      events: []
+    })
+  }
+
+  const calParams = new URLSearchParams({
+    timeMin,
+    timeMax,
+    singleEvents: 'true',
+    orderBy: 'startTime',
+    maxResults: '250'
+  })
+  const calUrl = 'https://www.googleapis.com/calendar/v3/calendars/primary/events?' + calParams.toString()
+
+  try {
+    const gRes = await fetch(calUrl, {
+      headers: { Authorization: 'Bearer ' + accessToken }
+    })
+    const data = await gRes.json().catch(() => ({}))
+    if (!gRes.ok) {
+      console.error('[Google Calendar] events.list error:', gRes.status, data.error || data)
+      return res.status(502).json({
+        error: 'Google Calendar API error',
+        configured: true,
+        connected: true,
+        events: []
+      })
+    }
+    const items = Array.isArray(data.items) ? data.items : []
+    const events = items.map(mapGoogleEventToApp)
+    res.json({ configured: true, connected: true, events })
+  } catch (e) {
+    console.error('[Google Calendar] fetch events:', e)
+    res.status(500).json({ error: 'Failed to load calendar events', events: [] })
+  }
 })
 
 // ----- Health -----
@@ -966,7 +1321,8 @@ app.get('/api/health', (req, res) => {
       ? 'resend'
       : isSmtpConfigured()
         ? 'smtp'
-        : 'none'
+        : 'none',
+    googleCalendarOAuthConfigured: isGoogleCalendarOAuthConfigured()
   })
 })
 
@@ -984,4 +1340,5 @@ app.listen(PORT, () => {
   console.log('ALTER.CO API running on http://localhost:' + PORT)
   console.log('Storage: JSON files in ' + DATA_DIR)
   verifyEmailOnStartup()
+  verifyGoogleCalendarOnStartup()
 })
