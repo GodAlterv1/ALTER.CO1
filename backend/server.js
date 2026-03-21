@@ -118,6 +118,64 @@ function userToClient(row) {
 let mailTransporter = null
 let smtpConfigWarningLogged = false
 
+/** Gmail App Passwords are 16 chars; Google often shows them with spaces — remove all spaces. */
+function normalizeSmtpPassword(pass, isGmail) {
+  const p = String(pass || '').trim()
+  if (!isGmail) return p
+  return p.replace(/\s+/g, '')
+}
+
+/**
+ * For Gmail, "Name <x@gmail.com>" is OK only if x matches SMTP_USER; otherwise use SMTP_USER.
+ */
+function normalizeMailFrom() {
+  const user = (process.env.SMTP_USER || '').trim()
+  let from = (process.env.EMAIL_FROM || user || '').trim()
+  const m = from.match(/<([^>]+)>/)
+  const addrInFrom = m ? m[1].trim() : from
+  if (user && addrInFrom && addrInFrom.toLowerCase() !== user.toLowerCase()) {
+    console.warn('[SMTP] EMAIL_FROM address does not match SMTP_USER; using SMTP_USER as From to satisfy Gmail.')
+    return user
+  }
+  return from || user
+}
+
+function createGmailTransport(SMTP_USER, SMTP_PASS) {
+  // SMTP_GMAIL_USE_SERVICE=true → nodemailer built-in preset
+  if (String(process.env.SMTP_GMAIL_USE_SERVICE || '').toLowerCase() === 'true') {
+    return nodemailer.createTransport({
+      service: 'gmail',
+      auth: { user: SMTP_USER, pass: SMTP_PASS },
+      debug: String(process.env.SMTP_DEBUG || '').toLowerCase() === 'true',
+      logger: String(process.env.SMTP_DEBUG || '').toLowerCase() === 'true'
+    })
+  }
+
+  const mode = String(process.env.SMTP_GMAIL_MODE || '587').toLowerCase()
+  // 587 + STARTTLS often works better on cloud hosts (e.g. Render) than 465 SSL.
+  if (mode === '465') {
+    return nodemailer.createTransport({
+      host: 'smtp.gmail.com',
+      port: 465,
+      secure: true,
+      auth: { user: SMTP_USER, pass: SMTP_PASS },
+      debug: String(process.env.SMTP_DEBUG || '').toLowerCase() === 'true',
+      logger: String(process.env.SMTP_DEBUG || '').toLowerCase() === 'true'
+    })
+  }
+
+  return nodemailer.createTransport({
+    host: 'smtp.gmail.com',
+    port: 587,
+    secure: false,
+    requireTLS: true,
+    auth: { user: SMTP_USER, pass: SMTP_PASS },
+    tls: { minVersion: 'TLSv1.2' },
+    debug: String(process.env.SMTP_DEBUG || '').toLowerCase() === 'true',
+    logger: String(process.env.SMTP_DEBUG || '').toLowerCase() === 'true'
+  })
+}
+
 function getMailTransporter() {
   if (mailTransporter) return mailTransporter
 
@@ -127,8 +185,9 @@ function getMailTransporter() {
   }
 
   const SMTP_USER = (process.env.SMTP_USER || '').trim()
-  const SMTP_PASS = (process.env.SMTP_PASS || '').trim()
   const { SMTP_SERVICE, SMTP_HOST, SMTP_PORT, SMTP_SECURE } = process.env
+  const isGmail = String(SMTP_SERVICE || '').toLowerCase() === 'gmail'
+  const SMTP_PASS = normalizeSmtpPassword(process.env.SMTP_PASS, isGmail)
 
   if (!SMTP_USER || !SMTP_PASS) {
     if (!smtpConfigWarningLogged) {
@@ -142,21 +201,11 @@ function getMailTransporter() {
 
   const svc = String(SMTP_SERVICE || '').toLowerCase()
   if (svc === 'gmail') {
-    // Explicit host often works more reliably on hosts like Render than service: "gmail".
-    // Set SMTP_GMAIL_USE_SERVICE=true to use nodemailer's built-in Gmail preset instead.
-    if (String(process.env.SMTP_GMAIL_USE_SERVICE || '').toLowerCase() === 'true') {
-      mailTransporter = nodemailer.createTransport({
-        service: 'gmail',
-        auth: { user: SMTP_USER, pass: SMTP_PASS }
-      })
-    } else {
-      mailTransporter = nodemailer.createTransport({
-        host: 'smtp.gmail.com',
-        port: 465,
-        secure: true,
-        auth: { user: SMTP_USER, pass: SMTP_PASS }
-      })
-    }
+    mailTransporter = createGmailTransport(SMTP_USER, SMTP_PASS)
+    const mode = String(process.env.SMTP_GMAIL_USE_SERVICE || '').toLowerCase() === 'true'
+      ? 'service'
+      : String(process.env.SMTP_GMAIL_MODE || '587')
+    console.log('[SMTP] Gmail transport:', mode === 'service' ? 'nodemailer service:gmail' : 'smtp.gmail.com port ' + mode)
     return mailTransporter
   }
 
@@ -196,14 +245,69 @@ function isSmtpConfigured() {
   return Boolean(SMTP_HOST && SMTP_PORT)
 }
 
+function isResendConfigured() {
+  const key = (process.env.RESEND_API_KEY || '').trim()
+  if (!key) return false
+  const from = (process.env.RESEND_FROM || process.env.EMAIL_FROM || process.env.SMTP_USER || '').trim()
+  return Boolean(from)
+}
+
+/** True if Resend (HTTPS) or classic SMTP env is complete */
+function isEmailConfigured() {
+  if (isResendConfigured()) return true
+  return isSmtpConfigured()
+}
+
+/**
+ * Resend uses HTTPS (port 443) — works on Render free tier, which blocks outbound SMTP (25, 465, 587).
+ * https://resend.com/docs
+ */
+async function sendEmailViaResend({ to, subject, text }) {
+  const key = (process.env.RESEND_API_KEY || '').trim()
+  if (!key) return false
+  const from = (process.env.RESEND_FROM || process.env.EMAIL_FROM || process.env.SMTP_USER || '').trim()
+  if (!from) {
+    console.error('sendEmailViaResend: set RESEND_FROM or EMAIL_FROM')
+    return false
+  }
+  try {
+    const res = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${key}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        from,
+        to: [to],
+        subject,
+        text
+      })
+    })
+    if (!res.ok) {
+      const body = await res.text()
+      console.error('sendEmailViaResend failed:', res.status, body)
+      return false
+    }
+    return true
+  } catch (e) {
+    console.error('sendEmailViaResend', e && e.message ? e.message : e)
+    return false
+  }
+}
+
 async function sendEmailSafe({ to, subject, text }) {
   try {
+    if ((process.env.RESEND_API_KEY || '').trim()) {
+      return await sendEmailViaResend({ to, subject, text })
+    }
+
     const transporter = getMailTransporter()
     if (!transporter || !to) {
       if (!transporter) console.error('sendEmailSafe: transporter null (SMTP not configured?)')
       return false
     }
-    const from = (process.env.EMAIL_FROM || process.env.SMTP_USER || '').trim()
+    const from = normalizeMailFrom()
     await transporter.sendMail({ from, to, subject, text })
     return true
   } catch (e) {
@@ -219,8 +323,19 @@ async function sendEmailSafe({ to, subject, text }) {
   }
 }
 
-/** Logs success/failure to console so Render logs show whether Gmail accepts credentials */
-function verifySmtpOnStartup() {
+/** Logs SMTP verify or notes when using Resend (no SMTP on Render free tier) */
+function verifyEmailOnStartup() {
+  if ((process.env.RESEND_API_KEY || '').trim()) {
+    if (isResendConfigured()) {
+      console.log(
+        '[Email] Resend API enabled (HTTPS). Outbound SMTP is blocked on Render free Web Services — Resend avoids SMTP entirely.'
+      )
+    } else {
+      console.error('[Email] RESEND_API_KEY is set; add RESEND_FROM (or EMAIL_FROM) with a sender Resend allows (e.g. onboarding@resend.dev for testing).')
+    }
+    return
+  }
+
   if (!isSmtpConfigured() || !nodemailer) return
   const t = getMailTransporter()
   if (!t || typeof t.verify !== 'function') return
@@ -229,11 +344,21 @@ function verifySmtpOnStartup() {
       console.log('[SMTP] Verify OK — Gmail accepted SMTP_USER / SMTP_PASS.')
     })
     .catch(err => {
-      console.error('[SMTP] VERIFY FAILED — forgot-password and other mail will not work until this passes.')
-      console.error('[SMTP]', err && err.message ? err.message : err)
-      console.error(
-        '[SMTP] Check: SMTP_SERVICE=gmail, SMTP_USER=full@gmail.com, SMTP_PASS=16-char App Password (no spaces). Optional: set EMAIL_FROM to the same address as SMTP_USER.'
-      )
+      console.error('[SMTP] VERIFY FAILED — mail will not work until this passes.')
+      const msg = err && err.message ? err.message : String(err)
+      console.error('[SMTP] Reason:', msg)
+      if (err && err.code) console.error('[SMTP] code:', err.code)
+      if (err && err.response) console.error('[SMTP] response:', err.response)
+      if (err && err.responseCode) console.error('[SMTP] responseCode:', err.responseCode)
+      if (/timeout|ETIMEDOUT|ECONNRESET|ENOTFOUND/i.test(String(msg))) {
+        console.error(
+          '[Email] Render free Web Services block outbound SMTP (ports 25, 465, 587). Use Resend: set RESEND_API_KEY + RESEND_FROM in Environment, or upgrade Render / use another host.'
+        )
+      } else {
+        console.error(
+          '[SMTP] Fix checklist: (1) SMTP_SERVICE=gmail (2) SMTP_USER=your Gmail (3) SMTP_PASS=App Password (4) EMAIL_FROM matches SMTP_USER (5) try SMTP_GMAIL_MODE=465 or SMTP_GMAIL_USE_SERVICE=true for TLS issues'
+        )
+      }
     })
 }
 
@@ -508,7 +633,7 @@ app.post('/api/public/contact', contactLimiter, async (req, res) => {
       return res.status(400).json({ error: 'Valid email is required' })
     }
 
-    const to = (process.env.CONTACT_INBOX || process.env.SMTP_USER || '').trim()
+    const to = (process.env.CONTACT_INBOX || process.env.SMTP_USER || process.env.RESEND_FROM || '').trim()
     if (!to) {
       return res.status(503).json({ error: 'Contact email is not configured on this server' })
     }
@@ -559,8 +684,7 @@ app.put('/api/workspace', authMiddleware, (req, res) => {
 // ----- Routes: Integrations - Email -----
 app.post('/api/integrations/email/send-invite', authMiddleware, async (req, res) => {
   try {
-    const transporter = getMailTransporter()
-    if (!transporter) {
+    if (!isEmailConfigured()) {
       return res.status(500).json({ error: 'Email not configured on server' })
     }
 
@@ -569,7 +693,6 @@ app.post('/api/integrations/email/send-invite', authMiddleware, async (req, res)
       return res.status(400).json({ error: 'Missing "to" email address' })
     }
 
-    const from = (process.env.EMAIL_FROM || process.env.SMTP_USER || '').trim()
     const mailSubject = subject || 'You are invited to join ALTER.CO'
     const textBody =
       message ||
@@ -577,12 +700,14 @@ app.post('/api/integrations/email/send-invite', authMiddleware, async (req, res)
       `Sign in or create an account using this email address to access the workspace.\n\n` +
       `If you were not expecting this invitation, you can safely ignore this email.`
 
-    await transporter.sendMail({
-      from,
+    const ok = await sendEmailSafe({
       to,
       subject: mailSubject,
       text: textBody
     })
+    if (!ok) {
+      return res.status(500).json({ error: 'Failed to send email' })
+    }
 
     res.json({ ok: true })
   } catch (err) {
@@ -644,7 +769,12 @@ app.get('/api/health', (req, res) => {
     status: 'ok',
     storage: 'json',
     uptimeSeconds: Math.floor((Date.now() - startedAt) / 1000),
-    emailConfigured: isSmtpConfigured()
+    emailConfigured: isEmailConfigured(),
+    emailProvider: (process.env.RESEND_API_KEY || '').trim()
+      ? 'resend'
+      : isSmtpConfigured()
+        ? 'smtp'
+        : 'none'
   })
 })
 
@@ -661,5 +791,5 @@ if (fs.existsSync(indexPath)) {
 app.listen(PORT, () => {
   console.log('ALTER.CO API running on http://localhost:' + PORT)
   console.log('Storage: JSON files in ' + DATA_DIR)
-  verifySmtpOnStartup()
+  verifyEmailOnStartup()
 })
