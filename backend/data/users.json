@@ -8,5 +8,17 @@
     "role": "admin",
     "plan": "free",
     "created_at": "2026-03-14T11:32:48.088Z"
+  },
+  {
+    "id": "mn09w36h9jkrt",
+    "username": "alteradmin",
+    "email": "admin@alter.co.local",
+    "password_hash": "$2a$10$L5Z8h4Fv9b6QZkJcL/WjpuYaeSWK2OOags5uvFcSjC1uMPN3UVchu",
+    "full_name": "Administrator",
+    "bio": "",
+    "timezone": "UTC",
+    "role": "admin",
+    "plan": "free",
+    "created_at": "2026-03-21T11:56:57.593Z"
   }
 ]
