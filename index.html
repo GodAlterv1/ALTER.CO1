@@ -2705,62 +2705,314 @@ kbd {
   }
 }
 
-/* ===== PAGES (Notion-style blocks) ===== */
-.pages-editor-layout { display: grid; grid-template-columns: 320px 1fr; gap: 20px; margin-top: 10px; }
-.pages-sidebar { min-width: 0; }
-.pages-list { margin-top: 8px; display: flex; flex-direction: column; gap: 8px; }
-.pages-row { padding: 10px 12px; border: 1px solid #1F2937; border-radius: 12px; cursor: pointer; background: #0B0F18; color: #E5E7EB; }
-.pages-row:hover { border-color: #4f46e5; }
-.pages-row.active { border-color: #4f46e5; box-shadow: 0 0 0 1px rgba(79,70,229,.35) inset; }
+/* ===== PAGES / DOCS ===== */
+.pages-hub { max-width: min(1680px, 100%); margin: 0 auto; }
+.docs-shell {
+  display: grid;
+  grid-template-columns: minmax(260px, 300px) minmax(0, 1fr);
+  gap: 0;
+  margin-top: 8px;
+  min-height: calc(100vh - 140px);
+  border: 1px solid #1F2937;
+  border-radius: 16px;
+  overflow: hidden;
+  background: #020617;
+}
+.docs-sidebar {
+  background: linear-gradient(180deg, #0c1222 0%, #0a0f1a 100%);
+  border-right: 1px solid #1F2937;
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+  min-width: 0;
+}
+.docs-sidebar-brand { padding: 16px 16px 12px; border-bottom: 1px solid #1F2937; }
+.docs-sidebar-brand h2 {
+  margin: 0 0 4px 0;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #6B7280;
+}
+.docs-sidebar-brand p { margin: 0; font-size: 12px; color: #9CA3AF; line-height: 1.45; }
+.docs-sidebar-actions { padding: 12px 14px; display: flex; flex-direction: column; gap: 8px; }
+.docs-sidebar-actions .btn-primary { width: 100%; justify-content: center; font-size: 13px; padding: 10px 14px; border-radius: 10px; }
+.docs-sidebar-secondary { display: flex; gap: 6px; flex-wrap: wrap; }
+.docs-sidebar-secondary button { flex: 1; min-width: 0; font-size: 11px; padding: 8px 10px; border-radius: 8px; }
+.docs-search-wrap { position: relative; padding: 0 14px 12px; }
+.docs-search-wrap input {
+  width: 100%;
+  padding: 10px 12px 10px 36px;
+  background: #020617;
+  border: 1px solid #1F2937;
+  border-radius: 10px;
+  color: #E5E7EB;
+  font-size: 13px;
+  box-sizing: border-box;
+}
+.docs-search-wrap::before {
+  content: '🔍';
+  position: absolute;
+  left: 26px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 12px;
+  opacity: 0.55;
+  pointer-events: none;
+}
+.pages-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 4px 10px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.pages-list-empty { padding: 20px 14px; text-align: center; font-size: 12px; color: #6B7280; line-height: 1.5; }
+.pages-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid #1F2937;
+  border-radius: 10px;
+  cursor: pointer;
+  background: rgba(15, 23, 42, 0.5);
+  color: #E5E7EB;
+  transition: border-color 0.15s, background 0.15s;
+}
+.pages-row:hover { border-color: #374151; background: rgba(30, 41, 59, 0.5); }
+.pages-row.active {
+  border-color: rgba(79, 70, 229, 0.55);
+  background: rgba(79, 70, 229, 0.1);
+  box-shadow: inset 0 0 0 1px rgba(79, 70, 229, 0.2);
+}
+.pages-row-icon { font-size: 16px; line-height: 1.2; opacity: 0.9; flex-shrink: 0; }
+.pages-row-body { flex: 1; min-width: 0; }
+.pages-row-title { font-weight: 600; font-size: 13px; line-height: 1.35; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pages-row-meta { font-size: 10px; color: #6B7280; margin-top: 4px; }
+.pages-row-del {
+  opacity: 0;
+  flex-shrink: 0;
+  border: none;
+  background: transparent;
+  color: #6B7280;
+  cursor: pointer;
+  padding: 2px 4px;
+  border-radius: 4px;
+  font-size: 12px;
+  line-height: 1;
+}
+.pages-row:hover .pages-row-del { opacity: 1; }
+.pages-row-del:hover { color: #f87171; background: rgba(255,255,255,0.06); }
 
-.pages-main { min-width: 0; }
+.docs-main { min-width: 0; background: #0B0F18; }
+.docs-article { padding: 0 !important; max-width: none !important; margin: 0 !important; border: none !important; background: transparent !important; box-shadow: none !important; }
+.docs-article-inner { max-width: 720px; margin: 0 auto; padding: 28px 32px 80px; }
+@media (max-width: 900px) {
+  .docs-shell { grid-template-columns: 1fr; }
+  .docs-sidebar { border-right: none; border-bottom: 1px solid #1F2937; max-height: 320px; }
+  .docs-article-inner { padding: 20px 16px 60px; }
+}
+.docs-breadcrumb { font-size: 12px; color: #6B7280; margin-bottom: 16px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.docs-breadcrumb span { color: #9CA3AF; }
+.docs-title-field {
+  width: 100%;
+  padding: 12px 14px;
+  background: #020617;
+  border: 1px solid #1F2937;
+  color: #F9FAFB;
+  border-radius: 12px;
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  font-family: inherit;
+  margin-bottom: 0;
+  box-sizing: border-box;
+}
+.docs-title-field:focus {
+  outline: none;
+  border-color: rgba(79, 70, 229, 0.55);
+  box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.12);
+}
+.docs-meta-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px 20px;
+  margin-top: 14px;
+  margin-bottom: 22px;
+  padding-bottom: 18px;
+  border-bottom: 1px solid #1F2937;
+  font-size: 12px;
+  color: #9CA3AF;
+}
+.docs-meta-bar kbd {
+  font-size: 10px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: #111827;
+  border: 1px solid #374151;
+  color: #D1D5DB;
+}
+.docs-editor-layout-inner { display: grid; grid-template-columns: minmax(0, 1fr) 200px; gap: 24px; align-items: start; }
+@media (max-width: 1100px) { .docs-editor-layout-inner { grid-template-columns: 1fr; } }
+.docs-toc { position: sticky; top: 88px; font-size: 12px; color: #9CA3AF; line-height: 1.45; }
+.docs-toc-title {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #6B7280;
+  margin: 0 0 10px 0;
+}
+.docs-toc ul { list-style: none; padding: 0; margin: 0; }
+.docs-toc li { margin-bottom: 6px; }
+.docs-toc a {
+  color: #9CA3AF;
+  text-decoration: none;
+  display: block;
+  padding: 4px 0;
+  border-left: 2px solid transparent;
+  padding-left: 10px;
+  margin-left: -2px;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+}
+.docs-toc a:hover { color: #E5E7EB; }
+.docs-toc a.docs-toc-h2 { padding-left: 10px; font-weight: 500; }
+.docs-toc a.docs-toc-h3 { padding-left: 18px; font-size: 11px; opacity: 0.95; }
+.docs-toc-empty { font-size: 11px; color: #4B5563; font-style: italic; }
+
 .pages-toolbar {
-  display:flex;
-  align-items:center;
-  gap:6px;
-  margin-bottom:10px;
-  padding:6px 8px;
-  border-radius:999px;
-  background:rgba(15,23,42,0.9);
-  border:1px solid #1F2937;
-  position:sticky;
-  top:0;
-  z-index:5;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-bottom: 16px;
+  padding: 8px 10px;
+  border-radius: 12px;
+  background: rgba(15, 23, 42, 0.85);
+  border: 1px solid #1F2937;
+  position: sticky;
+  top: 0;
+  z-index: 6;
+}
+.pages-toolbar-label {
+  font-size: 10px;
+  color: #6B7280;
+  width: 100%;
+  margin-bottom: 4px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
 }
 .pages-toolbar button {
-  border:none;
-  background:transparent;
-  color:#E5E7EB;
-  font-size:11px;
-  padding:6px 9px;
-  border-radius:999px;
-  cursor:pointer;
+  border: none;
+  background: transparent;
+  color: #D1D5DB;
+  font-size: 11px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-family: inherit;
 }
-.pages-toolbar button:hover {
-  background:#111827;
-}
-.toolbar-separator {
-  width:1px;
-  height:18px;
-  background:#1F2937;
-}
+.pages-toolbar button:hover { background: #1F2937; color: #fff; }
+.toolbar-separator { width: 1px; height: 20px; background: #1F2937; margin: 0 2px; }
 
-.blocks-container { margin-top: 8px; display: flex; flex-direction: column; gap: 10px; }
-.block-row { border: 1px solid transparent; padding: 6px 10px; border-radius: 12px; }
-.block-row:hover { border-color: #1F2937; background: rgba(17,24,39,.4); }
-.block-row.active { border-color: #4f46e5; background: rgba(79,70,229,.08); }
-.block-text { outline: none; color: #E5E7EB; font-size: 14px; line-height: 1.5; }
+.blocks-container { margin-top: 4px; display: flex; flex-direction: column; gap: 12px; }
+.block-row { border: 1px solid transparent; padding: 8px 12px; border-radius: 10px; margin-left: -12px; margin-right: -12px; }
+.block-row:hover { border-color: #1F2937; background: rgba(17, 24, 39, 0.35); }
+.block-row.active { border-color: rgba(79, 70, 229, 0.45); background: rgba(79, 70, 229, 0.06); }
+.block-text { outline: none; color: #E5E7EB; font-size: 15px; line-height: 1.65; }
 .block-text[contenteditable="true"]:empty:before { content: attr(data-placeholder); color: #6B7280; }
-.block-heading { font-size: 20px; font-weight: 800; color: #fff; }
-.block-divider { height: 1px; background: #1F2937; margin: 6px 0; }
-.block-checklist { display: flex; align-items: flex-start; gap: 10px; }
-.block-checklist input[type="checkbox"] { margin-top: 4px; }
+.block-heading { font-size: 1.75rem; font-weight: 800; color: #F9FAFB; letter-spacing: -0.02em; line-height: 1.25; }
+.block-h2 { font-size: 1.35rem; font-weight: 700; color: #F3F4F6; letter-spacing: -0.02em; line-height: 1.3; margin-top: 0.25em; }
+.block-h3 { font-size: 1.1rem; font-weight: 650; color: #E5E7EB; line-height: 1.35; }
+.block-quote {
+  border-left: 3px solid #6366f1;
+  padding: 8px 0 8px 16px;
+  margin: 4px 0;
+  color: #D1D5DB;
+  font-style: italic;
+}
+.block-code-wrap {
+  background: #020617;
+  border: 1px solid #1F2937;
+  border-radius: 10px;
+  padding: 12px 14px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 13px;
+  line-height: 1.55;
+  color: #e2e8f0;
+  overflow-x: auto;
+}
+.block-code-wrap[contenteditable="true"]:empty:before { content: attr(data-placeholder); color: #64748b; }
+.block-callout {
+  display: flex;
+  gap: 12px;
+  padding: 14px 16px;
+  border-radius: 12px;
+  border: 1px solid #1e3a5f;
+  background: linear-gradient(135deg, rgba(30, 58, 95, 0.35), rgba(15, 23, 42, 0.6));
+}
+.block-callout-icon { font-size: 18px; line-height: 1.4; flex-shrink: 0; }
+.block-callout-body { flex: 1; min-width: 0; }
+.block-divider { height: 1px; background: linear-gradient(90deg, transparent, #374151, transparent); margin: 0; }
+.block-checklist { display: flex; align-items: flex-start; gap: 12px; }
+.block-checklist input[type="checkbox"] { margin-top: 6px; width: 16px; height: 16px; accent-color: #6366f1; }
 .block-checklist .check-text { flex: 1; }
 
-.block-insert-menu { position: fixed; z-index: 9999; right: 20px; top: 120px; width: 260px; background: #0B0F18; border: 1px solid #1F2937; border-radius: 14px; padding: 12px; box-shadow: 0 20px 60px rgba(0,0,0,0.6); }
+.block-insert-menu {
+  position: fixed;
+  z-index: 9999;
+  right: 20px;
+  top: 120px;
+  width: 280px;
+  max-height: calc(100vh - 140px);
+  overflow-y: auto;
+  background: #0B0F18;
+  border: 1px solid #1F2937;
+  border-radius: 14px;
+  padding: 10px;
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.65);
+}
 .block-insert-menu.hidden { display: none; }
-.block-insert-menu button { width: 100%; text-align: left; margin-bottom: 8px; padding: 10px 12px; border-radius: 12px; border: 1px solid #1F2937; background: #111827; color: #E5E7EB; cursor: pointer; }
-.block-insert-menu button:hover { border-color: #4f46e5; }
+.block-insert-menu .bim-h {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #6B7280;
+  padding: 8px 12px 4px;
+}
+.block-insert-menu button {
+  width: 100%;
+  text-align: left;
+  margin-bottom: 4px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid transparent;
+  background: #111827;
+  color: #E5E7EB;
+  cursor: pointer;
+  font-size: 13px;
+  font-family: inherit;
+}
+.block-insert-menu button:hover { border-color: #4f46e5; background: #1e293b; }
+.block-insert-menu button span { display: block; font-size: 11px; color: #6B7280; margin-top: 2px; font-weight: 400; }
+.docs-hint {
+  margin-top: 20px;
+  padding: 18px 20px;
+  border-radius: 12px;
+  border: 1px dashed #374151;
+  background: rgba(15, 23, 42, 0.5);
+  font-size: 12px;
+  color: #9CA3AF;
+  line-height: 1.55;
+}
+.docs-hint strong { color: #E5E7EB; }
 
 /* ===== LANDING PAGE (marketing) ===== */
 .landing-page {
@@ -3038,7 +3290,7 @@ kbd {
         </div>
         <div class="nav-item" onclick="switchPage('pages', this)">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="16" y2="17"/></svg>
-          Pages
+          Docs
         </div>
         <div class="nav-item" onclick="switchPage('timetracking', this)">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
@@ -3856,56 +4108,88 @@ kbd {
       </div>
 
       <!-- ANALYTICS -->
-      <!-- PAGES (Notion-style block editor) -->
-      <div id="pages" class="page page-content hidden">
+      <!-- PAGES (Docs-style editor) -->
+      <div id="pages" class="page page-content hidden pages-hub">
         <div class="workspace-header">
           <div>
-            <h1>Pages</h1>
-            <p>Rich documents with headings, checklists, quotes, and more.</p>
+            <h1>Docs</h1>
+            <p>Write specs, runbooks, and internal documentation — structured like a docs site, editable like a doc.</p>
           </div>
-          <button onclick="createNewPage()">+ New Page</button>
         </div>
 
-        <div class="pages-editor-layout">
-          <div class="pages-sidebar">
-            <div class="search-container" style="margin-bottom:10px;">
-              <input id="pagesSearch" placeholder="Search pages..." oninput="renderPagesList()" style="width:100%;">
+        <div class="docs-shell">
+          <aside class="docs-sidebar">
+            <div class="docs-sidebar-brand">
+              <h2>Library</h2>
+              <p>All pages in your workspace. Search to jump, or start a new doc.</p>
+            </div>
+            <div class="docs-sidebar-actions">
+              <button type="button" class="btn-primary" onclick="createNewPage()">+ New page</button>
+              <div class="docs-sidebar-secondary">
+                <button type="button" class="btn-secondary btn-sm" onclick="duplicateCurrentPage()" title="Duplicate current page">Duplicate</button>
+                <button type="button" class="btn-secondary btn-sm" onclick="exportCurrentPageAsText()" title="Copy plain text">Copy text</button>
+              </div>
+            </div>
+            <div class="docs-search-wrap">
+              <input id="pagesSearch" placeholder="Search pages…" oninput="renderPagesList()" autocomplete="off" aria-label="Search pages">
             </div>
             <div class="pages-list" id="pagesList"></div>
-          </div>
+          </aside>
 
           <div class="pages-main">
-            <div class="card" style="padding:20px 22px;max-width:840px;margin:0 auto;">
-              <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;">
-                <div style="width:36px;height:36px;border-radius:10px;background:linear-gradient(135deg,#4f46e5,#7c3aed);display:flex;align-items:center;justify-content:center;font-size:18px;" id="pageIcon">
-                  📄
+            <article class="docs-article card">
+              <div class="docs-article-inner">
+                <div class="docs-breadcrumb" id="pagesBreadcrumb">
+                  <span>Docs</span><span style="opacity:0.5;">/</span><span id="pagesBreadcrumbTitle">Untitled</span>
                 </div>
-                <input id="pageTitleInput" placeholder="Untitled page" type="text" style="flex:1;padding:10px 12px;background:#020617;border:1px solid #1F2937;color:white;border-radius:10px;font-size:16px;font-weight:600;">
-              </div>
 
-              <!-- Formatting toolbar -->
-              <div class="pages-toolbar">
-                <button type="button" onclick="setBlockTypeFromToolbar('paragraph')">Text</button>
-                <button type="button" onclick="setBlockTypeFromToolbar('heading')">H1</button>
-                <button type="button" onclick="setBlockTypeFromToolbar('quote')">Quote</button>
-                <span class="toolbar-separator"></span>
-                <button type="button" onclick="applyInlineFormat('bold')"><strong>B</strong></button>
-                <button type="button" onclick="applyInlineFormat('italic')"><em>I</em></button>
-                <button type="button" onclick="applyInlineFormat('underline')"><span style="text-decoration:underline;">U</span></button>
-                <span class="toolbar-separator"></span>
-                <button type="button" onclick="insertBlockFromToolbar('checklist')">Checklist</button>
-                <button type="button" onclick="insertBlockFromToolbar('divider')">Divider</button>
-              </div>
+                <input id="pageTitleInput" class="docs-title-field" placeholder="Page title" type="text" aria-label="Page title">
 
-              <div id="blocksContainer" class="blocks-container"></div>
-              <div style="margin-top:10px;font-size:12px;color:#6B7280;">
-                Tip: Press <b>Enter</b> for a new paragraph, <b>/</b> for block menu, or use the toolbar for quick formatting.
+                <div class="docs-meta-bar" id="pagesMetaBar">
+                  <span id="pagesMetaUpdated">Updated —</span>
+                  <span id="pagesMetaWords">0 words</span>
+                  <span id="pagesMetaRead">~0 min read</span>
+                  <span style="margin-left:auto;">Shortcuts: <kbd>/</kbd> blocks · <kbd>Enter</kbd> new line</span>
+                </div>
+
+                <div class="docs-editor-layout-inner">
+                  <div class="docs-blocks-column">
+                    <div class="pages-toolbar">
+                      <span class="pages-toolbar-label">Insert &amp; format</span>
+                      <button type="button" onclick="setBlockTypeFromToolbar('paragraph')">Paragraph</button>
+                      <button type="button" onclick="setBlockTypeFromToolbar('heading')">H1</button>
+                      <button type="button" onclick="setBlockTypeFromToolbar('heading2')">H2</button>
+                      <button type="button" onclick="setBlockTypeFromToolbar('heading3')">H3</button>
+                      <span class="toolbar-separator"></span>
+                      <button type="button" onclick="setBlockTypeFromToolbar('quote')">Quote</button>
+                      <button type="button" onclick="setBlockTypeFromToolbar('callout')">Callout</button>
+                      <button type="button" onclick="setBlockTypeFromToolbar('code')">Code</button>
+                      <span class="toolbar-separator"></span>
+                      <button type="button" onclick="applyInlineFormat('bold')"><strong>B</strong></button>
+                      <button type="button" onclick="applyInlineFormat('italic')"><em>I</em></button>
+                      <button type="button" onclick="applyInlineFormat('underline')"><span style="text-decoration:underline;">U</span></button>
+                      <span class="toolbar-separator"></span>
+                      <button type="button" onclick="insertBlockFromToolbar('checklist')">Checklist</button>
+                      <button type="button" onclick="insertBlockFromToolbar('divider')">Divider</button>
+                    </div>
+
+                    <div id="blocksContainer" class="blocks-container"></div>
+
+                    <div class="docs-hint">
+                      <strong>Writing tips.</strong> Headings H1–H3 build a table of contents on the right. Use <strong>Callout</strong> for notes and warnings, <strong>Code</strong> for snippets. Empty line + <kbd>/</kbd> opens the quick block menu. Team members see the same docs when they use your shared workspace.
+                    </div>
+                  </div>
+
+                  <nav class="docs-toc" id="pageTOC" aria-label="On this page">
+                    <p class="docs-toc-title">On this page</p>
+                    <div id="pageTOCBody" class="docs-toc-empty">Add headings to see outline.</div>
+                  </nav>
+                </div>
               </div>
-            </div>
+            </article>
           </div>
         </div>
 
-        <!-- Insert Block Menu -->
         <div id="blockInsertMenu" class="block-insert-menu hidden"></div>
       </div>
 
@@ -5577,7 +5861,7 @@ function switchPage(pageId, el) {
     profile:'Profile',
     projects:'Projects',
     tasks:'Tasks',
-    pages:'Pages',
+    pages:'Docs',
     timetracking:'Time Tracking',
     ideas:'Ideas',
     calendar:'Calendar',
@@ -5650,6 +5934,7 @@ function updateCommandResults() {
     { icon:'👤', label:'Profile', sub:'View your profile', action: () => switchPage('profile', null) },
     { icon:'📁', label:'Projects', sub:'View all projects', action: () => switchPage('projects', null) },
     { icon:'✅', label:'Tasks', sub:'Kanban board', action: () => switchPage('tasks', null) },
+    { icon:'📄', label:'Docs', sub:'Documentation & internal pages', action: () => switchPage('pages', null) },
     { icon:'⏱', label:'Time Tracking', sub:'Log and track time', action: () => switchPage('timetracking', null) },
     { icon:'💡', label:'Ideas', sub:'Ideas board', action: () => switchPage('ideas', null) },
     { icon:'📅', label:'Calendar', sub:'Events & deadlines', action: () => switchPage('calendar', null) },
@@ -8832,6 +9117,122 @@ function createNewPage() {
   renderPagesEditor()
 }
 
+function stripHtmlForPreview(html) {
+  if (!html) return ''
+  const d = document.createElement('div')
+  d.innerHTML = html
+  return (d.textContent || d.innerText || '').replace(/\s+/g, ' ').trim()
+}
+
+function getPageWordCount(page) {
+  if (!page || !Array.isArray(page.blocks)) return 0
+  let s = ''
+  page.blocks.forEach(b => {
+    if (b.text) s += stripHtmlForPreview(b.text) + ' '
+  })
+  const w = s.trim().split(/\s+/).filter(Boolean)
+  return w.length
+}
+
+function updatePagesMetaAndBreadcrumb(page) {
+  const t = document.getElementById('pagesBreadcrumbTitle')
+  if (t) t.textContent = page.title || 'Untitled'
+  const u = document.getElementById('pagesMetaUpdated')
+  if (u) {
+    const d = new Date(page.updated || page.created)
+    u.textContent = 'Updated ' + (isNaN(d.getTime()) ? '—' : d.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' }))
+  }
+  const wc = getPageWordCount(page)
+  const mw = document.getElementById('pagesMetaWords')
+  if (mw) mw.textContent = wc + ' word' + (wc === 1 ? '' : 's')
+  const mr = document.getElementById('pagesMetaRead')
+  if (mr) mr.textContent = '~' + Math.max(1, Math.ceil(wc / 200)) + ' min read'
+}
+
+function updatePageTOC(page) {
+  const body = document.getElementById('pageTOCBody')
+  if (!body || !page || !Array.isArray(page.blocks)) return
+  const items = []
+  page.blocks.forEach((b, i) => {
+    if (b.type === 'heading' || b.type === 'heading2' || b.type === 'heading3') {
+      const label = stripHtmlForPreview(b.text) || '(empty heading)'
+      const cls = b.type === 'heading' ? 'docs-toc-h1' : b.type === 'heading2' ? 'docs-toc-h2' : 'docs-toc-h3'
+      items.push({ i, label, cls })
+    }
+  })
+  if (!items.length) {
+    body.className = 'docs-toc-empty'
+    body.innerHTML = 'Add headings to see outline.'
+    return
+  }
+  body.className = ''
+  body.innerHTML = '<ul>' + items.map(it =>
+    `<li><a class="${it.cls}" data-toc-index="${it.i}" onclick="focusBlockIndex(${it.i}); return false;">${escapeHtml(it.label)}</a></li>`
+  ).join('') + '</ul>'
+}
+
+function duplicateCurrentPage() {
+  ensurePageInitialized()
+  const p = pages.find(x => x.id === currentPageId)
+  if (!p) return
+  const copy = JSON.parse(JSON.stringify(p))
+  copy.id = genId()
+  copy.title = (p.title || 'Untitled') + ' (copy)'
+  copy.created = copy.updated = new Date().toISOString()
+  if (Array.isArray(copy.blocks)) {
+    copy.blocks = copy.blocks.map(b => Object.assign({}, b, { id: genId() }))
+  }
+  pages.unshift(copy)
+  save('pages', pages)
+  currentPageId = copy.id
+  renderPagesEditor()
+  showToast('Duplicate created', 'success')
+}
+
+function exportCurrentPageAsText() {
+  const p = pages.find(x => x.id === currentPageId)
+  if (!p || !Array.isArray(p.blocks)) return
+  const lines = []
+  lines.push(p.title || 'Untitled')
+  lines.push('')
+  p.blocks.forEach(b => {
+    const raw = stripHtmlForPreview(b.text || '')
+    if (b.type === 'divider') lines.push('---')
+    else if (b.type === 'checklist') lines.push((b.checked ? '[x] ' : '[ ] ') + raw)
+    else if (b.type === 'heading') lines.push('# ' + raw)
+    else if (b.type === 'heading2') lines.push('## ' + raw)
+    else if (b.type === 'heading3') lines.push('### ' + raw)
+    else if (b.type === 'quote') lines.push('> ' + raw)
+    else if (b.type === 'callout') lines.push('Note: ' + raw)
+    else if (b.type === 'code') lines.push('```\n' + raw + '\n```')
+    else lines.push(raw)
+    lines.push('')
+  })
+  const text = lines.join('\n').trim()
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).then(function () { showToast('Copied to clipboard', 'success') }).catch(function () { window.prompt('Copy:', text) })
+  } else {
+    window.prompt('Copy this text:', text)
+  }
+}
+
+function deletePageById(pageId, ev) {
+  if (ev) ev.stopPropagation()
+  ensurePageInitialized()
+  if (pages.length <= 1) {
+    showToast('Keep at least one page', 'warning')
+    return
+  }
+  if (!confirm('Delete this page? This cannot be undone.')) return
+  pages = pages.filter(p => p.id !== pageId)
+  save('pages', pages)
+  if (currentPageId === pageId) {
+    currentPageId = pages[0] ? pages[0].id : null
+  }
+  renderPagesEditor()
+  showToast('Page deleted', 'success')
+}
+
 function renderPagesList() {
   ensurePageInitialized()
   const search = (document.getElementById('pagesSearch')?.value || '').toLowerCase().trim()
@@ -8841,10 +9242,19 @@ function renderPagesList() {
   const el = document.getElementById('pagesList')
   if (!el) return
 
+  if (!list.length) {
+    el.innerHTML = '<div class="pages-list-empty">No pages match your search. Clear the search or create a new page.</div>'
+    return
+  }
+
   el.innerHTML = list.map(p => `
     <div class="pages-row ${p.id === currentPageId ? 'active' : ''}" onclick="openPage('${p.id}')">
-      <div style="font-weight:700;font-size:13px;">${escapeHtml(p.title || 'Untitled')}</div>
-      <div style="font-size:11px;color:#6B7280;margin-top:4px;">${new Date(p.updated || p.created).toLocaleDateString()}</div>
+      <span class="pages-row-icon" aria-hidden="true">📄</span>
+      <div class="pages-row-body">
+        <div class="pages-row-title">${escapeHtml(p.title || 'Untitled')}</div>
+        <div class="pages-row-meta">${getPageWordCount(p)} words · ${new Date(p.updated || p.created).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</div>
+      </div>
+      <button type="button" class="pages-row-del" onclick="deletePageById('${p.id}', event)" title="Delete page" aria-label="Delete page">✕</button>
     </div>
   `).join('')
 }
@@ -8866,9 +9276,19 @@ function newBlockOfType(type) {
   if (type === 'divider') return { id: genId(), type }
   if (type === 'checklist') return { id: genId(), type, checked: false, text: '' }
   if (type === 'heading') return { id: genId(), type, text: '' }
+  if (type === 'heading2') return { id: genId(), type: 'heading2', text: '' }
+  if (type === 'heading3') return { id: genId(), type: 'heading3', text: '' }
   if (type === 'quote') return { id: genId(), type, text: '' }
-  // default paragraph
+  if (type === 'code') return { id: genId(), type: 'code', text: '' }
+  if (type === 'callout') return { id: genId(), type: 'callout', text: '' }
   return { id: genId(), type: 'paragraph', text: '' }
+}
+
+function syncPagesSidebarMeta() {
+  const page = pages.find(x => x.id === currentPageId)
+  if (!page) return
+  updatePagesMetaAndBreadcrumb(page)
+  updatePageTOC(page)
 }
 
 function focusBlockIndex(index) {
@@ -8953,16 +9373,72 @@ function renderBlocksForCurrentPage() {
       `
     }
 
-    if (b.type === 'quote') {
+    if (b.type === 'heading2') {
       return `
-        <div class="block-row" data-block-index="${i}" data-block-type="quote">
-          <div class="block-text"
+        <div class="block-row" data-block-index="${i}" data-block-type="heading2">
+          <div class="block-text block-h2"
                contenteditable="true"
                data-block-index="${i}"
                data-block-field="text"
-               data-placeholder="Quote"
-               style="border-left:2px solid #4f46e5;padding-left:12px;">
+               data-placeholder="Heading 2">
             ${b.text || ''}
+          </div>
+        </div>
+      `
+    }
+
+    if (b.type === 'heading3') {
+      return `
+        <div class="block-row" data-block-index="${i}" data-block-type="heading3">
+          <div class="block-text block-h3"
+               contenteditable="true"
+               data-block-index="${i}"
+               data-block-field="text"
+               data-placeholder="Heading 3">
+            ${b.text || ''}
+          </div>
+        </div>
+      `
+    }
+
+    if (b.type === 'quote') {
+      return `
+        <div class="block-row" data-block-index="${i}" data-block-type="quote">
+          <div class="block-text block-quote"
+               contenteditable="true"
+               data-block-index="${i}"
+               data-block-field="text"
+               data-placeholder="Quoted text">
+            ${b.text || ''}
+          </div>
+        </div>
+      `
+    }
+
+    if (b.type === 'code') {
+      return `
+        <div class="block-row" data-block-index="${i}" data-block-type="code">
+          <pre class="block-code-wrap"
+               contenteditable="true"
+               data-block-index="${i}"
+               data-block-field="text"
+               data-placeholder="// Code or config">${b.text || ''}</pre>
+        </div>
+      `
+    }
+
+    if (b.type === 'callout') {
+      return `
+        <div class="block-row" data-block-index="${i}" data-block-type="callout">
+          <div class="block-callout">
+            <span class="block-callout-icon" aria-hidden="true">💡</span>
+            <div class="block-text block-callout-body"
+                 contenteditable="true"
+                 data-block-index="${i}"
+                 data-block-field="text"
+                 data-placeholder="Tip, warning, or note for readers">
+              ${b.text || ''}
+            </div>
           </div>
         </div>
       `
@@ -8982,6 +9458,7 @@ function renderBlocksForCurrentPage() {
     `
   }).join('')
 
+  syncPagesSidebarMeta()
   bindBlocksEditorHandlersIfNeeded()
 }
 
@@ -9006,15 +9483,19 @@ function showBlockInsertMenu(afterIndex) {
   const menu = document.getElementById('blockInsertMenu')
   if (!menu) return
   blockInsertIndex = afterIndex
-  if (!menu.innerHTML) {
-    menu.innerHTML = `
-      <button onclick="insertBlockFromMenu('paragraph')">Paragraph</button>
-      <button onclick="insertBlockFromMenu('heading')">Heading</button>
-      <button onclick="insertBlockFromMenu('checklist')">Checklist</button>
-      <button onclick="insertBlockFromMenu('quote')">Quote</button>
-      <button onclick="insertBlockFromMenu('divider')">Divider</button>
-    `
-  }
+  menu.innerHTML = `
+    <div class="bim-h">Structure</div>
+    <button type="button" onclick="insertBlockFromMenu('paragraph')">Paragraph<span>Body text</span></button>
+    <button type="button" onclick="insertBlockFromMenu('heading')">Heading 1<span>Page title section</span></button>
+    <button type="button" onclick="insertBlockFromMenu('heading2')">Heading 2<span>Major sections</span></button>
+    <button type="button" onclick="insertBlockFromMenu('heading3')">Heading 3<span>Subsections</span></button>
+    <div class="bim-h">Blocks</div>
+    <button type="button" onclick="insertBlockFromMenu('quote')">Quote<span>Callout quote</span></button>
+    <button type="button" onclick="insertBlockFromMenu('callout')">Callout<span>Note or alert</span></button>
+    <button type="button" onclick="insertBlockFromMenu('code')">Code<span>Snippet or CLI</span></button>
+    <button type="button" onclick="insertBlockFromMenu('checklist')">Checklist<span>Task list</span></button>
+    <button type="button" onclick="insertBlockFromMenu('divider')">Divider<span>Visual break</span></button>
+  `
   menu.classList.remove('hidden')
   blockInsertMenuVisible = true
 }
@@ -9067,6 +9548,7 @@ function bindBlocksEditorHandlersIfNeeded() {
       if (field === 'text') b.text = text
       if (field === 'checkText') b.text = text
     })
+    syncPagesSidebarMeta()
   })
 
   // Key shortcuts
@@ -9095,8 +9577,10 @@ function bindBlocksEditorHandlersIfNeeded() {
       return
     }
 
-    // Enter creates next paragraph block
     if (e.key === 'Enter') {
+      const row = t.closest && t.closest('.block-row')
+      const bt = row && row.getAttribute('data-block-type')
+      if (bt === 'code') return
       e.preventDefault()
       addBlockAt(idx + 1, 'paragraph')
       renderBlocksForCurrentPage()
@@ -9187,6 +9671,9 @@ function renderPagesEditor() {
     titleInput.value = page.title || ''
     titleInput.oninput = () => {
       updateCurrentPageAndPersist(p => { p.title = titleInput.value })
+      const bt = document.getElementById('pagesBreadcrumbTitle')
+      if (bt) bt.textContent = titleInput.value || 'Untitled'
+      renderPagesList()
     }
   }
 
