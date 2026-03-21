@@ -3,6 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<!-- Chart.js UMD + large inline app need script-src unsafe-inline / unsafe-eval; server also sends CSP -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline'; img-src 'self' data: https: blob:; font-src 'self' data: https:; connect-src 'self' https: http: ws: wss:; frame-ancestors 'self'; base-uri 'self'; form-action 'self'">
 <title>ALTER.CO - Advanced SaaS Platform</title>
 <meta name="description" content="ALTER.CO — one workspace for projects, tasks, time tracking, ideas, and team collaboration.">
 <meta name="theme-color" content="#0B0F18">
@@ -3279,10 +3281,6 @@ kbd {
             <span class="billing-row-label">Payment Method</span>
             <span class="billing-row-value" id="billingPayment">None</span>
           </div>
-          <!-- Big upgrade button under the rows -->
-          <div style="margin-top:16px;text-align:right;">
-            <button onclick="upgradePlan('pro')" class="btn-warning btn-sm">Upgrade to Pro</button>
-          </div>
         </div>
 
         <!-- Plans -->
@@ -4487,14 +4485,20 @@ function login() {
       body: JSON.stringify({ username: u, password: p })
     }).then(function (r) { return r.json().then(function (body) { return { ok: r.ok, status: r.status, body: body } }) })
       .then(function (res) {
-        if (!res.ok) return showLoginMessage(res.body.error || 'Invalid username or password', 'error')
+        if (!res.ok) {
+          showLoginMessage(res.body.error || 'Invalid username or password', 'error')
+          return { skip: true }
+        }
         setAuthToken(res.body.token)
         save('session', res.body.user)
         currentUser = res.body.user
-        return loadWorkspaceFromBackend()
+        return loadWorkspaceFromBackend().then(function (data) {
+          return { skip: false, data: data }
+        })
       })
-      .then(function (data) {
-        if (data) applyWorkspaceToState(data)
+      .then(function (result) {
+        if (!result || result.skip) return
+        if (result.data) applyWorkspaceToState(result.data)
         addAuditLog('login', u + ' signed in', 'login')
         showApp()
       })

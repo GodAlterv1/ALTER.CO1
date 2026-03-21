@@ -28,7 +28,24 @@ const DATA_DIR = path.join(__dirname, 'data')
 const USERS_FILE = path.join(DATA_DIR, 'users.json')
 const WORKSPACE_DIR = path.join(DATA_DIR, 'workspace')
 
-// Hardening: CSP disabled — index.html uses inline scripts/styles
+// Hardening: custom CSP — Chart.js UMD may use eval(); inline script is the whole app
+const SPA_CONTENT_SECURITY_POLICY = [
+  "default-src 'self'",
+  "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net",
+  "style-src 'self' 'unsafe-inline'",
+  "img-src 'self' data: https: blob:",
+  "font-src 'self' data: https:",
+  "connect-src 'self' https: http: ws: wss:",
+  "frame-ancestors 'self'",
+  "base-uri 'self'",
+  "form-action 'self'"
+].join('; ')
+
+app.use((req, res, next) => {
+  res.setHeader('Content-Security-Policy', SPA_CONTENT_SECURITY_POLICY)
+  next()
+})
+
 app.use(
   helmet({
     contentSecurityPolicy: false,
@@ -492,6 +509,24 @@ app.post('/api/auth/login', authBurstLimiter, (req, res) => {
 
   const token = jwt.sign({ userId: row.id, username: row.username }, JWT_SECRET, { expiresIn: '30d' })
   res.json({ token, user: userToClient(row) })
+})
+
+// Login/register are POST-only; a GET (e.g. opening the URL in a tab) would otherwise show "Cannot GET"
+app.get('/api/auth/login', (req, res) => {
+  res.set('Allow', 'POST')
+  res.status(405).json({
+    error: 'Method not allowed',
+    hint:
+      'Sign in from the app home page (POST /api/auth/login with JSON { "username", "password" }). Do not open this path in the browser address bar.'
+  })
+})
+
+app.get('/api/auth/register', (req, res) => {
+  res.set('Allow', 'POST')
+  res.status(405).json({
+    error: 'Method not allowed',
+    hint: 'Create an account from the app (POST /api/auth/register). Do not open this path in the browser address bar.'
+  })
 })
 
 app.post('/api/auth/change-password', authMiddleware, (req, res) => {
