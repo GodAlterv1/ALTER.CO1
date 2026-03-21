@@ -2055,6 +2055,82 @@ kbd {
 .empty-state.compact h3 { font-size: 15px; }
 .empty-state.compact p { font-size: 13px; margin-bottom: 12px; }
 
+/* ===== DASHBOARD PULSE & ONBOARDING ===== */
+.dashboard-pulse {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+  margin-bottom: 20px;
+}
+@media (max-width: 900px) {
+  .dashboard-pulse { grid-template-columns: 1fr; }
+}
+.pulse-card {
+  background: linear-gradient(135deg, #111827 0%, #0f172a 100%);
+  border: 1px solid #1F2937;
+  border-radius: 12px;
+  padding: 16px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  cursor: pointer;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.pulse-card:hover {
+  border-color: #374151;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.35);
+}
+.pulse-card .pulse-label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: #9CA3AF; }
+.pulse-card .pulse-value { font-size: 28px; font-weight: 700; color: #F3F4F6; line-height: 1.1; }
+.pulse-card .pulse-hint { font-size: 12px; color: #6B7280; line-height: 1.45; }
+.pulse-card.warning { border-color: rgba(239, 68, 68, 0.4); }
+.pulse-card.ok { border-color: rgba(34, 197, 94, 0.28); }
+.onboarding-panel {
+  background: linear-gradient(135deg, rgba(79, 70, 229, 0.12), rgba(124, 58, 237, 0.08));
+  border: 1px solid rgba(79, 70, 229, 0.35);
+  border-radius: 12px;
+  padding: 20px 22px;
+  margin-bottom: 20px;
+}
+.onboarding-panel h4 { margin: 0 0 8px 0; font-size: 15px; color: #E5E7EB; }
+.onboarding-panel .onboarding-lead { font-size: 13px; color: #9CA3AF; margin: 0 0 14px 0; line-height: 1.45; }
+.onboarding-steps { display: flex; flex-wrap: wrap; gap: 10px; }
+.onboarding-step {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: #020617;
+  border-radius: 8px;
+  font-size: 13px;
+  color: #9CA3AF;
+  border: 1px solid #1F2937;
+  cursor: pointer;
+  font-family: inherit;
+}
+.onboarding-step:hover:not(:disabled) { border-color: #4f46e5; color: #E5E7EB; }
+.onboarding-step.done { color: #22c55e; border-color: rgba(34, 197, 94, 0.45); cursor: default; }
+.onboarding-step:disabled { opacity: 0.85; }
+
+.profile-mini-stats {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+  margin-top: 14px;
+}
+@media (max-width: 640px) {
+  .profile-mini-stats { grid-template-columns: 1fr; }
+}
+.profile-mini-stat {
+  background: #0d1117;
+  border: 1px solid #1F2937;
+  border-radius: 10px;
+  padding: 12px 14px;
+}
+.profile-mini-stat .label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: #6B7280; margin-bottom: 4px; }
+.profile-mini-stat .value { font-size: 22px; font-weight: 700; color: #F3F4F6; }
+.profile-mini-stat .hint { font-size: 11px; color: #6B7280; margin-top: 4px; line-height: 1.35; }
+
 /* ===== TABLE ===== */
 .data-table { width: 100%; border-collapse: collapse; font-size: 13px; }
 .data-table th {
@@ -2598,36 +2674,60 @@ kbd {
           </div>
         </div>
 
+        <div id="dashboardOnboarding" class="onboarding-panel hidden">
+          <h4>Get your workspace ready</h4>
+          <p class="onboarding-lead">Complete these steps so ALTER.CO reflects real work — not an empty shell.</p>
+          <div class="onboarding-steps" id="dashboardOnboardingSteps"></div>
+        </div>
+
+        <div class="dashboard-pulse" id="dashboardPulse">
+          <div class="pulse-card ok" id="pulseOverdueCard" onclick="switchPage('tasks', null)" role="button" tabindex="0">
+            <span class="pulse-label">Needs attention</span>
+            <span class="pulse-value" id="pulseOverdue">0</span>
+            <span class="pulse-hint">Overdue tasks — open Tasks to reschedule or close them out</span>
+          </div>
+          <div class="pulse-card ok" onclick="switchPage('tasks', null)" role="button" tabindex="0">
+            <span class="pulse-label">This week</span>
+            <span class="pulse-value" id="pulseDueWeek">0</span>
+            <span class="pulse-hint">Tasks due in the next 7 days (workspace-wide)</span>
+          </div>
+          <div class="pulse-card" onclick="switchPage('tasks', null)" role="button" tabindex="0">
+            <span class="pulse-label">In motion</span>
+            <span class="pulse-value" id="pulseInProgress">0</span>
+            <span class="pulse-hint">Tasks in progress or review — your execution pipeline</span>
+          </div>
+        </div>
+
         <div class="stats">
           <div class="stat-card" onclick="switchPage('projects', null)">
             <h3>Total Projects</h3>
             <div class="value" id="statProjects">0</div>
-            <div class="trend"><span class="trend-up">↑</span> All time</div>
+            <div class="trend" id="statProjectsTrend"><span class="trend-up">↑</span> <span id="statProjectsTrendText">—</span></div>
           </div>
           <div class="stat-card" onclick="switchPage('tasks', null)">
             <h3>Active Tasks</h3>
             <div class="value" id="statTasks">0</div>
-            <div class="trend">Across all projects</div>
+            <div class="trend" id="statTasksTrend"><span id="statTasksTrendText">—</span></div>
           </div>
           <div class="stat-card">
             <h3>Team Members</h3>
             <div class="value" id="statTeam">0</div>
-            <div class="trend">All active</div>
+            <div class="trend" id="statTeamTrend"><span id="statTeamTrendText">—</span></div>
           </div>
           <div class="stat-card">
             <h3>Completion Rate</h3>
             <div class="value" id="statCompletion">0%</div>
-            <div class="trend">Overall progress</div>
+            <div class="trend" id="statCompletionTrend"><span id="statCompletionTrendText">—</span></div>
           </div>
           <div class="stat-card" onclick="switchPage('timetracking', null)">
             <h3>Hours Tracked</h3>
             <div class="value" id="statHours">0h</div>
-            <div class="trend">This week</div>
+            <div class="trend" id="statHoursTrend"><span id="statHoursTrendText">—</span></div>
           </div>
           <div class="stat-card" onclick="switchPage('ideas', null)">
             <h3>Ideas</h3>
             <div class="value" id="statIdeas">0</div>
-            <div class="trend">Submitted</div>
+            <div class="trend" id="statIdeasTrend"><span id="statIdeasTrendText">—</span></div>
           </div>
         </div>
 
@@ -2690,7 +2790,7 @@ kbd {
         <div class="workspace-header">
           <div>
             <h1>Overview</h1>
-            <p>High-level snapshot of projects, goals, and upcoming deadlines.</p>
+            <p>High-level snapshot of projects, goals, and upcoming deadlines. <span id="overviewDateHint" style="color:#6B7280;"></span></p>
           </div>
           <div class="header-actions">
             <select id="overviewProjectFilter" onchange="renderOverview()" style="padding:8px 10px;background:#111827;border:1px solid #1F2937;color:white;border-radius:8px;font-size:12px;">
@@ -2749,6 +2849,23 @@ kbd {
               <div>Plan: <span style="font-weight:600;" id="profilePagePlan">FREE</span></div>
               <div>Timezone: <span id="profilePageTimezone">UTC</span></div>
               <div>Member since: <span id="profilePageCreated">—</span></div>
+            </div>
+            <div class="profile-mini-stats">
+              <div class="profile-mini-stat">
+                <div class="label">Your projects</div>
+                <div class="value" id="profileStatProjects">0</div>
+                <div class="hint">Projects you own in this workspace</div>
+              </div>
+              <div class="profile-mini-stat">
+                <div class="label">Assigned tasks</div>
+                <div class="value" id="profileStatTasks">0</div>
+                <div class="hint">Open work items assigned to you</div>
+              </div>
+              <div class="profile-mini-stat">
+                <div class="label">Hours (this month)</div>
+                <div class="value" id="profileStatHoursMonth">0h</div>
+                <div class="hint">Time you logged in the current month</div>
+              </div>
             </div>
           </div>
         </div>
@@ -5082,6 +5199,72 @@ function closeShortcuts(e) {
 /* ===================================================
    STATS
 =================================================== */
+function parseTaskDueDate(t) {
+  if (!t || !t.dueDate) return null
+  const d = new Date(t.dueDate.includes('T') ? t.dueDate : t.dueDate + 'T09:00')
+  return isNaN(d.getTime()) ? null : d
+}
+
+function renderDashboardPulseAndOnboarding() {
+  const startOfToday = new Date()
+  startOfToday.setHours(0, 0, 0, 0)
+  const endWeek = new Date(startOfToday.getTime() + 7 * 86400000)
+
+  const overdue = tasks.filter(t => {
+    if (t.status === 'done') return false
+    const d = parseTaskDueDate(t)
+    return d && d < startOfToday
+  }).length
+
+  const dueWeek = tasks.filter(t => {
+    if (t.status === 'done') return false
+    const d = parseTaskDueDate(t)
+    return d && d >= startOfToday && d <= endWeek
+  }).length
+
+  const inMotion = tasks.filter(t => t.status === 'in-progress' || t.status === 'review').length
+
+  const po = document.getElementById('pulseOverdue')
+  const pw = document.getElementById('pulseDueWeek')
+  const pi = document.getElementById('pulseInProgress')
+  if (po) po.textContent = overdue
+  if (pw) pw.textContent = dueWeek
+  if (pi) pi.textContent = inMotion
+
+  const oc = document.getElementById('pulseOverdueCard')
+  if (oc) {
+    oc.className = 'pulse-card' + (overdue > 0 ? ' warning' : ' ok')
+  }
+
+  const onboard = document.getElementById('dashboardOnboarding')
+  const stepsEl = document.getElementById('dashboardOnboardingSteps')
+  if (!onboard || !stepsEl) return
+
+  const hasProject = projects.length > 0
+  const hasTask = tasks.length > 0
+  const hasTime = timeEntries.length > 0
+  const hasGoal = goals.length > 0
+  const doneCount = [hasProject, hasTask, hasTime, hasGoal].filter(Boolean).length
+  if (doneCount === 4) {
+    onboard.classList.add('hidden')
+    return
+  }
+  onboard.classList.remove('hidden')
+
+  const steps = [
+    { ok: hasProject, label: 'Create a project', action: 'openCreateProjectModal()' },
+    { ok: hasTask, label: 'Add your first task', action: "switchPage('tasks', null)" },
+    { ok: hasTime, label: 'Log time on work', action: "switchPage('timetracking', null)" },
+    { ok: hasGoal, label: 'Define a goal or OKR', action: "switchPage('goals', null)" }
+  ]
+  stepsEl.innerHTML = steps.map(s => {
+    if (s.ok) {
+      return `<button type="button" class="onboarding-step done" disabled>✓ ${escapeHtml(s.label)}</button>`
+    }
+    return `<button type="button" class="onboarding-step" onclick="${s.action}">○ ${escapeHtml(s.label)}</button>`
+  }).join('')
+}
+
 function updateStats() {
   let doneTasks = tasks.filter(t => t.status === 'done').length
   let rate      = tasks.length > 0 ? Math.round((doneTasks / tasks.length) * 100) : 0
@@ -5094,8 +5277,20 @@ function updateStats() {
     return d >= weekAgo
   }).reduce((s, e) => s + (e.duration || 0), 0)
 
+  const activeTasks = tasks.filter(t => t.status !== 'done').length
+  const nTodo = tasks.filter(t => t.status === 'todo').length
+  const nMotion = tasks.filter(t => t.status === 'in-progress' || t.status === 'review').length
+  const activeProjCount = projects.filter(p => p.status === 'active').length
+  const completedProjCount = projects.filter(p => p.status === 'completed').length
+  const pendingInvites = team.filter(m => m.status === 'pending').length
+
+  const setTrendText = (id, text) => {
+    const el = document.getElementById(id)
+    if (el) el.textContent = text
+  }
+
   document.getElementById('statProjects').textContent   = projects.length
-  document.getElementById('statTasks').textContent      = tasks.length
+  document.getElementById('statTasks').textContent      = activeTasks
   document.getElementById('statTeam').textContent       = team.length + 1
   document.getElementById('statCompletion').textContent = rate + '%'
   document.getElementById('statHours').textContent      = formatHours(weekSecs)
@@ -5104,6 +5299,34 @@ function updateStats() {
   document.getElementById('quickEvents').textContent    = events.length
   document.getElementById('quickCompleted').textContent = doneTasks
   document.getElementById('quickHours').textContent     = formatHours(totalSecs)
+
+  setTrendText('statProjectsTrendText', `${activeProjCount} active • ${completedProjCount} completed`)
+  setTrendText('statTasksTrendText', `${nTodo} todo • ${nMotion} in progress / review`)
+  setTrendText('statTeamTrendText', pendingInvites ? `${pendingInvites} invite(s) pending` : `${team.length + 1} people in workspace`)
+  setTrendText('statCompletionTrendText', tasks.length ? `${doneTasks} of ${tasks.length} tasks done` : 'Add tasks to measure throughput')
+  setTrendText('statHoursTrendText', `${formatHours(totalSecs)} all-time • ${formatHours(weekSecs)} this week`)
+  setTrendText('statIdeasTrendText', ideas.length ? `${ideas.length} in backlog` : 'Capture ideas from the team')
+
+  if (currentUser) {
+    const owned = projects.filter(p => p.owner === currentUser.id).length
+    const assignedOpen = tasks.filter(t => t.assignee === currentUser.id && t.status !== 'done').length
+    const monthStart = new Date()
+    monthStart.setDate(1)
+    monthStart.setHours(0, 0, 0, 0)
+    const monthSecs = timeEntries.filter(e => {
+      if (!e.userId || e.userId !== currentUser.id) return false
+      const d = new Date(e.date)
+      return !isNaN(d.getTime()) && d >= monthStart
+    }).reduce((s, e) => s + (e.duration || 0), 0)
+    const psp = document.getElementById('profileStatProjects')
+    const pst = document.getElementById('profileStatTasks')
+    const psh = document.getElementById('profileStatHoursMonth')
+    if (psp) psp.textContent = owned
+    if (pst) pst.textContent = assignedOpen
+    if (psh) psh.textContent = formatHours(monthSecs)
+  }
+
+  renderDashboardPulseAndOnboarding()
 
   // Today for you (dashboard)
   const myTodayEl = document.getElementById('dashboardMyToday')
@@ -5124,7 +5347,11 @@ function updateStats() {
 
     let html = ''
     if (!upcomingMyTasks.length && !todayGoals.length) {
-      html = '<p style="font-size:13px;color:#6B7280;">Nothing urgent assigned to you today. Great time for deep work.</p>'
+      html = `<div style="font-size:13px;color:#9CA3AF;line-height:1.5;">
+        <p style="margin:0 0 8px 0;">Nothing urgent assigned to you for today.</p>
+        <p style="margin:0;font-size:12px;color:#6B7280;">Use the focus for deep work, or pull the next item from your task list.</p>
+      </div>
+      <button type="button" class="btn-secondary" style="margin-top:12px;" onclick="switchPage('tasks', null)">View tasks</button>`
     } else {
       if (upcomingMyTasks.length) {
         html += '<div class="section-label">Your next tasks</div>'
@@ -6027,7 +6254,27 @@ function saveIdea() {
 /* ===================================================
    OVERVIEW
 =================================================== */
+function overviewEmptyHtml(opts) {
+  const icon = opts.icon || '📋'
+  const title = escapeHtml(opts.title || '')
+  const desc = escapeHtml(opts.desc || '')
+  const btn = opts.action && opts.label
+    ? `<button type="button" onclick="${opts.action}" style="margin-top:6px;">${escapeHtml(opts.label)}</button>`
+    : ''
+  return `<div class="empty-state compact">
+    <div class="empty-state-icon">${icon}</div>
+    <h3>${title}</h3>
+    <p>${desc}</p>
+    ${btn}
+  </div>`
+}
+
 function renderOverview() {
+  const hint = document.getElementById('overviewDateHint')
+  if (hint) {
+    const end = new Date(Date.now() + 7 * 86400000)
+    hint.textContent = `Rolling window: next 7 days through ${end.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })}.`
+  }
   renderOverviewSummary()
   renderOverviewProjects()
   renderOverviewGoals()
@@ -6053,32 +6300,32 @@ function renderOverviewSummary() {
       return d >= now && d <= in7d
     }).length
 
-  const myTasksThisWeek = tasks.filter(t => {
+  const myTasksThisWeek = currentUser ? tasks.filter(t => {
     if (t.assignee !== currentUser.id || !t.dueDate) return false
     const d = new Date(t.dueDate.includes('T') ? t.dueDate : t.dueDate + 'T09:00')
     return d >= now && d <= in7d
-  }).length
+  }).length : 0
 
   el.innerHTML = `
     <div class="stat-card">
       <h3>Projects</h3>
       <div class="value">${activeProjects}</div>
-      <div class="trend"><span class="trend-up">↑</span> ${completedProjects} completed</div>
+      <div class="trend"><span class="trend-up">↑</span> ${completedProjects} completed • ${projects.length} total</div>
     </div>
     <div class="stat-card">
       <h3>Goals</h3>
       <div class="value">${onTrackGoals}</div>
-      <div class="trend">${atRiskGoals} at risk • ${offTrackGoals} off track</div>
+      <div class="trend">${atRiskGoals} at risk • ${offTrackGoals} off track • ${goals.length} total</div>
     </div>
     <div class="stat-card">
       <h3>Next 7 days</h3>
       <div class="value">${upcoming7}</div>
-      <div class="trend">Upcoming deadlines & events</div>
+      <div class="trend">Deadlines & calendar in the upcoming week</div>
     </div>
     <div class="stat-card">
       <h3>Your week</h3>
       <div class="value">${myTasksThisWeek}</div>
-      <div class="trend">Tasks due for you</div>
+      <div class="trend">Tasks assigned to you with due dates this week</div>
     </div>
   `
 }
@@ -6087,7 +6334,13 @@ function renderOverviewProjects() {
   const el = document.getElementById('overviewProjects')
   if (!el) return
   if (!projects.length) {
-    el.innerHTML = '<p style="color:#6B7280;font-size:13px;">No projects yet. Create a project to see it here.</p>'
+    el.innerHTML = overviewEmptyHtml({
+      icon: '📁',
+      title: 'No projects yet',
+      desc: 'Projects group tasks, time, and deadlines so stakeholders see progress in one place — start with your first initiative.',
+      action: 'openCreateProjectModal()',
+      label: '+ Create project'
+    })
     return
   }
   const filter = document.getElementById('overviewProjectFilter')?.value || ''
@@ -6101,7 +6354,13 @@ function renderOverviewProjects() {
     return true
   })
   if (!filtered.length) {
-    el.innerHTML = '<p style="color:#6B7280;font-size:13px;">No projects match this filter.</p>'
+    el.innerHTML = overviewEmptyHtml({
+      icon: '🔍',
+      title: 'No projects match this filter',
+      desc: 'Try “All projects”, filter to active work only, or tag a project with client or client:name for client-specific rollups.',
+      action: "var f=document.getElementById('overviewProjectFilter');if(f){f.value='';renderOverview();}",
+      label: 'Reset to all projects'
+    })
     return
   }
   const cards = filtered.slice().sort((a,b) => (a.status === 'active' ? -1 : 1)).map(p => {
@@ -6156,7 +6415,13 @@ function renderOverviewGoals() {
   const el = document.getElementById('overviewGoals')
   if (!el) return
   if (!goals.length) {
-    el.innerHTML = '<p style="color:#6B7280;font-size:13px;">No goals defined yet.</p>'
+    el.innerHTML = overviewEmptyHtml({
+      icon: '🎯',
+      title: 'No goals or OKRs yet',
+      desc: 'Define outcomes with owners and dates so this view shows whether the org is on track — not just busy.',
+      action: "switchPage('goals', null)",
+      label: 'Open Goals'
+    })
     return
   }
   const cards = goals.slice().sort((a,b) => (a.status === 'completed' ? 1 : -1)).map(g => {
@@ -6202,7 +6467,13 @@ function renderOverviewTimeline() {
     .sort((a,b) => new Date(a.start) - new Date(b.start))
     .slice(0, 10)
   if (!upcoming.length) {
-    el.innerHTML = '<p style="color:#6B7280;font-size:13px;">No upcoming deadlines or events.</p>'
+    el.innerHTML = overviewEmptyHtml({
+      icon: '📅',
+      title: 'No upcoming milestones',
+      desc: 'Project deadlines, goal targets, and calendar events surface here — add work with dates or sync your calendar to populate this lane.',
+      action: "switchPage('calendar', null)",
+      label: 'Open Calendar'
+    })
     return
   }
   el.innerHTML = upcoming.map(e => {
