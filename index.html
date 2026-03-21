@@ -54,10 +54,22 @@ body {
   overflow-x: hidden; /* prevent sideways scrolling on mobile */
 }
 
-/* Make media content adapt to narrow screens */
-img, video, canvas, svg {
+/* Make media content adapt to narrow screens (exclude Chart.js canvases — height:auto breaks charts) */
+img, video, svg {
   max-width: 100%;
   height: auto;
+}
+.chart-container {
+  position: relative;
+  height: 220px;
+  min-height: 220px;
+  width: 100%;
+}
+.chart-container canvas {
+  display: block !important;
+  width: 100% !important;
+  height: 100% !important;
+  max-height: 220px;
 }
 
 /* Avoid cards/columns forcing horizontal scroll */
@@ -776,8 +788,6 @@ input[type="time"]::-webkit-calendar-picker-indicator {
 .card:hover { border-color: #374151; }
 
 .card h3 { margin-bottom: 15px; font-size: 15px; color: #D1D5DB; }
-.chart-container { position: relative; height: 220px; }
-
 /* ===== FORMS ===== */
 .form-group { margin-bottom: 18px; }
 
@@ -2513,7 +2523,7 @@ kbd {
         <div class="topbar-search" onclick="openCommandPalette()">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
           Search or run a command...
-          <span style="margin-left:auto;font-size:11px;color:#374151;font-family:monospace;">⌘K</span>
+          <span style="margin-left:auto;font-size:11px;color:#374151;font-family:monospace;">Ctrl+K</span>
         </div>
         <div class="topbar-right">
           <button class="topbar-btn" onclick="showShortcuts()" title="Keyboard Shortcuts (?)">
@@ -3235,8 +3245,10 @@ kbd {
         </div>
 
         <!-- Plans -->
+        <div id="billingPlansSection">
         <h3 style="margin-bottom:18px;">Choose a Plan</h3>
-        <div class="billing-plans" id="billingPlans"></div>
+        <div class="billing-plans" id="billingPlans" role="list"></div>
+        </div>
 
         <!-- Invoice History -->
         <div class="billing-info" style="margin-top:24px;">
@@ -3985,24 +3997,37 @@ kbd {
    STATE
 =================================================== */
 let currentUser   = null
-let users         = JSON.parse(localStorage.getItem('alco_users'))         || [{ id:'1', username:'admin', password:'admin123', email:'admin@alter.co', fullName:'Admin User', role:'admin', bio:'', timezone:'UTC', plan:'free', created: new Date().toISOString() }]
-let projects      = JSON.parse(localStorage.getItem('alco_projects'))      || []
-let tasks         = JSON.parse(localStorage.getItem('alco_tasks'))         || []
-let ideas         = JSON.parse(localStorage.getItem('alco_ideas'))         || []
-let events        = JSON.parse(localStorage.getItem('alco_events'))        || []
-let goals         = JSON.parse(localStorage.getItem('alco_goals'))         || []
+
+/** Safe JSON parse from localStorage — avoids blank screen if storage is corrupted */
+function loadStored(key, defaultValue) {
+  try {
+    const raw = localStorage.getItem('alco_' + key)
+    if (raw == null || raw === '') return defaultValue
+    return JSON.parse(raw)
+  } catch (e) {
+    console.warn('ALTER.CO: could not parse alco_' + key, e)
+    return defaultValue
+  }
+}
+
+let users         = loadStored('users', [{ id:'1', username:'admin', password:'admin123', email:'admin@alter.co', fullName:'Admin User', role:'admin', bio:'', timezone:'UTC', plan:'free', created: new Date().toISOString() }])
+let projects      = loadStored('projects', [])
+let tasks         = loadStored('tasks', [])
+let ideas         = loadStored('ideas', [])
+let events        = loadStored('events', [])
+let goals         = loadStored('goals', [])
 // Google Calendar integration state (frontend-only; backend will fill these)
 let googleCalendarConnected = false
 let googleCalendarEvents    = []
-let team          = JSON.parse(localStorage.getItem('alco_team'))          || []
-let notifications = JSON.parse(localStorage.getItem('alco_notifications')) || []
-let activity      = JSON.parse(localStorage.getItem('alco_activity'))      || []
-let timeEntries   = JSON.parse(localStorage.getItem('alco_time'))          || []
-let auditLogs     = JSON.parse(localStorage.getItem('alco_audit'))         || []
-let apiKeys       = JSON.parse(localStorage.getItem('alco_apikeys'))       || []
-let invoices      = JSON.parse(localStorage.getItem('alco_invoices'))      || []
-let userSettings  = JSON.parse(localStorage.getItem('alco_usersettings'))  || {}
-let pages         = JSON.parse(localStorage.getItem('alco_pages'))         || []
+let team          = loadStored('team', [])
+let notifications = loadStored('notifications', [])
+let activity      = loadStored('activity', [])
+let timeEntries   = loadStored('time', [])
+let auditLogs     = loadStored('audit', [])
+let apiKeys       = loadStored('apikeys', [])
+let invoices      = loadStored('invoices', [])
+let userSettings  = loadStored('usersettings', {})
+let pages         = loadStored('pages', [])
 // Ensure calendar state exists before any boot logic runs
 var currentDate  = new Date()
 
@@ -4086,6 +4111,7 @@ function applyWorkspaceToState(data) {
   if (Array.isArray(data.tasks)) tasks = data.tasks
   if (Array.isArray(data.ideas)) ideas = data.ideas
   if (Array.isArray(data.events)) events = data.events
+  if (Array.isArray(data.goals)) goals = data.goals
   if (Array.isArray(data.timeEntries)) timeEntries = data.timeEntries
   if (Array.isArray(data.team)) team = data.team
   if (Array.isArray(data.notifications)) notifications = data.notifications
@@ -4105,6 +4131,7 @@ function syncWorkspaceToBackend() {
     tasks: tasks,
     ideas: ideas,
     events: events,
+    goals: goals,
     timeEntries: timeEntries,
     team: team,
     notifications: notifications,
@@ -4213,25 +4240,13 @@ function copyLastError() {
   if (navigator.clipboard && navigator.clipboard.writeText) {
     navigator.clipboard.writeText(text)
       .then(() => showToast('Error details copied', 'success'))
-      .catch(() => showToast('Copy failed — open Console for details', 'warning'))
-  } else {
-    // Fallback: best-effort prompt copy
-    try {
-    try {
-      if (navigator.clipboard && navigator.clipboard.writeText) {
-        navigator.clipboard.writeText(text)
-        showToast('Error details copied to clipboard.', 'info')
-      } else {
+      .catch(() => {
         console.log('Error details:', text)
-        showToast('Error details logged to console.', 'info')
-      }
-    } catch (e) {
-      console.log('Error details:', text)
-      showToast('Could not copy error details, logged in console.', 'error')
-    }
-    } catch (e) {
-      showToast('Copy not supported on this browser', 'warning')
-    }
+        showToast('Copy failed — details logged in console', 'warning')
+      })
+  } else {
+    console.log('Error details:', text)
+    showToast('Clipboard not available — details logged in console', 'info')
   }
 }
 
@@ -4330,7 +4345,10 @@ function greeting() {
     loadWorkspaceFromBackend()
       .then(function (data) {
         if (data) applyWorkspaceToState(data)
-        var session = JSON.parse(localStorage.getItem('alco_session'))
+        var session = null
+        try {
+          session = JSON.parse(localStorage.getItem('alco_session') || 'null')
+        } catch (e) {}
         if (session && session.id) {
           currentUser = session
           showApp()
@@ -4339,13 +4357,24 @@ function greeting() {
           localStorage.removeItem('alco_session')
         }
       })
-      .catch(function (err) {
+      .catch(function () {
         clearAuthToken()
         localStorage.removeItem('alco_session')
+        try {
+          var lm = document.getElementById('loginMessage')
+          if (lm) {
+            lm.textContent = 'Session expired or server unavailable. Please sign in again.'
+            lm.className = 'login-message error'
+            lm.classList.remove('hidden')
+          }
+        } catch (e) {}
       })
     return
   }
-  var session = JSON.parse(localStorage.getItem('alco_session'))
+  var session = null
+  try {
+    session = JSON.parse(localStorage.getItem('alco_session') || 'null')
+  } catch (e) {}
   if (session && session.id) {
     var freshUser = users.find(function (u) { return u.id === session.id })
     if (freshUser) {
@@ -4392,7 +4421,7 @@ function register() {
         setAuthToken(res.body.token)
         save('session', res.body.user)
         currentUser = res.body.user
-        applyWorkspaceToState({ projects: [], tasks: [], ideas: [], events: [], timeEntries: [], team: [], notifications: [], activity: [], auditLogs: [], invoices: [], apiKeys: [], userSettings: {}, pages: [] })
+        applyWorkspaceToState({ projects: [], tasks: [], ideas: [], events: [], goals: [], timeEntries: [], team: [], notifications: [], activity: [], auditLogs: [], invoices: [], apiKeys: [], userSettings: {}, pages: [] })
         addAuditLog('login', 'Account created', 'login')
         showApp()
       })
@@ -4535,11 +4564,13 @@ function showLoginMessage(msg, type) {
    INIT
 =================================================== */
 function initializeApp() {
+  if (!currentUser) return
   updateSidebarUser()
   renderAllPages()
   renderNotifications()
   setupKeyboardShortcuts()
-  document.getElementById('dashboardGreeting').textContent = greeting() + ', ' + (currentUser.fullName || currentUser.username) + ' 👋'
+  var greetEl = document.getElementById('dashboardGreeting')
+  if (greetEl) greetEl.textContent = greeting() + ', ' + (currentUser.fullName || currentUser.username) + ' 👋'
 }
 
 function renderAllPages() {
@@ -4556,12 +4587,18 @@ function renderAllPages() {
 }
 
 function updateSidebarUser() {
+  if (!currentUser) return
   let initial = (currentUser.fullName || currentUser.username).charAt(0).toUpperCase()
-  document.getElementById('sidebarAvatar').textContent   = initial
-  document.getElementById('sidebarUsername').textContent = currentUser.fullName || currentUser.username
-  document.getElementById('sidebarRoleText').textContent = currentUser.role
-  document.getElementById('sidebarPlanBadge').textContent = (currentUser.plan || 'free').toUpperCase()
-  document.getElementById('profileAvatar').textContent   = initial
+  var av = document.getElementById('sidebarAvatar')
+  if (av) av.textContent = initial
+  var sun = document.getElementById('sidebarUsername')
+  if (sun) sun.textContent = currentUser.fullName || currentUser.username
+  var srt = document.getElementById('sidebarRoleText')
+  if (srt) srt.textContent = currentUser.role
+  var spb = document.getElementById('sidebarPlanBadge')
+  if (spb) spb.textContent = (currentUser.plan || 'free').toUpperCase()
+  var pfa = document.getElementById('profileAvatar')
+  if (pfa) pfa.textContent = initial
   // Also keep dedicated Profile page in sync
   let ppAvatar = document.getElementById('profilePageAvatar')
   if (ppAvatar) ppAvatar.textContent = initial
@@ -4611,8 +4648,13 @@ function startOnboarding() {
 }
 
 function renderOnboardingStep() {
+  if (currentOnboardingStep < 0 || currentOnboardingStep >= ONBOARDING_STEPS.length) {
+    currentOnboardingStep = 0
+  }
   let step = ONBOARDING_STEPS[currentOnboardingStep]
+  if (!step) return
   let dots = document.getElementById('onboardingDots')
+  if (!dots) return
   dots.innerHTML = ONBOARDING_STEPS.map((_, i) =>
     `<div class="onboarding-step-dot ${i < currentOnboardingStep ? 'done' : i === currentOnboardingStep ? 'active' : ''}"></div>`
   ).join('')
@@ -4621,7 +4663,7 @@ function renderOnboardingStep() {
   document.getElementById('onboardingDesc').textContent  = step.desc
 
   let btn = document.querySelector('#onboardingOverlay button:first-child')
-  btn.textContent = currentOnboardingStep < ONBOARDING_STEPS.length - 1 ? 'Next →' : '🚀 Let\'s Go!'
+  if (btn) btn.textContent = currentOnboardingStep < ONBOARDING_STEPS.length - 1 ? 'Next →' : '🚀 Let\'s Go!'
 }
 
 function nextOnboardingStep() {
@@ -4635,7 +4677,9 @@ function nextOnboardingStep() {
 
 function skipOnboarding() {
   document.getElementById('onboardingOverlay').classList.remove('active')
-  localStorage.setItem('alco_onboarded_' + currentUser.id, '1')
+  if (currentUser && currentUser.id) {
+    localStorage.setItem('alco_onboarded_' + currentUser.id, '1')
+  }
 }
 
 /* ===================================================
@@ -4644,7 +4688,10 @@ function skipOnboarding() {
 function switchPage(pageId, el) {
   document.querySelectorAll('.page').forEach(p => p.classList.add('hidden'))
   let page = document.getElementById(pageId)
-  if (page) page.classList.remove('hidden')
+  if (page) {
+    page.classList.remove('hidden')
+    try { page.scrollTop = 0 } catch (e) {}
+  }
 
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'))
   if (el && el.classList) {
@@ -4665,6 +4712,7 @@ function switchPage(pageId, el) {
     timetracking:'Time Tracking',
     ideas:'Ideas',
     calendar:'Calendar',
+    goals:'Goals & OKRs',
     team:'Team',
     analytics:'Analytics',
     overview:'Overview',
@@ -4673,15 +4721,25 @@ function switchPage(pageId, el) {
     settings:'Settings'
   }
   let title = titles[pageId] || pageId
-  document.getElementById('topbarTitle').textContent = title
+  let topbar = document.getElementById('topbarTitle')
+  if (topbar) topbar.textContent = title
 
-  if (pageId === 'analytics')   renderAnalyticsCharts()
+  if (pageId === 'calendar') renderCalendar()
+  if (pageId === 'analytics') {
+    setTimeout(function () { renderAnalyticsCharts() }, 50)
+  }
   if (pageId === 'timetracking') renderTimeTracking()
-  if (pageId === 'pages')       renderPagesEditor()
-  if (pageId === 'billing')      renderBilling()
-  if (pageId === 'auditlog')     renderAuditLog()
-  if (pageId === 'goals')        renderGoals()
-  if (pageId === 'overview')     renderOverview()
+  if (pageId === 'pages') renderPagesEditor()
+  if (pageId === 'billing') {
+    renderBilling()
+    setTimeout(function () {
+      var sec = document.getElementById('billingPlansSection')
+      if (sec && typeof sec.scrollIntoView === 'function') sec.scrollIntoView({ block: 'start', behavior: 'smooth' })
+    }, 50)
+  }
+  if (pageId === 'auditlog') renderAuditLog()
+  if (pageId === 'goals') renderGoals()
+  if (pageId === 'overview') renderOverview()
 }
 
 /* ===================================================
@@ -4748,6 +4806,9 @@ function updateCommandResults() {
   // Tasks search
   let filteredTasks = q ? tasks.filter(t => t.title.toLowerCase().includes(q)).slice(0, 3) : []
 
+  // Ideas search
+  let filteredIdeas = q ? ideas.filter(i => (i.title || '').toLowerCase().includes(q) || (i.description || '').toLowerCase().includes(q)).slice(0, 3) : []
+
   if (filteredPages.length) {
     html += `<div class="command-section-label">Navigation</div>`
     filteredPages.forEach(item => {
@@ -4777,6 +4838,15 @@ function updateCommandResults() {
     html += `<div class="command-section-label">Tasks</div>`
     filteredTasks.forEach(t => {
       let item = { icon:'✅', label: t.title, sub: t.status, action: () => switchPage('tasks', null) }
+      commandItems.push(item)
+      html += commandItemHtml(item)
+    })
+  }
+
+  if (filteredIdeas.length) {
+    html += `<div class="command-section-label">Ideas</div>`
+    filteredIdeas.forEach(i => {
+      let item = { icon:'💡', label: i.title, sub: i.category || 'idea', action: () => switchPage('ideas', null) }
       commandItems.push(item)
       html += commandItemHtml(item)
     })
@@ -4840,25 +4910,46 @@ function setupKeyboardShortcuts() {
 }
 
 function handleKeyDown(e) {
-  // Don't fire when typing in inputs
-  let tag = e.target.tagName.toLowerCase()
-  if (tag === 'input' || tag === 'textarea' || tag === 'select') return
+  let tag = (e.target && e.target.tagName) ? e.target.tagName.toLowerCase() : ''
+  let inField = tag === 'input' || tag === 'textarea' || tag === 'select'
+  let inContentEditable = e.target && e.target.isContentEditable
 
-  // ⌘K / Ctrl+K - Command palette
-  if ((e.metaKey || e.ctrlKey) && e.key === 'k') { e.preventDefault(); openCommandPalette(); return }
-  // ⌘E - Export
-  if ((e.metaKey || e.ctrlKey) && e.key === 'e') { e.preventDefault(); exportData(); return }
-  // Escape - close modals, palette, overlays
-  if (e.key === 'Escape') {
-    document.querySelectorAll('.modal.active').forEach(m => m.classList.remove('active'))
-    document.getElementById('commandPalette').classList.remove('active')
-    document.getElementById('shortcutsOverlay').classList.remove('active')
-    document.getElementById('notificationsPanel').classList.remove('active')
+  // ⌘K / Ctrl+K - Command palette (always, even in inputs)
+  if ((e.metaKey || e.ctrlKey) && (e.key === 'k' || e.key === 'K')) {
+    e.preventDefault()
+    openCommandPalette()
     return
   }
-  // ? - show shortcuts
-  if (e.key === '?') { showShortcuts(); return }
-  // N - notifications
+  // ⌘E / Ctrl+E - Export
+  if ((e.metaKey || e.ctrlKey) && (e.key === 'e' || e.key === 'E')) {
+    e.preventDefault()
+    exportData()
+    return
+  }
+  // Escape - close modals, palette, overlays
+  if (e.key === 'Escape') {
+    e.preventDefault()
+    document.querySelectorAll('.modal.active').forEach(m => m.classList.remove('active'))
+    var cp = document.getElementById('commandPalette')
+    if (cp) cp.classList.remove('active')
+    var so = document.getElementById('shortcutsOverlay')
+    if (so) so.classList.remove('active')
+    var np = document.getElementById('notificationsPanel')
+    if (np) np.classList.remove('active')
+    return
+  }
+  // ? or Shift+/ — show shortcuts (works when not typing in a field)
+  if (e.key === '?' || (e.key === '/' && e.shiftKey)) {
+    if (!inField && !inContentEditable) {
+      e.preventDefault()
+      showShortcuts()
+    }
+    return
+  }
+
+  if (inField || inContentEditable) return
+
+  // N - notifications (only when not in a field)
   if (e.key === 'n' && !e.metaKey && !e.ctrlKey) { toggleNotifications(); return }
 
   // Two-key sequences
@@ -6030,9 +6121,17 @@ function renderOverviewTimeline() {
   }).join('')
 }
 
+function ideaVoteCount(idea) {
+  if (!idea) return 0
+  if (typeof idea.votes === 'number' && !isNaN(idea.votes)) return idea.votes
+  if (Array.isArray(idea.voters)) return idea.voters.length
+  return 0
+}
+
 function buildIdeaCard(idea) {
   let impactStars = '⭐'.repeat(idea.impact || 1)
   let hasVoted    = (idea.voters || []).includes(currentUser.id)
+  let votes       = ideaVoteCount(idea)
   return `
     <div class="idea-card">
       <div class="idea-content">
@@ -6047,7 +6146,7 @@ function buildIdeaCard(idea) {
         <span style="font-size:11px;padding:2px 8px;background:#1F2937;border-radius:12px;border:1px solid #374151;">${escapeHtml(idea.category)}</span>
       </div>
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
-        <span class="idea-votes" style="font-size:18px;font-weight:700;">${idea.votes} 👍</span>
+        <span class="idea-votes" style="font-size:18px;font-weight:700;">${votes} 👍</span>
         <span style="font-size:11px;color:#4B5563;">${timeAgo(idea.created)}</span>
       </div>
       <div class="idea-actions">
@@ -6061,7 +6160,7 @@ function buildIdeaCard(idea) {
 }
 
 function renderIdeas() {
-  let sorted = [...ideas].sort((a, b) => b.votes - a.votes)
+  let sorted = [...ideas].sort((a, b) => ideaVoteCount(b) - ideaVoteCount(a))
   let html = sorted.map(buildIdeaCard).join('')
   document.getElementById('ideasList').innerHTML = html ||
     `<div class="empty-state"><div class="empty-state-icon">💡</div><h3>No ideas yet</h3><p>Be the first to submit an idea!</p><button class="btn-primary btn-sm" onclick="openCreateIdeaModal()">+ New Idea</button></div>`
@@ -6083,7 +6182,7 @@ function filterIdeas() {
     let mc = !category || i.category === category
     return ms && mc
   })
-  let sorted = [...filtered].sort((a, b) => b.votes - a.votes)
+  let sorted = [...filtered].sort((a, b) => ideaVoteCount(b) - ideaVoteCount(a))
   let html = sorted.map(buildIdeaCard).join('')
   if (html) {
     document.getElementById('ideasList').innerHTML = html
@@ -6102,13 +6201,12 @@ function voteIdea(id) {
   if (!idea.voters) idea.voters = []
   if (idea.voters.includes(currentUser.id)) {
     idea.voters = idea.voters.filter(v => v !== currentUser.id)
-    idea.votes  = Math.max(0, idea.votes - 1)
     showToast('Vote removed', 'info')
   } else {
     idea.voters.push(currentUser.id)
-    idea.votes++
     showToast('Voted!', 'success')
   }
+  idea.votes = idea.voters.length
   save('ideas', ideas)
   renderIdeas()
 }
@@ -7631,13 +7729,11 @@ function renderPagesEditor() {
    BILLING
 =================================================== */
 function renderBilling() {
-  // Billing can be clicked before async auth/workspace load finishes.
-  // Guard against `currentUser` being null to avoid runtime crashes.
   if (!currentUser) {
-    // Keep UI functional with a safe default.
     try { showToast('Sign in to view billing details', 'info') } catch (e) {}
+    return
   }
-  let currentPlan = (currentUser && currentUser.plan) ? currentUser.plan : 'free'
+  let currentPlan = currentUser.plan ? currentUser.plan : 'free'
   let planInfo    = PLANS.find(p => p.id === currentPlan)
 
   // Top summary card values
@@ -7752,7 +7848,8 @@ function upgradePlan(planId) {
       if (!res.ok) return showToast(res.body.error || 'Failed to update plan', 'error')
       currentUser.plan = planId
       save('session', currentUser)
-      document.getElementById('sidebarPlanBadge').textContent = planId.toUpperCase()
+      var badge = document.getElementById('sidebarPlanBadge')
+      if (badge) badge.textContent = planId.toUpperCase()
       renderBilling()
       addAuditLog('update', `Upgraded plan to ${plan.name}`, 'update')
       showToast(`Plan updated to ${plan.name}!`, 'success')
@@ -7767,7 +7864,8 @@ function upgradePlan(planId) {
       currentUser.plan = planId
       let idx = users.findIndex(u => u.id === currentUser.id)
       if (idx >= 0) { users[idx] = currentUser; save('users', users); save('session', currentUser) }
-      document.getElementById('sidebarPlanBadge').textContent = planId.toUpperCase()
+      var badge2 = document.getElementById('sidebarPlanBadge')
+      if (badge2) badge2.textContent = planId.toUpperCase()
       renderBilling()
       addAuditLog('update', `Upgraded plan to ${plan.name}`, 'update')
       showToast(`🎉 Upgraded to ${plan.name}!`, 'success')
@@ -7776,7 +7874,8 @@ function upgradePlan(planId) {
     currentUser.plan = planId
     let idx = users.findIndex(u => u.id === currentUser.id)
     if (idx >= 0) { users[idx] = currentUser; save('users', users); save('session', currentUser) }
-    document.getElementById('sidebarPlanBadge').textContent = planId.toUpperCase()
+    var badge3 = document.getElementById('sidebarPlanBadge')
+    if (badge3) badge3.textContent = planId.toUpperCase()
     renderBilling()
     showToast(`Downgraded to ${plan.name}`, 'info')
   }
@@ -7968,14 +8067,14 @@ function renderAnalyticsCharts() {
   })
 
   // Ideas votes
-  let topIdeas = [...ideas].sort((a,b) => b.votes - a.votes).slice(0, 5)
+  let topIdeas = [...ideas].sort((a,b) => ideaVoteCount(b) - ideaVoteCount(a)).slice(0, 5)
   makeChart('ideasChart', {
     type: 'bar',
     data: {
       labels: topIdeas.length ? topIdeas.map(i => i.title.substring(0, 20)) : ['No ideas'],
       datasets: [{
         label: 'Votes',
-        data: topIdeas.length ? topIdeas.map(i => i.votes) : [0],
+        data: topIdeas.length ? topIdeas.map(i => ideaVoteCount(i)) : [0],
         backgroundColor: 'rgba(124,58,237,0.7)',
         borderRadius: 6
       }]
@@ -8369,7 +8468,7 @@ function deleteAccount() {
 
   users = users.filter(u => u.id !== currentUser.id)
   save('users', users)
-  ;['projects','tasks','ideas','events','team','notifications','activity','time','audit','apikeys','usersettings'].forEach(k => {
+  ;['projects','tasks','ideas','events','goals','pages','team','notifications','activity','time','audit','apikeys','usersettings'].forEach(k => {
     localStorage.removeItem('alco_' + k)
   })
 
@@ -8398,8 +8497,9 @@ function resetWorkspace() {
 }
 
 function reallyResetWorkspace() {
-  projects = []; tasks = []; ideas = []; events = []; timeEntries = []; activity = []
-  ;['projects','tasks','ideas','events','time','activity'].forEach(k => save(k, []))
+  projects = []; tasks = []; ideas = []; events = []; goals = []; timeEntries = []; activity = []
+  pages = []
+  ;['projects','tasks','ideas','events','goals','time','activity','pages'].forEach(k => save(k, []))
   renderAllPages()
   addAuditLog('delete', 'Reset entire workspace', 'delete')
   showToast('Workspace reset!', 'warning')
@@ -8504,6 +8604,10 @@ function refreshDashboard() {
 }
 
 function exportData() {
+  if (!currentUser) {
+    showToast('Please sign in to export data', 'error')
+    return
+  }
   try {
     let workspaceName = localStorage.getItem('alco_workspace_name') || 'My Workspace'
     let safeName = workspaceName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'workspace'
@@ -8515,6 +8619,7 @@ function exportData() {
       projects: projects.map(p => ({ ...p })),
       tasks: tasks.map(t => ({ ...t })),
       ideas: ideas.map(i => ({ ...i })),
+      goals: goals.map(g => ({ ...g })),
       events: events.map(e => ({ ...e })),
       timeEntries: timeEntries.map(e => ({ ...e })),
       team: team.map(m => ({ ...m })),
@@ -8554,6 +8659,10 @@ function exportData() {
 }
 
 function generateReport() {
+  if (!currentUser) {
+    showToast('Please sign in to generate a report', 'error')
+    return
+  }
   let done = tasks.filter(t => t.status === 'done').length
   let rate = tasks.length > 0 ? Math.round((done / tasks.length) * 100) : 0
   let totalHours = (timeEntries.reduce((s, e) => s + (e.duration||0), 0) / 3600).toFixed(1)
