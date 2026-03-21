@@ -118,8 +118,9 @@ async function sendEmailSafe({ to, subject, text }) {
   }
 }
 
+// Must match keys the frontend sends in PUT /api/workspace (see index.html syncWorkspaceToBackend)
 const WORKSPACE_KEYS = [
-  'projects', 'tasks', 'ideas', 'events', 'timeEntries', 'team',
+  'projects', 'tasks', 'ideas', 'events', 'goals', 'timeEntries', 'team',
   'notifications', 'activity', 'auditLogs', 'invoices', 'apiKeys', 'userSettings',
   'pages'
 ]
