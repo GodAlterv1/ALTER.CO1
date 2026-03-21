@@ -8088,6 +8088,20 @@ function joinTeamWithInviteCode() {
       const inp = document.getElementById('teamJoinCodeInput')
       if (inp) inp.value = ''
       addAuditLog('update', 'Joined workspace via invite code', 'update')
+      if (typeof loadWorkspaceFromBackend === 'function' && ALTER_API_BASE && getAuthToken()) {
+        loadWorkspaceFromBackend()
+          .then(function (data) {
+            if (data) applyWorkspaceToState(data)
+            if (typeof renderTeam === 'function') renderTeam()
+            if (typeof renderProjects === 'function') renderProjects()
+            if (typeof filterTasks === 'function') filterTasks()
+            else if (typeof renderTasks === 'function') renderTasks()
+            if (typeof renderGoals === 'function') renderGoals()
+            if (typeof updateStats === 'function') updateStats()
+            if (typeof renderDashboardCharts === 'function') renderDashboardCharts()
+          })
+          .catch(function () {})
+      }
     })
     .catch(function () { showToast('Network error', 'error') })
 }

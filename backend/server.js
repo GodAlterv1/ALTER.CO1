@@ -160,8 +160,55 @@ function addUserToOwnerTeam(ownerId, joinerUserId) {
   })
   ownerWs.team = team
   writeWorkspace(ownerId, ownerWs)
+
+  // Point the joiner's workspace at the owner's shared data so tasks/projects sync for the whole team
+  const joinerWs = readWorkspace(joinerUserId) || emptyWorkspace()
+  if (!joinerWs.userSettings || typeof joinerWs.userSettings !== 'object') joinerWs.userSettings = {}
+  joinerWs.userSettings.workspaceOwnerId = ownerId
+  writeWorkspace(joinerUserId, joinerWs)
+
   const owner = users.find(u => u.id === ownerId)
   return { ok: true, ownerUsername: owner ? owner.username : '' }
+}
+
+function isAcceptedTeamMember(teamArr, memberUserId) {
+  if (!Array.isArray(teamArr)) return false
+  return teamArr.some(m => m && m.id === memberUserId && m.status === 'accepted')
+}
+
+/**
+ * Workspace JSON file to load/save for this account.
+ * Team members use the owner's file so tasks, projects, and goals are shared.
+ */
+function resolveWorkspaceFileUserId(userId) {
+  const mine = readWorkspace(userId)
+  const settings = mine && mine.userSettings && typeof mine.userSettings === 'object' ? mine.userSettings : {}
+  const linked = settings.workspaceOwnerId
+  if (linked && typeof linked === 'string' && linked !== userId) {
+    const ownerWs = readWorkspace(linked) || emptyWorkspace()
+    if (isAcceptedTeamMember(ownerWs.team, userId)) return linked
+  }
+  if (!fs.existsSync(WORKSPACE_DIR)) return userId
+  let files
+  try {
+    files = fs.readdirSync(WORKSPACE_DIR)
+  } catch (e) {
+    return userId
+  }
+  for (const f of files) {
+    if (!f.endsWith('.json')) continue
+    const oid = f.slice(0, -5)
+    if (oid === userId) continue
+    const ws = readWorkspace(oid)
+    if (ws && isAcceptedTeamMember(ws.team, userId)) {
+      const mw = readWorkspace(userId) || emptyWorkspace()
+      if (!mw.userSettings || typeof mw.userSettings !== 'object') mw.userSettings = {}
+      mw.userSettings.workspaceOwnerId = oid
+      writeWorkspace(userId, mw)
+      return oid
+    }
+  }
+  return userId
 }
 
 function deleteWorkspaceFile(userId) {
@@ -781,7 +828,8 @@ app.post('/api/public/contact', contactLimiter, async (req, res) => {
 
 // ----- Routes: Workspace -----
 app.get('/api/workspace', authMiddleware, (req, res) => {
-  let data = readWorkspace(req.userId)
+  const fileUserId = resolveWorkspaceFileUserId(req.userId)
+  let data = readWorkspace(fileUserId)
   if (!data || typeof data !== 'object') data = emptyWorkspace()
   const out = emptyWorkspace()
   for (const k of WORKSPACE_KEYS) {
@@ -793,14 +841,15 @@ app.get('/api/workspace', authMiddleware, (req, res) => {
 })
 
 app.put('/api/workspace', authMiddleware, (req, res) => {
+  const fileUserId = resolveWorkspaceFileUserId(req.userId)
   const data = req.body || {}
-  const current = readWorkspace(req.userId) || emptyWorkspace()
+  const current = readWorkspace(fileUserId) || emptyWorkspace()
   for (const key of WORKSPACE_KEYS) {
     if (data[key] !== undefined) {
       current[key] = data[key]
     }
   }
-  writeWorkspace(req.userId, current)
+  writeWorkspace(fileUserId, current)
   res.json({ ok: true })
 })
 
