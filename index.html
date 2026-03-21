@@ -914,6 +914,85 @@ button:disabled { opacity: 0.5; cursor: not-allowed; transform: none; box-shadow
 .project-tags { display: flex; gap: 5px; flex-wrap: wrap; margin-bottom: 10px; }
 .tag { font-size: 11px; padding: 2px 8px; background: #1F2937; border-radius: 12px; color: #9CA3AF; border: 1px solid #374151; }
 
+.projects-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 14px;
+  margin-bottom: 16px;
+  padding: 14px 16px;
+  background: #0d1117;
+  border: 1px solid #1F2937;
+  border-radius: 12px;
+}
+.projects-summary {
+  margin: 0;
+  font-size: 13px;
+  color: #9CA3AF;
+  line-height: 1.5;
+  max-width: 520px;
+}
+.projects-toolbar-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+.projects-toolbar-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: #9CA3AF;
+  cursor: pointer;
+  user-select: none;
+}
+.projects-toolbar-label input { accent-color: #4f46e5; cursor: pointer; }
+.project-desc-placeholder { color: #4B5563; font-style: italic; }
+.project-task-pipeline {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 10px 0 8px 0;
+}
+.project-task-pipeline span {
+  font-size: 10px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  font-weight: 600;
+  border: 1px solid #1F2937;
+  background: #020617;
+  color: #9CA3AF;
+}
+.project-task-pipeline .pp-todo { color: #9CA3AF; border-color: #374151; }
+.project-task-pipeline .pp-ip { color: #a78bfa; border-color: rgba(139,92,246,0.45); }
+.project-task-pipeline .pp-rev { color: #fbbf24; border-color: rgba(251,191,36,0.4); }
+.project-task-pipeline .pp-done { color: #4ade80; border-color: rgba(74,222,128,0.35); }
+.project-card-foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid #1F2937;
+  font-size: 11px;
+  color: #6B7280;
+}
+.project-health {
+  font-size: 10px;
+  font-weight: 700;
+  padding: 3px 10px;
+  border-radius: 999px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.project-health.ok { background: rgba(34,197,94,0.15); color: #86efac; }
+.project-health.risk { background: rgba(249,115,22,0.18); color: #fdba74; }
+.project-health.bad { background: rgba(239,68,68,0.18); color: #fca5a5; }
+
 /* ===== KANBAN ===== */
 .kanban-board {
   display: grid;
@@ -2189,6 +2268,8 @@ kbd {
   .stats { grid-template-columns: repeat(2, 1fr); }
   .kanban-board { grid-template-columns: 1fr; }
   .projects-container { grid-template-columns: 1fr; }
+  .projects-toolbar { flex-direction: column; align-items: stretch; }
+  .projects-toolbar-controls { width: 100%; }
   .ideas-grid { grid-template-columns: 1fr; }
   .team-grid { grid-template-columns: 1fr; }
   .search-container { flex-direction: column; }
@@ -2881,12 +2962,30 @@ kbd {
         <div class="workspace-header">
           <div>
             <h1>Projects</h1>
-            <p>Manage and track all your projects</p>
+            <p>Portfolio view — health, workload, and time in one place. Use filters and sort to focus what matters.</p>
           </div>
           <button onclick="openCreateProjectModal()">+ New Project</button>
         </div>
+        <div class="projects-toolbar">
+          <p id="projectsSummaryBar" class="projects-summary">Loading…</p>
+          <div class="projects-toolbar-controls">
+            <label class="projects-toolbar-label" title="Only projects you created">
+              <input type="checkbox" id="projectMyOnly" onchange="filterProjects()">
+              My projects
+            </label>
+            <select id="projectSortBy" onchange="filterProjects()" style="padding:8px 10px;background:#111827;border:1px solid #1F2937;color:white;border-radius:8px;font-size:12px;">
+              <option value="recent">Sort: Recently updated</option>
+              <option value="name">Sort: Name (A–Z)</option>
+              <option value="deadline">Sort: Deadline (soonest)</option>
+              <option value="priority">Sort: Priority (highest)</option>
+              <option value="progress">Sort: Progress (most complete)</option>
+              <option value="tasks">Sort: Task count (most work)</option>
+            </select>
+            <button type="button" class="btn-secondary btn-sm" onclick="clearProjectFilters()">Reset filters</button>
+          </div>
+        </div>
         <div class="search-container">
-          <input id="projectSearch" placeholder="Search projects..." oninput="filterProjects()">
+          <input id="projectSearch" placeholder="Search name, description, or tags…" oninput="filterProjects()">
           <select id="projectFilter" onchange="filterProjects()" style="padding:10px 14px;background:#111827;border:1px solid #1F2937;color:white;border-radius:8px;cursor:pointer;font-size:13px;">
             <option value="">All Priorities</option>
             <option value="critical">Critical</option>
@@ -2915,6 +3014,9 @@ kbd {
         </div>
         <div class="search-container">
           <input id="taskSearch" placeholder="Search tasks..." oninput="filterTasks()">
+          <select id="taskProjectFilter" onchange="filterTasks()" style="padding:10px 14px;background:#111827;border:1px solid #1F2937;color:white;border-radius:8px;cursor:pointer;font-size:13px;max-width:200px;">
+            <option value="">All projects</option>
+          </select>
           <select id="taskFilter" onchange="filterTasks()" style="padding:10px 14px;background:#111827;border:1px solid #1F2937;color:white;border-radius:8px;cursor:pointer;font-size:13px;">
             <option value="">All Status</option>
             <option value="todo">To Do</option>
@@ -4797,6 +4899,7 @@ function initializeApp() {
 
 function renderAllPages() {
   updateStats()
+  populateTaskProjectFilter()
   renderProjects()
   renderTasks()
   renderIdeas()
@@ -4962,6 +5065,9 @@ function switchPage(pageId, el) {
   if (pageId === 'auditlog') renderAuditLog()
   if (pageId === 'goals') renderGoals()
   if (pageId === 'overview') renderOverview()
+  if (pageId === 'tasks') {
+    populateTaskProjectFilter()
+  }
 }
 
 /* ===================================================
@@ -5242,10 +5348,9 @@ function renderDashboardPulseAndOnboarding() {
 
   const hasProject = projects.length > 0
   const hasTask = tasks.length > 0
-  const hasTime = timeEntries.length > 0
   const hasGoal = goals.length > 0
-  const doneCount = [hasProject, hasTask, hasTime, hasGoal].filter(Boolean).length
-  if (doneCount === 4) {
+  const doneCount = [hasProject, hasTask, hasGoal].filter(Boolean).length
+  if (doneCount === 3) {
     onboard.classList.add('hidden')
     return
   }
@@ -5254,7 +5359,6 @@ function renderDashboardPulseAndOnboarding() {
   const steps = [
     { ok: hasProject, label: 'Create a project', action: 'openCreateProjectModal()' },
     { ok: hasTask, label: 'Add your first task', action: "switchPage('tasks', null)" },
-    { ok: hasTime, label: 'Log time on work', action: "switchPage('timetracking', null)" },
     { ok: hasGoal, label: 'Define a goal or OKR', action: "switchPage('goals', null)" }
   ]
   stepsEl.innerHTML = steps.map(s => {
@@ -5412,10 +5516,12 @@ function saveProject() {
 
   if (!name) return showToast('Please enter a project name', 'error')
 
+  const nowIso = new Date().toISOString()
   let project = {
     id: genId(), name, description: desc, deadline, startDate: start,
     priority, status, tags, owner: currentUser.id, progress: 0,
-    created: new Date().toISOString()
+    created: nowIso,
+    updated: nowIso
   }
 
   projects.push(project)
@@ -5429,22 +5535,169 @@ function saveProject() {
   showToast('Project created!', 'success')
   updateStats()
   populateTimerProjectSelect()
+  populateTaskProjectFilter()
+}
+
+function projectPrioritySortVal(pr) {
+  const o = { critical: 4, high: 3, medium: 2, low: 1 }
+  return o[pr] || 0
+}
+
+function getProjectTaskStats(projectId) {
+  const ts = tasks.filter(t => t.projectId === projectId)
+  return {
+    total: ts.length,
+    done: ts.filter(t => t.status === 'done').length,
+    todo: ts.filter(t => t.status === 'todo').length,
+    ip: ts.filter(t => t.status === 'in-progress').length,
+    rev: ts.filter(t => t.status === 'review').length
+  }
+}
+
+function formatRelativeActivity(iso) {
+  if (!iso) return '—'
+  const t = new Date(iso).getTime()
+  if (isNaN(t)) return '—'
+  const diff = Date.now() - t
+  const mins = Math.floor(diff / 60000)
+  if (mins < 1) return 'just now'
+  if (mins < 60) return `${mins}m ago`
+  const hrs = Math.floor(mins / 60)
+  if (hrs < 24) return `${hrs}h ago`
+  const days = Math.floor(hrs / 24)
+  if (days < 14) return `${days}d ago`
+  return new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+}
+
+function getProjectsForList() {
+  let search = (document.getElementById('projectSearch')?.value || '').toLowerCase()
+  let priority = document.getElementById('projectFilter')?.value || ''
+  let status = document.getElementById('projectStatusFilter')?.value || ''
+  let myOnly = document.getElementById('projectMyOnly')?.checked
+  let sortBy = document.getElementById('projectSortBy')?.value || 'recent'
+
+  let filtered = projects.filter(p => {
+    let matchSearch = p.name.toLowerCase().includes(search) ||
+      (p.description || '').toLowerCase().includes(search) ||
+      (p.tags || []).some(t => (t || '').toLowerCase().includes(search))
+    let matchPriority = !priority || p.priority === priority
+    let matchStatus = !status || p.status === status
+    let matchMine = !myOnly || !currentUser || p.owner === currentUser.id
+    return matchSearch && matchPriority && matchStatus && matchMine
+  })
+
+  const deadlineTs = (p) => {
+    if (!p.deadline) return null
+    const d = new Date(p.deadline)
+    return isNaN(d.getTime()) ? null : d.getTime()
+  }
+  const recentTs = (p) => {
+    const u = p.updated || p.created
+    return u ? new Date(u).getTime() : 0
+  }
+
+  filtered.sort((a, b) => {
+    if (sortBy === 'name') return a.name.localeCompare(b.name, undefined, { sensitivity: 'base' })
+    if (sortBy === 'deadline') {
+      const da = deadlineTs(a), db = deadlineTs(b)
+      if (da === null && db === null) return recentTs(b) - recentTs(a)
+      if (da === null) return 1
+      if (db === null) return -1
+      return da - db
+    }
+    if (sortBy === 'progress') {
+      const pa = getProjectTaskStats(a.id), pb = getProjectTaskStats(b.id)
+      const pra = pa.total ? pa.done / pa.total : 0
+      const prb = pb.total ? pb.done / pb.total : 0
+      if (prb !== pra) return prb - pra
+      return recentTs(b) - recentTs(a)
+    }
+    if (sortBy === 'tasks') {
+      const ca = getProjectTaskStats(a.id).total
+      const cb = getProjectTaskStats(b.id).total
+      if (cb !== ca) return cb - ca
+      return recentTs(b) - recentTs(a)
+    }
+    if (sortBy === 'priority') {
+      const diff = projectPrioritySortVal(b.priority) - projectPrioritySortVal(a.priority)
+      if (diff !== 0) return diff
+      return recentTs(b) - recentTs(a)
+    }
+    return recentTs(b) - recentTs(a)
+  })
+
+  return filtered
+}
+
+function updateProjectsSummaryBar(filteredCount) {
+  const el = document.getElementById('projectsSummaryBar')
+  if (!el) return
+  const total = projects.length
+  if (!total) {
+    el.textContent = 'No projects yet — create one to see workload, deadlines, and time in this portfolio.'
+    return
+  }
+  const active = projects.filter(p => p.status === 'active').length
+  const mine = currentUser ? projects.filter(p => p.owner === currentUser.id).length : 0
+  let line = `${total} project${total === 1 ? '' : 's'} · ${active} active · ${mine} owned by you`
+  if (filteredCount !== total) {
+    line += ` · showing ${filteredCount} match${filteredCount === 1 ? '' : 'es'}`
+  }
+  el.textContent = line
 }
 
 function buildProjectCard(p) {
-  let taskCount = tasks.filter(t => t.projectId === p.id).length
-  let doneCount = tasks.filter(t => t.projectId === p.id && t.status === 'done').length
-  let progress  = taskCount > 0 ? Math.round((doneCount / taskCount) * 100) : 0
-  let daysLeft  = p.deadline ? Math.ceil((new Date(p.deadline) - new Date()) / 86400000) : null
+  const st = getProjectTaskStats(p.id)
+  const taskCount = st.total
+  const doneCount = st.done
+  const progress = taskCount > 0 ? Math.round((doneCount / taskCount) * 100) : 0
+  let daysLeft = null
+  if (p.deadline) {
+    const raw = new Date(p.deadline)
+    if (!isNaN(raw.getTime())) daysLeft = Math.ceil((raw - new Date()) / 86400000)
+  }
   let deadlineHtml = ''
   if (daysLeft !== null) {
     deadlineHtml = daysLeft < 0
-      ? `<span style="color:#ef4444;">Overdue by ${Math.abs(daysLeft)}d</span>`
+      ? `<span style="color:#ef4444;">Overdue ${Math.abs(daysLeft)}d</span>`
       : daysLeft === 0 ? `<span style="color:#f59e0b;">Due today</span>`
-      : `<span>${daysLeft}d left</span>`
+      : `<span>${daysLeft}d to deadline</span>`
   }
   let tagsHtml = (p.tags || []).map(t => `<span class="tag">${escapeHtml(t)}</span>`).join('')
-  let projectSecs = timeEntries.filter(e => e.projectId === p.id).reduce((s, e) => s + (e.duration||0), 0)
+  const projectSecs = timeEntries.filter(e => e.projectId === p.id).reduce((s, e) => s + (e.duration || 0), 0)
+  const goalCount = goals.filter(g => g.projectId === p.id).length
+
+  let healthClass = 'ok'
+  let healthLabel = 'On track'
+  if (daysLeft !== null) {
+    if (daysLeft < 0 && progress < 85) {
+      healthClass = 'bad'
+      healthLabel = 'Overdue'
+    } else if (daysLeft <= 3 && progress < 40 && p.status === 'active') {
+      healthClass = 'risk'
+      healthLabel = 'At risk'
+    }
+  }
+
+  const desc = (p.description || '').trim()
+  const descHtml = desc
+    ? `<p style="color:#9CA3AF;font-size:13px;margin-bottom:10px;line-height:1.5;">${escapeHtml(desc)}</p>`
+    : `<p class="project-desc-placeholder" style="font-size:13px;margin-bottom:10px;line-height:1.5;">No description — add context in Edit so teammates know what “done” means.</p>`
+
+  let startHint = ''
+  if (p.startDate) {
+    const sd = new Date(p.startDate.includes('T') ? p.startDate : p.startDate + 'T12:00')
+    if (!isNaN(sd.getTime())) {
+      startHint = `Started ${sd.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}`
+    }
+  }
+
+  const activityIso = p.updated || p.created
+  const activityLine = `Updated ${formatRelativeActivity(activityIso)}`
+
+  const ownerLabel = p.owner && currentUser && p.owner === currentUser.id
+    ? 'You'
+    : (team.find(m => m.id === p.owner)?.email || '').split('@')[0] || 'Member'
 
   return `
     <div class="project-card ${escapeHtml(p.priority)}">
@@ -5452,23 +5705,36 @@ function buildProjectCard(p) {
         <h3>${escapeHtml(p.name)}</h3>
         <span class="priority-badge ${escapeHtml(p.priority)}">${escapeHtml(p.priority)}</span>
       </div>
-      <p style="color:#6B7280;font-size:13px;margin-bottom:10px;line-height:1.5;">${escapeHtml(p.description)}</p>
+      ${descHtml}
       ${tagsHtml ? `<div class="project-tags">${tagsHtml}</div>` : ''}
+      <div class="project-task-pipeline" title="Task counts by column">
+        <span class="pp-todo">To do ${st.todo}</span>
+        <span class="pp-ip">In prog ${st.ip}</span>
+        <span class="pp-rev">Review ${st.rev}</span>
+        <span class="pp-done">Done ${st.done}</span>
+      </div>
       <div class="project-progress">
         <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px;">
-          <span style="color:#6B7280;">${doneCount}/${taskCount} tasks</span>
+          <span style="color:#6B7280;">${doneCount}/${taskCount} tasks complete</span>
           <span>${progress}%</span>
         </div>
         <div class="progress-bar"><div class="progress-fill" style="width:${progress}%"></div></div>
       </div>
       <div class="project-meta">
         <span>${projectSecs > 0 ? formatHours(projectSecs) + ' logged' : 'No time logged'}</span>
-        ${deadlineHtml}
+        ${deadlineHtml || '<span>No deadline</span>'}
       </div>
-      <div style="margin-top:8px;">
-        <span style="font-size:11px;padding:2px 8px;border-radius:12px;font-weight:600;${p.status==='active'?'background:#1b4332;color:#86efac;':p.status==='completed'?'background:#1e3a5f;color:#93c5fd;':'background:#3b2a0d;color:#fcd34d;'}">${escapeHtml(p.status)}</span>
+      <div class="project-card-foot">
+        <span class="project-health ${healthClass}">${healthLabel}</span>
+        <span>${goalCount} goal${goalCount === 1 ? '' : 's'} linked · ${ownerLabel === 'You' ? 'Owned by you' : 'Lead: ' + escapeHtml(ownerLabel)}</span>
+      </div>
+      <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:4px;font-size:11px;color:#6B7280;">
+        <span style="font-size:11px;padding:2px 8px;border-radius:12px;font-weight:600;${p.status === 'active' ? 'background:#1b4332;color:#86efac;' : p.status === 'completed' ? 'background:#1e3a5f;color:#93c5fd;' : 'background:#3b2a0d;color:#fcd34d;'}">${escapeHtml(p.status)}</span>
+        <span>${activityLine}</span>
+        ${startHint ? `<span>· ${startHint}</span>` : ''}
       </div>
       <div class="project-actions">
+        <button class="btn-sm btn-outline" onclick="goToTasksForProject('${p.id}')">Board</button>
         <button class="btn-sm" onclick="editProject('${p.id}')">✏ Edit</button>
         <button class="btn-sm btn-secondary" onclick="addTaskToProject('${p.id}')">+ Task</button>
         <button class="btn-sm btn-danger" onclick="deleteProject('${p.id}')">Delete</button>
@@ -5477,42 +5743,67 @@ function buildProjectCard(p) {
   `
 }
 
+function paintProjectsList() {
+  const list = getProjectsForList()
+  updateProjectsSummaryBar(list.length)
+  const html = list.map(buildProjectCard).join('')
+  const container = document.getElementById('projectsList')
+  if (!container) return
+  if (html) {
+    container.innerHTML = html
+    return
+  }
+  if (projects.length === 0) {
+    container.innerHTML = `<div class="empty-state"><div class="empty-state-icon">📁</div><h3>No projects yet</h3><p>Create a project to group tasks, time, and goals. You will see workload, deadlines, and health on each card.</p><button class="btn-primary btn-sm" onclick="openCreateProjectModal()">+ New Project</button></div>`
+  } else {
+    container.innerHTML = `<div class="empty-state"><div class="empty-state-icon">🔍</div><h3>No matching projects</h3><p>Adjust search, status, priority, or “My projects” — or reset everything.</p><button class="btn-secondary btn-sm" onclick="clearProjectFilters()">Reset filters</button></div>`
+  }
+}
+
 function renderProjects() {
-  let html = projects.map(buildProjectCard).join('')
-  document.getElementById('projectsList').innerHTML = html ||
-    `<div class="empty-state"><div class="empty-state-icon">📁</div><h3>No projects yet</h3><p>Create your first project to get organized</p><button class="btn-primary btn-sm" onclick="openCreateProjectModal()">+ New Project</button></div>`
+  paintProjectsList()
 }
 
 function clearProjectFilters() {
   let searchEl = document.getElementById('projectSearch')
   let priorityEl = document.getElementById('projectFilter')
   let statusEl = document.getElementById('projectStatusFilter')
+  let sortEl = document.getElementById('projectSortBy')
+  let myEl = document.getElementById('projectMyOnly')
   if (searchEl) searchEl.value = ''
   if (priorityEl) priorityEl.value = ''
   if (statusEl) statusEl.value = ''
-  renderProjects()
+  if (sortEl) sortEl.value = 'recent'
+  if (myEl) myEl.checked = false
+  paintProjectsList()
 }
 
 function filterProjects() {
-  let search  = document.getElementById('projectSearch').value.toLowerCase()
-  let priority= document.getElementById('projectFilter').value
-  let status  = document.getElementById('projectStatusFilter').value
-  let filtered = projects.filter(p => {
-    let matchSearch   = p.name.toLowerCase().includes(search) || (p.description||'').toLowerCase().includes(search) || (p.tags||[]).some(t => t.toLowerCase().includes(search))
-    let matchPriority = !priority || p.priority === priority
-    let matchStatus   = !status || p.status === status
-    return matchSearch && matchPriority && matchStatus
+  paintProjectsList()
+}
+
+function populateTaskProjectFilter() {
+  const sel = document.getElementById('taskProjectFilter')
+  if (!sel) return
+  const prev = sel.value
+  sel.innerHTML = '<option value="">All projects</option>'
+  projects.forEach(p => {
+    const opt = document.createElement('option')
+    opt.value = p.id
+    opt.textContent = p.name
+    sel.appendChild(opt)
   })
-  let html = filtered.map(buildProjectCard).join('')
-  if (html) {
-    document.getElementById('projectsList').innerHTML = html
-    return
-  }
-  if (projects.length === 0) {
-    document.getElementById('projectsList').innerHTML = `<div class="empty-state"><div class="empty-state-icon">📁</div><h3>No projects yet</h3><p>Create your first project to get organized</p><button class="btn-primary btn-sm" onclick="openCreateProjectModal()">+ New Project</button></div>`
-  } else {
-    document.getElementById('projectsList').innerHTML = `<div class="empty-state"><div class="empty-state-icon">🔍</div><h3>No matching projects</h3><p>Try different filters or clear them</p><button class="btn-secondary btn-sm" onclick="clearProjectFilters()">Clear filters</button></div>`
-  }
+  if (prev && projects.some(p => p.id === prev)) sel.value = prev
+}
+
+function goToTasksForProject(projectId) {
+  switchPage('tasks', null)
+  setTimeout(() => {
+    populateTaskProjectFilter()
+    const sel = document.getElementById('taskProjectFilter')
+    if (sel) sel.value = projectId
+    filterTasks()
+  }, 0)
 }
 
 function editProject(id) {
@@ -5581,6 +5872,7 @@ function reallyDeleteProject(id) {
   renderTasks()
   renderTimeTracking()
   renderDashboardCharts()
+  populateTaskProjectFilter()
   addAuditLog('delete', `Deleted project "${p?.name}"`, 'delete')
   showToast('Project deleted', 'success')
   updateStats()
@@ -5794,12 +6086,14 @@ function filterTasks() {
   let status   = document.getElementById('taskFilter').value
   let priority = document.getElementById('taskPriorityFilter').value
   let myOnly   = document.getElementById('taskMyOnly')?.checked
+  let projectId = document.getElementById('taskProjectFilter')?.value || ''
   let filtered = tasks.filter(t => {
     let ms = t.title.toLowerCase().includes(search) || (t.description||'').toLowerCase().includes(search)
     let mst = !status || t.status === status
     let mp  = !priority || t.priority === priority
     let mo  = !myOnly || t.assignee === currentUser.id
-    return ms && mst && mp && mo
+    let mproj = !projectId || t.projectId === projectId
+    return ms && mst && mp && mo && mproj
   })
   renderTasks(filtered)
 }
@@ -7193,6 +7487,7 @@ function saveGoal() {
     save('goals', goals)
     closeCreateGoalModal()
     renderGoals()
+    updateStats()
     addAuditLog('update', `Updated goal \"${title}\"`, 'update')
     showToast('Goal updated!', 'success')
   } else {
@@ -7213,6 +7508,7 @@ function saveGoal() {
     save('goals', goals)
     closeCreateGoalModal()
     renderGoals()
+    updateStats()
     addActivity(`Created goal: ${title}`)
     addAuditLog('create', `Created goal \"${title}\"`, 'create')
     showToast('Goal created!', 'success')
@@ -7392,6 +7688,7 @@ function reallyDeleteGoal(id) {
   goals = goals.filter(x => x.id !== id)
   save('goals', goals)
   renderGoals()
+  updateStats()
   addAuditLog('delete', `Deleted goal \"${g.title}\"`, 'delete')
   showToast('Goal deleted', 'success')
 }
