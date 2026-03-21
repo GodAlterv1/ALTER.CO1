@@ -1,0 +1,10 @@
+{
+  "name": "ALTER.CO",
+  "short_name": "ALTER.CO",
+  "description": "Workspace for projects, tasks, time, and ideas",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0B0F18",
+  "theme_color": "#0B0F18",
+  "icons": []
+}

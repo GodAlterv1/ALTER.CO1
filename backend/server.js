@@ -1,12 +1,15 @@
 'use strict'
 
-require('dotenv').config()
+const path = require('path')
+require('dotenv').config({ path: path.join(__dirname, '.env') })
 const express = require('express')
 const cors = require('cors')
+const helmet = require('helmet')
+const compression = require('compression')
+const rateLimit = require('express-rate-limit')
 const bcrypt = require('bcryptjs')
 const jwt = require('jsonwebtoken')
 const fs = require('fs')
-const path = require('path')
 // Nodemailer is only required if SMTP email integration is enabled.
 // This keeps the backend running even if dependencies aren't installed yet.
 let nodemailer = null
@@ -17,14 +20,40 @@ try {
 }
 
 const app = express()
+const startedAt = Date.now()
+app.set('trust proxy', 1)
 const PORT = process.env.PORT || 3000
 const JWT_SECRET = process.env.JWT_SECRET || 'alter-co-dev-secret-change-in-production'
 const DATA_DIR = path.join(__dirname, 'data')
 const USERS_FILE = path.join(DATA_DIR, 'users.json')
 const WORKSPACE_DIR = path.join(DATA_DIR, 'workspace')
 
+// Hardening: CSP disabled — index.html uses inline scripts/styles
+app.use(
+  helmet({
+    contentSecurityPolicy: false,
+    crossOriginEmbedderPolicy: false
+  })
+)
+app.use(compression())
 app.use(cors({ origin: true, credentials: true }))
 app.use(express.json({ limit: '5mb' }))
+
+const authBurstLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: Number(process.env.RATE_LIMIT_AUTH_MAX || 40),
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many attempts, try again later.' }
+})
+
+const contactLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: Number(process.env.RATE_LIMIT_CONTACT_MAX || 8),
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many messages sent, try again later.' }
+})
 
 // ----- Ensure data dirs exist -----
 if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true })
@@ -62,6 +91,29 @@ function writeWorkspace(userId, data) {
   fs.writeFileSync(file, JSON.stringify(data, null, 2), 'utf8')
 }
 
+function deleteWorkspaceFile(userId) {
+  const file = path.join(WORKSPACE_DIR, userId + '.json')
+  try {
+    if (fs.existsSync(file)) fs.unlinkSync(file)
+  } catch (e) {
+    console.error('deleteWorkspaceFile', e)
+  }
+}
+
+function userToClient(row) {
+  return {
+    id: row.id,
+    username: row.username,
+    email: row.email || '',
+    fullName: row.full_name || '',
+    role: row.role || 'member',
+    plan: row.plan || 'free',
+    bio: row.bio || '',
+    timezone: row.timezone || 'UTC',
+    created: row.created_at
+  }
+}
+
 // ----- Email (SMTP via Nodemailer) -----
 let mailTransporter = null
 let smtpConfigWarningLogged = false
@@ -69,23 +121,42 @@ let smtpConfigWarningLogged = false
 function getMailTransporter() {
   if (mailTransporter) return mailTransporter
 
-  const { SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, SMTP_SECURE } = process.env
-  const missing = []
-  if (!SMTP_HOST) missing.push('SMTP_HOST')
-  if (!SMTP_PORT) missing.push('SMTP_PORT')
-  if (!SMTP_USER) missing.push('SMTP_USER')
-  if (!SMTP_PASS) missing.push('SMTP_PASS')
+  if (!nodemailer) {
+    console.error('nodemailer dependency missing; cannot send email.')
+    return null
+  }
 
-  if (missing.length) {
+  const { SMTP_SERVICE, SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, SMTP_SECURE } = process.env
+  if (!SMTP_USER || !SMTP_PASS) {
     if (!smtpConfigWarningLogged) {
-      console.error('SMTP not configured. Missing env vars:', missing.join(', '))
+      console.error(
+        'SMTP not configured. Set SMTP_USER and SMTP_PASS. For Gmail also set SMTP_SERVICE=gmail (recommended).'
+      )
       smtpConfigWarningLogged = true
     }
     return null
   }
 
-  if (!nodemailer) {
-    console.error('nodemailer dependency missing; cannot send email.')
+  const svc = String(SMTP_SERVICE || '').toLowerCase()
+  if (svc === 'gmail') {
+    mailTransporter = nodemailer.createTransport({
+      service: 'gmail',
+      auth: { user: SMTP_USER, pass: SMTP_PASS }
+    })
+    return mailTransporter
+  }
+
+  const missing = []
+  if (!SMTP_HOST) missing.push('SMTP_HOST')
+  if (!SMTP_PORT) missing.push('SMTP_PORT')
+  if (missing.length) {
+    if (!smtpConfigWarningLogged) {
+      console.error(
+        'SMTP not configured. For Gmail set SMTP_SERVICE=gmail with SMTP_USER and SMTP_PASS. Otherwise set:',
+        missing.join(', ')
+      )
+      smtpConfigWarningLogged = true
+    }
     return null
   }
 
@@ -100,6 +171,13 @@ function getMailTransporter() {
   })
 
   return mailTransporter
+}
+
+function isSmtpConfigured() {
+  const { SMTP_SERVICE, SMTP_USER, SMTP_PASS, SMTP_HOST, SMTP_PORT } = process.env
+  if (!SMTP_USER || !SMTP_PASS) return false
+  if (String(SMTP_SERVICE || '').toLowerCase() === 'gmail') return true
+  return Boolean(SMTP_HOST && SMTP_PORT)
 }
 
 async function sendEmailSafe({ to, subject, text }) {
@@ -164,7 +242,7 @@ function authMiddleware(req, res, next) {
 }
 
 // ----- Routes: Auth -----
-app.post('/api/auth/register', async (req, res) => {
+app.post('/api/auth/register', authBurstLimiter, async (req, res) => {
   const { username, email, password, fullName } = req.body || {}
   if (!username || !email || !password) {
     return res.status(400).json({ error: 'Username, email, and password required' })
@@ -190,6 +268,8 @@ app.post('/api/auth/register', async (req, res) => {
     email: email || '',
     password_hash: hashPassword(password),
     full_name: fullName || '',
+    bio: '',
+    timezone: 'UTC',
     role: 'member',
     plan: 'free',
     created_at
@@ -201,17 +281,7 @@ app.post('/api/auth/register', async (req, res) => {
   writeWorkspace(id, emptyWorkspace())
 
   const token = jwt.sign({ userId: id, username }, JWT_SECRET, { expiresIn: '30d' })
-  const user = {
-    id,
-    username,
-    email: newUser.email,
-    fullName: newUser.full_name || '',
-    role: 'member',
-    plan: 'free',
-    bio: '',
-    timezone: 'UTC',
-    created: created_at
-  }
+  const user = userToClient(newUser)
 
   // Fire-and-forget welcome email (does not block registration)
   if (newUser.email) {
@@ -230,7 +300,7 @@ app.post('/api/auth/register', async (req, res) => {
   res.json({ token, user })
 })
 
-app.post('/api/auth/login', (req, res) => {
+app.post('/api/auth/login', authBurstLimiter, (req, res) => {
   const { username, password } = req.body || {}
   if (!username || !password) {
     return res.status(400).json({ error: 'Username and password required' })
@@ -243,21 +313,30 @@ app.post('/api/auth/login', (req, res) => {
   }
 
   const token = jwt.sign({ userId: row.id, username: row.username }, JWT_SECRET, { expiresIn: '30d' })
-  const user = {
-    id: row.id,
-    username: row.username,
-    email: row.email || '',
-    fullName: row.full_name || '',
-    role: row.role || 'member',
-    plan: row.plan || 'free',
-    bio: '',
-    timezone: 'UTC',
-    created: row.created_at
-  }
-  res.json({ token, user })
+  res.json({ token, user: userToClient(row) })
 })
 
-app.post('/api/auth/forgot-password', async (req, res) => {
+app.post('/api/auth/change-password', authMiddleware, (req, res) => {
+  const { currentPassword, newPassword } = req.body || {}
+  if (!currentPassword || !newPassword) {
+    return res.status(400).json({ error: 'Current and new password required' })
+  }
+  if (String(newPassword).length < 6) {
+    return res.status(400).json({ error: 'New password must be at least 6 characters' })
+  }
+
+  const users = readUsers()
+  const row = users.find(u => u.id === req.userId)
+  if (!row || !comparePassword(currentPassword, row.password_hash)) {
+    return res.status(401).json({ error: 'Current password is incorrect' })
+  }
+
+  row.password_hash = hashPassword(newPassword)
+  writeUsers(users)
+  res.json({ ok: true })
+})
+
+app.post('/api/auth/forgot-password', authBurstLimiter, async (req, res) => {
   try {
     const { email } = req.body || {}
     if (!email) {
@@ -303,6 +382,108 @@ app.post('/api/auth/forgot-password', async (req, res) => {
     console.error('Error in /api/auth/forgot-password', e)
     // Don't expose details to client
     res.json({ ok: true })
+  }
+})
+
+function isValidEmail(s) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(s || '').trim())
+}
+
+// ----- Routes: Account (matches frontend Settings / Billing) -----
+app.get('/api/me', authMiddleware, (req, res) => {
+  const users = readUsers()
+  const row = users.find(u => u.id === req.userId)
+  if (!row) return res.status(404).json({ error: 'User not found' })
+  res.json(userToClient(row))
+})
+
+app.put('/api/me/profile', authMiddleware, (req, res) => {
+  const { email, fullName, bio, timezone } = req.body || {}
+  if (!email || !String(email).trim()) {
+    return res.status(400).json({ error: 'Email is required' })
+  }
+  if (!isValidEmail(email)) {
+    return res.status(400).json({ error: 'Invalid email format' })
+  }
+
+  const users = readUsers()
+  const row = users.find(u => u.id === req.userId)
+  if (!row) return res.status(404).json({ error: 'User not found' })
+
+  const emailLower = String(email).trim().toLowerCase()
+  const clash = users.find(u => u.id !== req.userId && (u.email || '').toLowerCase() === emailLower)
+  if (clash) {
+    return res.status(409).json({ error: 'That email is already in use' })
+  }
+
+  row.email = emailLower
+  if (fullName != null) row.full_name = String(fullName).trim()
+  if (bio != null) row.bio = String(bio).trim()
+  if (timezone != null) row.timezone = String(timezone).trim() || 'UTC'
+
+  writeUsers(users)
+  res.json(userToClient(row))
+})
+
+app.put('/api/me/plan', authMiddleware, (req, res) => {
+  const { plan, billingPeriod } = req.body || {}
+  if (!plan) {
+    return res.status(400).json({ error: 'Plan is required' })
+  }
+
+  const users = readUsers()
+  const row = users.find(u => u.id === req.userId)
+  if (!row) return res.status(404).json({ error: 'User not found' })
+
+  row.plan = String(plan)
+  if (billingPeriod != null) row.billing_period = String(billingPeriod)
+
+  writeUsers(users)
+  res.json({ ok: true, plan: row.plan, billingPeriod: row.billing_period })
+})
+
+app.delete('/api/me', authMiddleware, (req, res) => {
+  const users = readUsers()
+  const idx = users.findIndex(u => u.id === req.userId)
+  if (idx >= 0) {
+    users.splice(idx, 1)
+    writeUsers(users)
+  }
+  deleteWorkspaceFile(req.userId)
+  res.status(204).end()
+})
+
+// ----- Routes: Public -----
+app.post('/api/public/contact', contactLimiter, async (req, res) => {
+  try {
+    const { name, email, message } = req.body || {}
+    if (!message || !String(message).trim()) {
+      return res.status(400).json({ error: 'Message is required' })
+    }
+    if (!email || !isValidEmail(email)) {
+      return res.status(400).json({ error: 'Valid email is required' })
+    }
+
+    const to = process.env.CONTACT_INBOX || process.env.SMTP_USER
+    if (!to) {
+      return res.status(503).json({ error: 'Contact email is not configured on this server' })
+    }
+
+    const fromName = String(name || 'Visitor').trim().slice(0, 120)
+    const subject = `ALTER.CO contact: ${fromName || 'Message'}`
+    const text =
+      `From: ${fromName}\n` +
+      `Email: ${String(email).trim()}\n\n` +
+      String(message).trim().slice(0, 8000)
+
+    const ok = await sendEmailSafe({ to, subject, text })
+    if (!ok) {
+      return res.status(500).json({ error: 'Could not send message' })
+    }
+    res.json({ ok: true })
+  } catch (e) {
+    console.error('contact', e)
+    res.status(500).json({ error: 'Could not send message' })
   }
 })
 
@@ -395,9 +576,32 @@ app.post('/api/integrations/email/task-assigned', authMiddleware, async (req, re
   }
 })
 
+// ----- Integrations: Google Calendar (stub until OAuth env is wired) -----
+app.get('/auth/google/calendar', (req, res) => {
+  res.set('Content-Type', 'text/html; charset=utf-8')
+  res.send(
+    '<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">' +
+      '<title>Google Calendar · ALTER.CO</title></head>' +
+      '<body style="font-family:system-ui,sans-serif;background:#0B0F18;color:#E5E7EB;margin:0;padding:2rem;line-height:1.6;text-align:center;">' +
+      '<h1 style="font-size:1.25rem;">Google Calendar</h1>' +
+      '<p style="color:#9CA3AF;max-width:28rem;margin:1rem auto;">OAuth is not configured on this server yet. Add Google API credentials to the backend to enable sync.</p>' +
+      '<p><a href="/" style="color:#60A5FA;">← Back to ALTER.CO</a></p>' +
+      '</body></html>'
+  )
+})
+
+app.get('/api/calendar/events', (req, res) => {
+  res.json({ events: [], configured: false })
+})
+
 // ----- Health -----
 app.get('/api/health', (req, res) => {
-  res.json({ status: 'ok', storage: 'json' })
+  res.json({
+    status: 'ok',
+    storage: 'json',
+    uptimeSeconds: Math.floor((Date.now() - startedAt) / 1000),
+    emailConfigured: isSmtpConfigured()
+  })
 })
 
 // ----- Optional: serve frontend from parent (for single-server deploy) -----

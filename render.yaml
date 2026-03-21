@@ -11,3 +11,9 @@ services:
     envVars:
       - key: JWT_SECRET
         generateValue: true  # Render creates a random secret if you don't set one
+      # Add in the Render dashboard (do not commit secrets):
+      # SMTP_SERVICE=gmail
+      # SMTP_USER=your@gmail.com
+      # SMTP_PASS=app-password
+      # EMAIL_FROM=ALTER.CO <your@gmail.com>
+      # CONTACT_INBOX=your@gmail.com

@@ -4,6 +4,12 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>ALTER.CO - Advanced SaaS Platform</title>
+<meta name="description" content="ALTER.CO — one workspace for projects, tasks, time tracking, ideas, and team collaboration.">
+<meta name="theme-color" content="#0B0F18">
+<meta property="og:title" content="ALTER.CO">
+<meta property="og:description" content="Plan work, track time, and ship with clarity.">
+<meta property="og:type" content="website">
+<link rel="manifest" href="/site.webmanifest">
 <!-- Pinned Chart.js version to avoid strict CSP 'unsafe-eval' issues -->
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.5.1/dist/chart.umd.min.js"></script>
 <style>
@@ -2305,6 +2311,31 @@ kbd {
 .landing-feature-card .icon { font-size: 28px; margin-bottom: 12px; display: block; }
 .landing-feature-card h3 { font-size: 17px; font-weight: 700; margin-bottom: 8px; color: #F3F4F6; }
 .landing-feature-card p { font-size: 14px; color: #9CA3AF; line-height: 1.55; }
+.landing-contact {
+  margin-top: 3rem;
+  padding: 2rem 1rem 0;
+  max-width: 480px;
+  margin-left: auto;
+  margin-right: auto;
+  border-top: 1px solid #1F2937;
+}
+.landing-contact h3 { text-align: center; margin-bottom: 1rem; font-size: 1.1rem; color: #E5E7EB; font-weight: 600; }
+.landing-contact-form { display: flex; flex-direction: column; gap: 12px; }
+.landing-contact-form input,
+.landing-contact-form textarea {
+  width: 100%;
+  padding: 12px 14px;
+  background: #020617;
+  border: 1px solid #1F2937;
+  color: #E5E7EB;
+  border-radius: 8px;
+  font-size: 14px;
+  font-family: inherit;
+}
+.landing-contact-form textarea { resize: vertical; min-height: 100px; }
+.landing-contact-form input:focus,
+.landing-contact-form textarea:focus { outline: none; border-color: #4f46e5; }
+.landing-contact-status { font-size: 0.85rem; color: #9CA3AF; text-align: center; min-height: 1.2em; margin-top: 4px; }
 .landing-footer {
   padding: 28px;
   text-align: center;
@@ -2356,6 +2387,16 @@ kbd {
         <p>Log hours against projects, submit ideas, and turn the best ones into work.</p>
       </div>
     </div>
+    <section class="landing-contact" id="landingContact" aria-labelledby="contactHeading">
+      <h3 id="contactHeading">Get in touch</h3>
+      <form class="landing-contact-form" onsubmit="submitContactForm(event)">
+        <input type="text" id="contactName" name="name" placeholder="Your name" autocomplete="name" maxlength="120" aria-label="Your name">
+        <input type="email" id="contactEmail" name="email" placeholder="Email" required autocomplete="email" maxlength="200" aria-label="Email">
+        <textarea id="contactMessage" name="message" placeholder="How can we help?" required maxlength="4000" aria-label="Message"></textarea>
+        <button type="submit" class="landing-btn-primary" style="padding:12px 20px;">Send message</button>
+        <p id="contactFormStatus" class="landing-contact-status" role="status" aria-live="polite"></p>
+      </form>
+    </section>
   </main>
   <footer class="landing-footer">ALTER.CO — your workspace, your data. Sign in to continue where you left off.</footer>
 </div>
@@ -4487,6 +4528,57 @@ function forgotPassword() {
     })
     .catch(function () {
       showLoginMessage('Unable to process reset right now. Try again later.', 'error')
+    })
+}
+
+function getPublicApiBase() {
+  if (typeof ALTER_API_BASE === 'string' && ALTER_API_BASE) return ALTER_API_BASE
+  if (typeof window !== 'undefined' && window.location && window.location.protocol !== 'file:') {
+    return window.location.origin
+  }
+  return ''
+}
+
+function submitContactForm(ev) {
+  if (ev && ev.preventDefault) ev.preventDefault()
+  var base = getPublicApiBase()
+  var nameEl = document.getElementById('contactName')
+  var emailEl = document.getElementById('contactEmail')
+  var msgEl = document.getElementById('contactMessage')
+  var statusEl = document.getElementById('contactFormStatus')
+  if (!emailEl || !msgEl) return
+  var name = nameEl ? nameEl.value.trim() : ''
+  var email = emailEl.value.trim()
+  var message = msgEl.value.trim()
+  if (!message) {
+    if (statusEl) statusEl.textContent = 'Please enter a message.'
+    return
+  }
+  if (!base) {
+    if (statusEl) {
+      statusEl.textContent = 'Open this site from the server (e.g. http://localhost:3000) so messages can be sent.'
+    }
+    return
+  }
+  if (statusEl) statusEl.textContent = 'Sending…'
+  fetch(base + '/api/public/contact', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name: name, email: email, message: message })
+  })
+    .then(function (r) { return r.json().then(function (body) { return { ok: r.ok, body: body } }) })
+    .then(function (res) {
+      if (!res.ok) {
+        if (statusEl) statusEl.textContent = (res.body && res.body.error) ? res.body.error : 'Could not send.'
+        return
+      }
+      if (statusEl) statusEl.textContent = 'Thanks — we received your message.'
+      if (nameEl) nameEl.value = ''
+      emailEl.value = ''
+      msgEl.value = ''
+    })
+    .catch(function () {
+      if (statusEl) statusEl.textContent = 'Network error. Try again later.'
     })
 }
 
