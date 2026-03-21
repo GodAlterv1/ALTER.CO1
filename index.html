@@ -3428,7 +3428,7 @@ kbd {
         <div class="projects-toolbar">
           <p id="projectsSummaryBar" class="projects-summary">Loading…</p>
           <div class="projects-toolbar-controls">
-            <label class="projects-toolbar-label" title="Only projects you created">
+            <label class="projects-toolbar-label" title="Projects you lead, or where you have tasks assigned">
               <input type="checkbox" id="projectMyOnly" onchange="filterProjects()">
               My projects
             </label>
@@ -6160,6 +6160,13 @@ function getProjectTaskStats(projectId) {
   }
 }
 
+/** Used with “My projects” filter: lead, or has at least one task assigned in this project */
+function projectInvolvesUser(p, userId) {
+  if (!userId || !p) return false
+  if (p.owner === userId) return true
+  return tasks.some(t => t.projectId === p.id && t.assignee === userId)
+}
+
 function formatRelativeActivity(iso) {
   if (!iso) return '—'
   const t = new Date(iso).getTime()
@@ -6188,7 +6195,7 @@ function getProjectsForList() {
       (p.tags || []).some(t => (t || '').toLowerCase().includes(search))
     let matchPriority = !priority || p.priority === priority
     let matchStatus = !status || p.status === status
-    let matchMine = !myOnly || !currentUser || p.owner === currentUser.id
+    let matchMine = !myOnly || !currentUser || projectInvolvesUser(p, currentUser.id)
     return matchSearch && matchPriority && matchStatus && matchMine
   })
 
