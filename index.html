@@ -1115,6 +1115,28 @@ button:disabled { opacity: 0.5; cursor: not-allowed; transform: none; box-shadow
   border-color: rgba(239, 68, 68, 0.55);
   color: #fca5a5;
 }
+.task-calendar-btn {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  font-size: 13px;
+  line-height: 1;
+  background: transparent;
+  border: 1px solid rgba(99, 102, 241, 0.45);
+  color: #a5b4fc;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background 0.15s, border-color 0.15s;
+}
+.task-calendar-btn:hover {
+  background: rgba(99, 102, 241, 0.14);
+  border-color: rgba(129, 140, 248, 0.75);
+  color: #c7d2fe;
+}
 .task-delete-confirm {
   display: flex;
   flex-wrap: wrap;
@@ -1345,6 +1367,9 @@ button:disabled { opacity: 0.5; cursor: not-allowed; transform: none; box-shadow
   overflow: hidden;
   text-overflow: ellipsis;
 }
+.day-event.draggable-event { cursor: grab; }
+.day-event.draggable-event:active { cursor: grabbing; }
+.calendar-day.drop-target { border-color: #6366f1; box-shadow: inset 0 0 0 1px rgba(99,102,241,0.35); }
 
 .day-event.event-red    { background: #dc2626; }
 .day-event.event-green  { background: #16a34a; }
@@ -1362,6 +1387,40 @@ button:disabled { opacity: 0.5; cursor: not-allowed; transform: none; box-shadow
 .calendar-controls .btn-sm {
   padding: 5px 10px;
   font-size: 11px;
+}
+.calendar-quick-add {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.calendar-quick-add input {
+  min-width: 240px;
+  padding: 7px 10px;
+  background: #020617;
+  border: 1px solid #1F2937;
+  color: #E5E7EB;
+  border-radius: 8px;
+  font-size: 12px;
+}
+.calendar-smart-alerts {
+  margin: 10px 0 2px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.calendar-alert {
+  font-size: 12px;
+  border-radius: 8px;
+  padding: 8px 10px;
+  border: 1px solid rgba(251,191,36,0.35);
+  background: rgba(120,53,15,0.22);
+  color: #fcd34d;
+}
+.calendar-alert.ok {
+  border-color: rgba(52,211,153,0.28);
+  background: rgba(6,95,70,0.2);
+  color: #6ee7b7;
 }
 
 .calendar-legend {
@@ -3903,6 +3962,7 @@ kbd {
         </div>
         <div class="task-detail-footer">
           <button class="btn-secondary" onclick="closeTaskDetail()">Close</button>
+          <button class="btn-secondary" onclick="if(currentTaskDetailId) convertTaskToCalendarEvent(currentTaskDetailId)">Add to calendar</button>
           <button onclick="saveTaskDetail()">Save changes</button>
         </div>
       </div>
@@ -4008,8 +4068,13 @@ kbd {
           Connect Google Calendar
         </button>
         <span id="calendarGoogleStatus" style="font-size:11px;color:#4B5563;"></span>
+        <div class="calendar-quick-add">
+          <input id="calendarQuickAddInput" type="text" placeholder="Quick add: Team sync tomorrow 10am for 45m">
+          <button class="btn-secondary btn-sm" onclick="quickAddCalendarEvent()">Quick Add</button>
+        </div>
       </div>
     </div>
+    <div id="calendarSmartAlerts" class="calendar-smart-alerts"></div>
 
     <div class="calendar-legend">
       <span class="calendar-legend-item">
@@ -4512,7 +4577,7 @@ kbd {
               <div style="font-size:28px;margin-bottom:8px;">📅</div>
               <div style="font-weight:600;margin-bottom:4px;">Google Calendar</div>
               <div id="settingsGoogleCalendarStatus" style="font-size:12px;color:#6B7280;margin-bottom:12px;">Checking connection...</div>
-              <button id="settingsGoogleCalendarBtn" class="btn-sm btn-secondary" onclick="connectGoogleCalendar()">Connect</button>
+              <button id="settingsGoogleCalendarBtn" class="btn-sm btn-secondary" onclick="manageGoogleCalendarIntegration()">Connect</button>
             </div>
             <div style="background:#0d1117;border:1px solid #1F2937;border-radius:10px;padding:16px;text-align:center;">
               <div style="font-size:28px;margin-bottom:8px;">💬</div>
@@ -4903,6 +4968,21 @@ kbd {
       <label>Description</label>
       <textarea id="modalEventDesc" placeholder="Event details, agenda, meeting link..."></textarea>
     </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>Repeat</label>
+        <select id="modalEventRepeat">
+          <option value="none">Does not repeat</option>
+          <option value="daily">Daily</option>
+          <option value="weekly">Weekly</option>
+          <option value="monthly">Monthly</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Repeat until</label>
+        <input id="modalEventRepeatUntil" type="date">
+      </div>
+    </div>
     <div style="display:flex;gap:10px;margin-top:20px;">
       <button onclick="saveEvent()">Create Event</button>
       <button onclick="closeCreateEventModal()" class="btn-secondary">Cancel</button>
@@ -5257,6 +5337,7 @@ let currentTaskDetailId = null
 // Calendar view state
 var calendarView = 'month'           // 'month' or 'week' (week is UI-only for now)
 var selectedCalendarDate = null      // 'YYYY-MM-DD'
+var draggedCalendarEventId = null
 
 // Billing state
 let billingPeriod = 'monthly' // 'monthly' or 'yearly'
@@ -5750,6 +5831,16 @@ function showLoginMessage(msg, type) {
 function initializeApp() {
   if (!currentUser) return
   handleGoogleCalendarOAuthReturn()
+  const quickAddInput = document.getElementById('calendarQuickAddInput')
+  if (quickAddInput && !quickAddInput.dataset.boundEnter) {
+    quickAddInput.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter') {
+        e.preventDefault()
+        quickAddCalendarEvent()
+      }
+    })
+    quickAddInput.dataset.boundEnter = '1'
+  }
   updateSidebarUser()
   renderAllPages()
   renderNotifications()
@@ -6965,6 +7056,7 @@ function buildTaskCard(t) {
         </div>
       </div>
       <div class="task-card-actions">
+        <button type="button" class="task-calendar-btn" onclick="event.stopPropagation();convertTaskToCalendarEvent('${t.id}')" title="Add to calendar" aria-label="Add to calendar">📅</button>
         <button type="button" class="task-delete-btn" id="taskDelTrigger-${t.id}" onclick="event.stopPropagation();showDeleteConfirm('${t.id}')" title="Delete task" aria-label="Delete task">🗑</button>
         <div id="deleteConfirm-${t.id}" class="task-delete-confirm hidden">
           <span>Delete?</span>
@@ -7213,6 +7305,39 @@ function saveTaskDetail() {
 
   showToast('Task updated', 'success')
   closeTaskDetail()
+}
+
+function convertTaskToCalendarEvent(taskId) {
+  const task = tasks.find(t => t.id === taskId)
+  if (!task) return
+
+  let start = task.dueDate || (selectedCalendarDate ? (selectedCalendarDate + 'T09:00') : new Date().toISOString().slice(0, 16))
+  if (typeof start === 'string' && !start.includes('T')) start = start + 'T09:00'
+  const startDate = new Date(start)
+  if (isNaN(startDate.getTime())) return showToast('Task date is invalid for calendar conversion', 'error')
+  const endDate = new Date(startDate.getTime() + 60 * 60 * 1000)
+  const eventTitle = `Task: ${task.title}`
+  const eventDesc = (task.description || '').trim()
+  const eventColor = task.priority === 'high' ? 'event-red' : task.priority === 'low' ? 'event-green' : 'event-orange'
+  const conflicts = findEventConflicts(startDate.toISOString().slice(0, 16), endDate.toISOString().slice(0, 16))
+
+  events.push({
+    id: genId(),
+    title: eventTitle,
+    description: eventDesc,
+    start: startDate.toISOString().slice(0, 16),
+    end: endDate.toISOString().slice(0, 16),
+    color: eventColor,
+    linkedTaskId: task.id,
+    author: currentUser.id,
+    created: new Date().toISOString()
+  })
+  save('events', events)
+  renderCalendar()
+  addActivity(`Added task to calendar: ${task.title}`)
+  addAuditLog('create', `Converted task "${task.title}" to calendar event`, 'create')
+  if (conflicts.length) showToast(`Added to calendar with ${conflicts.length} conflict(s)`, 'warning')
+  else showToast('Task added to calendar', 'success')
 }
 
 function deleteTaskUpdate(taskId, createdAt) {
@@ -7985,7 +8110,7 @@ function setCalendarToday() {
 // Combine internal events with (optional) Google Calendar + derived deadlines
 function getAllCalendarEvents() {
   const showGoogle = document.getElementById('calendarShowGoogle')?.checked
-  let all = events.slice()
+  let all = expandRecurringEvents(events.slice())
 
   function toDateTimeLocal(dateOrDateTime, fallbackTime) {
     if (!dateOrDateTime) return ''
@@ -8039,6 +8164,198 @@ function getAllCalendarEvents() {
   return all
 }
 
+function expandRecurringEvents(inputEvents) {
+  const expanded = []
+  const now = new Date()
+  const horizonStart = new Date(now.getTime() - 30 * 86400000)
+  const horizonEnd = new Date(now.getTime() + 365 * 86400000)
+
+  inputEvents.forEach(ev => {
+    const recurrence = ev && ev.recurrence
+    if (!recurrence || !recurrence.freq) {
+      expanded.push(ev)
+      return
+    }
+
+    const baseStart = new Date(ev.start)
+    const baseEnd = new Date(ev.end)
+    if (isNaN(baseStart.getTime()) || isNaN(baseEnd.getTime())) {
+      expanded.push(ev)
+      return
+    }
+    const durationMs = Math.max(15 * 60000, baseEnd.getTime() - baseStart.getTime())
+    const interval = Math.max(1, Number(recurrence.interval || 1))
+    const until = recurrence.until ? new Date(recurrence.until + 'T23:59:59') : horizonEnd
+    const capEnd = until < horizonEnd ? until : horizonEnd
+
+    let cursor = new Date(baseStart)
+    let guard = 0
+    while (cursor <= capEnd && guard < 500) {
+      const occStart = new Date(cursor)
+      const occEnd = new Date(occStart.getTime() + durationMs)
+      if (occEnd >= horizonStart) {
+        expanded.push({
+          ...ev,
+          id: `${ev.id}__${occStart.toISOString().slice(0, 10)}`,
+          masterEventId: ev.id,
+          start: occStart.toISOString().slice(0, 16),
+          end: occEnd.toISOString().slice(0, 16),
+          source: 'local'
+        })
+      }
+      guard++
+      if (recurrence.freq === 'daily') {
+        cursor.setDate(cursor.getDate() + interval)
+      } else if (recurrence.freq === 'weekly') {
+        cursor.setDate(cursor.getDate() + (7 * interval))
+      } else if (recurrence.freq === 'monthly') {
+        cursor.setMonth(cursor.getMonth() + interval)
+      } else {
+        break
+      }
+    }
+  })
+
+  return expanded
+}
+
+function findEventConflicts(startIso, endIso, ignoreEventId) {
+  const start = new Date(startIso)
+  const end = new Date(endIso)
+  if (isNaN(start.getTime()) || isNaN(end.getTime())) return []
+  const localEvents = expandRecurringEvents(events.slice())
+
+  return localEvents.filter(ev => {
+    const refId = ev.masterEventId || ev.id
+    if (ignoreEventId && refId === ignoreEventId) return false
+    const s = new Date(ev.start)
+    const e = new Date(ev.end)
+    if (isNaN(s.getTime()) || isNaN(e.getTime())) return false
+    return start < e && end > s
+  })
+}
+
+function renderCalendarSmartAlerts() {
+  const alertsEl = document.getElementById('calendarSmartAlerts')
+  if (!alertsEl) return
+  const allLocal = expandRecurringEvents(events.slice()).sort((a, b) => new Date(a.start) - new Date(b.start))
+  const collisions = []
+  for (let i = 0; i < allLocal.length; i++) {
+    for (let j = i + 1; j < allLocal.length; j++) {
+      const aStart = new Date(allLocal[i].start)
+      const aEnd = new Date(allLocal[i].end)
+      const bStart = new Date(allLocal[j].start)
+      if (bStart >= aEnd) break
+      const bEnd = new Date(allLocal[j].end)
+      if (aStart < bEnd && aEnd > bStart) {
+        const day = aStart.toISOString().slice(0, 10)
+        collisions.push({ day, a: allLocal[i].title, b: allLocal[j].title })
+      }
+      if (collisions.length >= 3) break
+    }
+    if (collisions.length >= 3) break
+  }
+
+  if (!collisions.length) {
+    alertsEl.innerHTML = '<div class="calendar-alert ok">No time conflicts detected in upcoming events.</div>'
+    return
+  }
+
+  alertsEl.innerHTML = collisions.map(c => (
+    `<div class="calendar-alert">Conflict on ${escapeHtml(c.day)}: <strong>${escapeHtml(c.a)}</strong> overlaps with <strong>${escapeHtml(c.b)}</strong>.</div>`
+  )).join('')
+}
+
+function quickAddCalendarEvent() {
+  const input = document.getElementById('calendarQuickAddInput')
+  const raw = (input && input.value || '').trim()
+  if (!raw) return showToast('Type a quick event like "Team sync tomorrow 10am for 45m"', 'info')
+
+  const parsed = parseNaturalQuickEvent(raw)
+  if (!parsed) return showToast('Could not parse quick add. Try "Standup tomorrow 9am for 15m"', 'error')
+
+  const conflicts = findEventConflicts(parsed.start, parsed.end)
+  events.push({
+    id: genId(),
+    title: parsed.title,
+    description: parsed.description || '',
+    start: parsed.start,
+    end: parsed.end,
+    color: '',
+    author: currentUser.id,
+    created: new Date().toISOString()
+  })
+  save('events', events)
+  if (input) input.value = ''
+  renderCalendar()
+  addActivity(`Quick added event: ${parsed.title}`)
+  addAuditLog('create', `Quick added event "${parsed.title}"`, 'create')
+  if (conflicts.length) {
+    showToast(`Event added with ${conflicts.length} conflict(s).`, 'warning')
+  } else {
+    showToast('Event added from quick add', 'success')
+  }
+}
+
+function parseNaturalQuickEvent(text) {
+  let title = text
+  const now = new Date()
+  let date = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+  let hour = 9
+  let minute = 0
+  let durationMin = 60
+
+  const lower = text.toLowerCase()
+  if (lower.includes('tomorrow')) {
+    date.setDate(date.getDate() + 1)
+    title = title.replace(/tomorrow/ig, '')
+  } else if (lower.includes('today')) {
+    title = title.replace(/today/ig, '')
+  }
+
+  const isoDate = text.match(/\b(\d{4}-\d{2}-\d{2})\b/)
+  if (isoDate) {
+    const parsedDate = new Date(isoDate[1] + 'T00:00:00')
+    if (!isNaN(parsedDate.getTime())) date = parsedDate
+    title = title.replace(isoDate[0], '')
+  }
+
+  const time12 = text.match(/\b(\d{1,2})(?::(\d{2}))?\s*(am|pm)\b/i)
+  const time24 = text.match(/\b(\d{1,2}):(\d{2})\b/)
+  if (time12) {
+    hour = Number(time12[1])
+    minute = Number(time12[2] || '0')
+    const ap = time12[3].toLowerCase()
+    if (ap === 'pm' && hour < 12) hour += 12
+    if (ap === 'am' && hour === 12) hour = 0
+    title = title.replace(time12[0], '')
+  } else if (time24) {
+    hour = Number(time24[1])
+    minute = Number(time24[2] || '0')
+    title = title.replace(time24[0], '')
+  }
+
+  const dur = text.match(/\bfor\s+(\d+)\s*(m|min|mins|minutes|h|hr|hrs|hours)\b/i) || text.match(/\b(\d+)\s*(m|min|mins|minutes|h|hr|hrs|hours)\b/i)
+  if (dur) {
+    let qty = Number(dur[1] || '60')
+    const unit = String(dur[2] || 'm').toLowerCase()
+    durationMin = unit.startsWith('h') ? qty * 60 : qty
+    title = title.replace(dur[0], '')
+  }
+
+  title = title.replace(/\bat\b/ig, '').replace(/\bfor\b/ig, '').replace(/\s+/g, ' ').trim()
+  if (!title) return null
+
+  const start = new Date(date.getFullYear(), date.getMonth(), date.getDate(), hour, minute)
+  const end = new Date(start.getTime() + durationMin * 60000)
+  return {
+    title: title.charAt(0).toUpperCase() + title.slice(1),
+    start: start.toISOString().slice(0, 16),
+    end: end.toISOString().slice(0, 16),
+    description: ''
+  }
+}
+
 function setCalendarView(view) {
   calendarView = view
   const monthBtn = document.getElementById('calendarViewMonthBtn')
@@ -8068,8 +8385,20 @@ function renderCalendarDayDetail(dateStr) {
   if (!detailDateEl || !listEl) return
 
   if (!dateStr) {
-    detailDateEl.textContent = 'Select a day to see events.'
-    listEl.innerHTML = ''
+    const todayIso = new Date().toISOString().slice(0, 10)
+    detailDateEl.textContent = 'Today agenda'
+    const todayEvents = getAllCalendarEvents()
+      .filter(e => String(e.start || '').slice(0, 10) === todayIso)
+      .sort((a, b) => new Date(a.start) - new Date(b.start))
+      .slice(0, 8)
+    if (!todayEvents.length) {
+      listEl.innerHTML = '<div class="empty-state compact"><div class="empty-state-icon">🗓</div><h3>No events today</h3><p>Use Quick Add to schedule faster.</p></div>'
+    } else {
+      listEl.innerHTML = todayEvents.map(ev => {
+        const t = new Date(ev.start)
+        return `<div class="calendar-day-event"><div class="calendar-day-event-time">${t.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})}</div><div class="calendar-day-event-body"><div class="calendar-day-event-title">${escapeHtml(ev.title)}</div>${ev.description ? `<div class="calendar-day-event-desc">${escapeHtml(ev.description)}</div>` : ''}</div></div>`
+      }).join('')
+    }
     return
   }
 
@@ -8098,13 +8427,14 @@ function renderCalendarDayDetail(dateStr) {
   listEl.innerHTML = dayEvents.map(ev => {
     const t = new Date(ev.start)
     const isReadOnly = !!ev.source && ev.source !== 'local'
+    const deleteId = ev.masterEventId || ev.id
     return `
       <div class="calendar-day-event">
         <div class="calendar-day-event-time">${t.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})}</div>
         <div class="calendar-day-event-body">
           <div style="display:flex;align-items:center;gap:8px;">
             <div class="calendar-day-event-title">${escapeHtml(ev.title)}</div>
-            ${!isReadOnly ? `<button class="btn-xs btn-danger" style="margin-left:auto;padding:2px 6px;font-size:10px;" onclick="deleteEvent('${ev.id}')">✕</button>` : ''}
+            ${!isReadOnly ? `<button class="btn-xs btn-danger" style="margin-left:auto;padding:2px 6px;font-size:10px;" onclick="deleteEvent('${deleteId}')">✕</button>` : ''}
           </div>
           ${ev.description ? `<div class="calendar-day-event-desc">${escapeHtml(ev.description)}</div>` : ''}
         </div>
@@ -8122,6 +8452,10 @@ function closeCreateEventModal() {
   document.getElementById('createEventModal').classList.remove('active')
   ;['modalEventTitle','modalEventDesc'].forEach(id => { let el = document.getElementById(id); if(el) el.value = '' })
   ;['modalEventStart','modalEventEnd'].forEach(id => { let el = document.getElementById(id); if(el) el.value = '' })
+  let repeatEl = document.getElementById('modalEventRepeat')
+  if (repeatEl) repeatEl.value = 'none'
+  let untilEl = document.getElementById('modalEventRepeatUntil')
+  if (untilEl) untilEl.value = ''
 }
 
 function saveEvent() {
@@ -8130,6 +8464,8 @@ function saveEvent() {
   let end   = document.getElementById('modalEventEnd').value
   let color = document.getElementById('modalEventColor').value
   let desc  = document.getElementById('modalEventDesc').value.trim()
+  let repeat = document.getElementById('modalEventRepeat')?.value || 'none'
+  let repeatUntil = document.getElementById('modalEventRepeatUntil')?.value || ''
 
   if (!title) return showToast('Please enter an event title', 'error')
 
@@ -8148,9 +8484,19 @@ function saveEvent() {
     return showToast('End time must be after start time', 'error')
   }
 
+  const conflicts = findEventConflicts(start, end)
+  const recurrence = repeat !== 'none'
+    ? {
+        freq: repeat,
+        interval: 1,
+        until: repeatUntil || new Date(Date.now() + 180 * 86400000).toISOString().slice(0, 10)
+      }
+    : null
+
   events.push({
     id: genId(), title, description: desc,
     start, end, color,
+    recurrence,
     author: currentUser.id, created: new Date().toISOString()
   })
   save('events', events)
@@ -8158,7 +8504,11 @@ function saveEvent() {
   renderCalendar()
   addActivity(`Created event: ${title}`)
   addAuditLog('create', `Created event "${title}"`, 'create')
-  showToast('Event created!', 'success')
+  if (conflicts.length) {
+    showToast(`Event created with ${conflicts.length} conflict(s)`, 'warning')
+  } else {
+    showToast('Event created!', 'success')
+  }
   updateStats()
 }
 
@@ -8166,6 +8516,9 @@ function renderCalendar() {
   // Fallback in case currentDate was not initialized correctly
   if (!currentDate || typeof currentDate.getFullYear !== 'function') {
     currentDate = new Date()
+  }
+  if (!selectedCalendarDate) {
+    selectedCalendarDate = new Date().toISOString().slice(0, 10)
   }
 
   let year     = currentDate.getFullYear()
@@ -8207,10 +8560,14 @@ function renderCalendar() {
       const isSelected = selectedCalendarDate === cellIso
 
       html += `
-        <div class="calendar-day ${isToday ? 'today' : ''} ${isSelected ? 'selected-day' : ''}" onclick="calendarDayClick(${y}, ${m}, ${day})">
+        <div class="calendar-day ${isToday ? 'today' : ''} ${isSelected ? 'selected-day' : ''}" onclick="calendarDayClick(${y}, ${m}, ${day})" ondragover="calendarWeekCellDragOver(event)" ondragleave="calendarWeekCellDragLeave(event)" ondrop="calendarWeekCellDrop(event, '${cellIso}')">
           <div class="day-number">${d.toLocaleDateString(undefined,{ weekday:'short', day:'numeric' })}</div>
           <div class="day-events">
-            ${dayEvents.slice(0, 4).map(e => `<div class="day-event ${escapeHtml(e.color||'')} ">${escapeHtml(e.title)}</div>`).join('')}
+            ${dayEvents.slice(0, 4).map(e => {
+              const moveId = e.masterEventId || e.id
+              const canDrag = !(e.source && e.source !== 'local')
+              return `<div class="day-event ${escapeHtml(e.color||'')} ${canDrag ? 'draggable-event' : ''}" ${canDrag ? `draggable="true" ondragstart="startCalendarEventDrag(event, '${escapeHtml(moveId)}')"` : ''}>${escapeHtml(e.title)}</div>`
+            }).join('')}
             ${dayEvents.length > 4 ? `<div style="font-size:9px;color:#4B5563;">+${dayEvents.length - 4} more</div>` : ''}
           </div>
         </div>
@@ -8252,6 +8609,7 @@ function renderCalendar() {
   }
 
   renderCalendarDayDetail(selectedCalendarDate)
+  renderCalendarSmartAlerts()
 
   let upcoming = allEvents
     .filter(e => new Date(e.start) >= new Date())
@@ -8266,6 +8624,7 @@ function renderCalendar() {
         const dateLabel = d.toLocaleDateString('en-US',{month:'short',day:'numeric'})
         const timeLabel = d.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})
         const readOnly = !!e.source && e.source !== 'local'
+        const deleteId = e.masterEventId || e.id
         return `
           <div style="display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid #1F2937;">
             <div style="background:#4f46e5;color:white;padding:6px 10px;border-radius:8px;font-size:12px;font-weight:700;min-width:50px;text-align:center;">
@@ -8275,7 +8634,7 @@ function renderCalendar() {
               <div style="font-size:14px;font-weight:500;">${escapeHtml(e.title)}</div>
               <div style="font-size:12px;color:#6B7280;">${timeLabel}</div>
             </div>
-            ${!readOnly ? `<button class="btn-sm btn-danger" style="margin-left:auto;" onclick="deleteEvent('${e.id}')">✕</button>` : ''}
+            ${!readOnly ? `<button class="btn-sm btn-danger" style="margin-left:auto;" onclick="deleteEvent('${deleteId}')">✕</button>` : ''}
           </div>
         `
       }).join('')
@@ -8294,12 +8653,65 @@ function calendarDayClick(y, m, d) {
 
 function deleteEvent(id) {
   let ev = events.find(e => e.id === id)
-  events = events.filter(e => e.id !== id)
+  events = events.filter(e => e.id !== id && e.masterEventId !== id)
   save('events', events)
   renderCalendar()
   addAuditLog('delete', `Deleted event "${ev?.title || id}"`, 'delete')
   showToast('Event deleted', 'success')
   updateStats()
+}
+
+function startCalendarEventDrag(ev, eventId) {
+  draggedCalendarEventId = eventId
+  try {
+    ev.dataTransfer.effectAllowed = 'move'
+    ev.dataTransfer.setData('text/plain', eventId)
+  } catch (e) {}
+}
+
+function calendarWeekCellDragOver(ev) {
+  ev.preventDefault()
+  if (ev.currentTarget && ev.currentTarget.classList) ev.currentTarget.classList.add('drop-target')
+}
+
+function calendarWeekCellDragLeave(ev) {
+  if (ev.currentTarget && ev.currentTarget.classList) ev.currentTarget.classList.remove('drop-target')
+}
+
+function calendarWeekCellDrop(ev, targetDateIso) {
+  ev.preventDefault()
+  if (ev.currentTarget && ev.currentTarget.classList) ev.currentTarget.classList.remove('drop-target')
+  const eventId = draggedCalendarEventId || (ev.dataTransfer ? ev.dataTransfer.getData('text/plain') : '')
+  draggedCalendarEventId = null
+  if (!eventId) return
+  moveCalendarEventToDate(eventId, targetDateIso)
+}
+
+function moveCalendarEventToDate(eventId, targetDateIso) {
+  const idx = events.findIndex(e => e.id === eventId)
+  if (idx < 0) return
+  const current = events[idx]
+  const oldStart = new Date(current.start)
+  const oldEnd = new Date(current.end)
+  if (isNaN(oldStart.getTime()) || isNaN(oldEnd.getTime())) return
+  const nextStart = new Date(targetDateIso + 'T00:00:00')
+  nextStart.setHours(oldStart.getHours(), oldStart.getMinutes(), 0, 0)
+  const duration = oldEnd.getTime() - oldStart.getTime()
+  const nextEnd = new Date(nextStart.getTime() + duration)
+  const nextStartIso = nextStart.toISOString().slice(0, 16)
+  const nextEndIso = nextEnd.toISOString().slice(0, 16)
+  const conflicts = findEventConflicts(nextStartIso, nextEndIso, current.id)
+
+  events[idx] = {
+    ...current,
+    start: nextStartIso,
+    end: nextEndIso,
+    updated: new Date().toISOString()
+  }
+  save('events', events)
+  renderCalendar()
+  if (conflicts.length) showToast(`Moved with ${conflicts.length} conflict(s)`, 'warning')
+  else showToast('Event rescheduled', 'success')
 }
 
 /** After OAuth redirect: strip query params and show result */
@@ -8346,7 +8758,7 @@ async function syncGoogleCalendarConnectionState() {
 // Start Google Calendar OAuth flow via backend (?token=JWT — required for linking the Google account to this user)
 function connectGoogleCalendar() {
   if (googleCalendarConnected) {
-    disconnectGoogleCalendar()
+    showToast('Google Calendar is already connected. Manage disconnect in Settings > Integrations.', 'info')
     return
   }
   if (!ensureCurrentUser()) {
@@ -8363,6 +8775,14 @@ function connectGoogleCalendar() {
     return
   }
   window.location.href = base + '/auth/google/calendar?token=' + encodeURIComponent(getAuthToken())
+}
+
+function manageGoogleCalendarIntegration() {
+  if (googleCalendarConnected) {
+    disconnectGoogleCalendar()
+    return
+  }
+  connectGoogleCalendar()
 }
 
 async function disconnectGoogleCalendar() {
@@ -8409,8 +8829,9 @@ function updateGoogleCalendarUi() {
     settingsStatusEl.style.color = googleCalendarConnected ? '#10B981' : '#6B7280'
   }
 
-  var btnLabel = googleCalendarConnected ? 'Disconnect Google Calendar' : 'Connect Google Calendar'
-  if (calendarBtn) calendarBtn.textContent = btnLabel
+  if (calendarBtn) {
+    calendarBtn.textContent = googleCalendarConnected ? 'Google Calendar Connected' : 'Connect Google Calendar'
+  }
   if (settingsBtn) settingsBtn.textContent = googleCalendarConnected ? 'Disconnect' : 'Connect'
 }
 
