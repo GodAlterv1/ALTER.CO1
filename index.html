@@ -1746,6 +1746,59 @@ button:disabled { opacity: 0.5; cursor: not-allowed; transform: none; box-shadow
   grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
   gap: 14px;
 }
+.team-workload-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 12px;
+  margin: 12px 20px 20px;
+}
+.team-workload-card {
+  border: 1px solid #1F2937;
+  border-radius: 10px;
+  background: #111827;
+  padding: 12px;
+}
+.team-workload-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: #E5E7EB;
+  margin-bottom: 6px;
+}
+.team-workload-meta {
+  font-size: 11px;
+  color: #9CA3AF;
+  margin-bottom: 8px;
+}
+.team-workload-bar {
+  height: 7px;
+  border-radius: 999px;
+  background: #1F2937;
+  overflow: hidden;
+}
+.team-workload-fill {
+  height: 100%;
+  background: linear-gradient(135deg, #4f46e5, #7c3aed);
+}
+.team-activity-list {
+  margin: 10px 20px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.team-activity-item {
+  border: 1px solid #1F2937;
+  border-radius: 10px;
+  background: #111827;
+  padding: 10px 12px;
+  font-size: 12px;
+  color: #E5E7EB;
+  line-height: 1.4;
+}
+.team-activity-item small {
+  display: block;
+  color: #6B7280;
+  margin-top: 4px;
+}
 
 @media (min-width: 1200px) {
   .team-page .team-grid {
@@ -1871,6 +1924,11 @@ button:disabled { opacity: 0.5; cursor: not-allowed; transform: none; box-shadow
   display: flex;
   flex-direction: column;
   gap: 8px;
+}
+.member-card-quick-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
 }
 
 .member-card-actions select {
@@ -4214,7 +4272,12 @@ kbd {
                 <option value="accepted">Active only</option>
                 <option value="pending">Pending only</option>
               </select>
-              <button type="button" class="btn-secondary btn-sm" onclick="document.getElementById('teamRoleFilter').value='';document.getElementById('teamStatusFilter').value='';renderTeam();">Reset filters</button>
+              <select id="teamSortBy" onchange="renderTeam()" style="padding:8px 12px;background:#020617;border:1px solid #1F2937;color:white;border-radius:8px;font-size:12px;">
+                <option value="role">Sort: Role</option>
+                <option value="workload">Sort: Workload</option>
+                <option value="name">Sort: Name</option>
+              </select>
+              <button type="button" class="btn-secondary btn-sm" onclick="document.getElementById('teamRoleFilter').value='';document.getElementById('teamStatusFilter').value='';document.getElementById('teamSortBy').value='role';renderTeam();">Reset filters</button>
             </div>
 
             <div class="team-section">
@@ -4232,6 +4295,22 @@ kbd {
                 <span class="team-section-hint">Email invites that have not been accepted yet.</span>
               </div>
               <div class="team-grid" id="inviteList"></div>
+            </div>
+
+            <div class="team-section">
+              <div class="team-section-head">
+                <h3>Workload Board</h3>
+                <span class="team-section-hint">Trello-style workload snapshot by teammate. Use it to balance assignments quickly.</span>
+              </div>
+              <div id="teamWorkloadGrid" class="team-workload-grid"></div>
+            </div>
+
+            <div class="team-section">
+              <div class="team-section-head">
+                <h3>Team Activity</h3>
+                <span class="team-section-hint">Notion-style shared stream of what changed recently in your workspace.</span>
+              </div>
+              <div id="teamActivityList" class="team-activity-list"></div>
             </div>
           </div>
 
@@ -5283,6 +5362,7 @@ let goals         = loadStored('goals', [])
 let googleCalendarConnected = false
 let googleCalendarEvents    = []
 let googleCalendarConfigured = true
+let preferredTaskAssigneeId = ''
 let team          = loadStored('team', [])
 let notifications = loadStored('notifications', [])
 let activity      = loadStored('activity', [])
@@ -7153,7 +7233,8 @@ function openCreateTaskModal() {
     return
   }
   populateProjectSelect('modalTaskProject')
-  fillAssigneeSelect(document.getElementById('modalTaskAssignee'), currentUser.id)
+  fillAssigneeSelect(document.getElementById('modalTaskAssignee'), preferredTaskAssigneeId || currentUser.id)
+  preferredTaskAssigneeId = ''
   document.getElementById('modalTaskStatus').value    = 'todo'
   document.getElementById('modalTaskInitStatus').value= 'todo'
   document.getElementById('createTaskModal').classList.add('active')
@@ -9840,13 +9921,25 @@ function renderTeam() {
 
   const roleFilter   = document.getElementById('teamRoleFilter')?.value || ''
   const statusFilter = document.getElementById('teamStatusFilter')?.value || ''
+  const sortBy       = document.getElementById('teamSortBy')?.value || 'role'
 
   // Only admins/owners can invite or remove members or change roles
   const canManageTeam = currentUser && (currentUser.role === 'admin' || currentUser.role === 'owner')
   const inviteBtn = document.getElementById('teamInviteBtn')
   if (inviteBtn) inviteBtn.style.display = canManageTeam ? '' : 'none'
 
-  team.forEach(m => {
+  const roleRank = { owner: 0, admin: 1, manager: 2, member: 3 }
+  const sortedTeam = team.slice().sort((a, b) => {
+    const aName = ((a.email || '').split('@')[0] || '').toLowerCase()
+    const bName = ((b.email || '').split('@')[0] || '').toLowerCase()
+    const aTasks = tasks.filter(t => t.assignee === a.id && t.status !== 'done' && t.status !== 'completed').length
+    const bTasks = tasks.filter(t => t.assignee === b.id && t.status !== 'done' && t.status !== 'completed').length
+    if (sortBy === 'name') return aName.localeCompare(bName)
+    if (sortBy === 'workload') return bTasks - aTasks || aName.localeCompare(bName)
+    return (roleRank[a.role] ?? 99) - (roleRank[b.role] ?? 99) || aName.localeCompare(bName)
+  })
+
+  sortedTeam.forEach(m => {
     const isAccepted = m.status === 'accepted'
     const isPending  = m.status === 'pending'
 
@@ -9885,7 +9978,10 @@ function renderTeam() {
                     <option value="manager" ${m.role==='manager'?'selected':''}>Manager</option>
                     <option value="member"  ${m.role==='member'?'selected':''}>Member</option>
                   </select>
-                  <button type="button" class="btn-sm btn-danger" onclick="removeMember('${m.id}')">Remove from team</button>
+                  <div class="member-card-quick-actions">
+                    <button type="button" class="btn-sm btn-secondary" onclick="assignTaskToMember('${m.id}')">Assign task</button>
+                    <button type="button" class="btn-sm btn-danger" onclick="removeMember('${m.id}')">Remove</button>
+                  </div>
                 </div>
               ` : ''}
             </div>
@@ -9928,7 +10024,71 @@ function renderTeam() {
   if (document.getElementById('teamStatTotal')) document.getElementById('teamStatTotal').textContent = team.filter(m=>m.status==='accepted').length + 1
   if (document.getElementById('teamStatPending')) document.getElementById('teamStatPending').textContent = pending
   if (document.getElementById('teamStatAdmins')) document.getElementById('teamStatAdmins').textContent = admins
+  renderTeamWorkloadBoard()
+  renderTeamActivityStream()
   refreshTeamInvitePanels()
+}
+
+function assignTaskToMember(memberId) {
+  if (!ensureCurrentUser()) return
+  preferredTaskAssigneeId = memberId || ''
+  switchPage('tasks', null)
+  setTimeout(function() {
+    openCreateTaskModal()
+    const titleEl = document.getElementById('modalTaskTitle')
+    if (titleEl && !titleEl.value) titleEl.focus()
+  }, 80)
+}
+
+function renderTeamWorkloadBoard() {
+  const container = document.getElementById('teamWorkloadGrid')
+  if (!container) return
+
+  const members = [
+    { id: currentUser?.id, label: currentUser?.fullName || currentUser?.username || 'You', isYou: true },
+    ...team.filter(m => m.status === 'accepted').map(m => ({ id: m.id, label: (m.email || 'Member').split('@')[0], isYou: false }))
+  ]
+
+  const maxOpen = Math.max(1, ...members.map(m => tasks.filter(t => t.assignee === m.id && t.status !== 'done' && t.status !== 'completed').length))
+  if (!members.length) {
+    container.innerHTML = '<div class="team-empty-inline" style="grid-column:1/-1;">No team members yet</div>'
+    return
+  }
+
+  container.innerHTML = members.map(m => {
+    const openCount = tasks.filter(t => t.assignee === m.id && t.status !== 'done' && t.status !== 'completed').length
+    const doneCount = tasks.filter(t => t.assignee === m.id && (t.status === 'done' || t.status === 'completed')).length
+    const widthPct = Math.round((openCount / maxOpen) * 100)
+    return `
+      <div class="team-workload-card">
+        <div class="team-workload-name">${escapeHtml(m.label)} ${m.isYou ? '<span style="font-size:10px;color:#a78bfa;">(You)</span>' : ''}</div>
+        <div class="team-workload-meta">${openCount} open task${openCount === 1 ? '' : 's'} · ${doneCount} completed</div>
+        <div class="team-workload-bar"><div class="team-workload-fill" style="width:${widthPct}%;"></div></div>
+        <div style="margin-top:9px;"><button type="button" class="btn-xs btn-secondary" onclick="assignTaskToMember('${m.id}')">+ Assign task</button></div>
+      </div>
+    `
+  }).join('')
+}
+
+function renderTeamActivityStream() {
+  const el = document.getElementById('teamActivityList')
+  if (!el) return
+  const interesting = (auditLogs || []).slice().filter(a => {
+    const txt = String(a.text || '').toLowerCase()
+    return txt.includes('task') || txt.includes('team') || txt.includes('invite') || txt.includes('goal') || txt.includes('project')
+  }).sort((a,b) => new Date(b.time) - new Date(a.time)).slice(0, 10)
+
+  if (!interesting.length) {
+    el.innerHTML = '<div class="team-empty-inline" style="border:none;padding:8px 0;">No team activity yet</div>'
+    return
+  }
+
+  el.innerHTML = interesting.map(item => `
+    <div class="team-activity-item">
+      ${escapeHtml(item.text || 'Workspace update')}
+      <small>${new Date(item.time).toLocaleString()}</small>
+    </div>
+  `).join('')
 }
 
 function buildCurrentUserCard() {
