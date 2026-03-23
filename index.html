@@ -3051,8 +3051,9 @@ kbd {
   font-weight: 600;
   cursor: pointer;
   font-family: inherit;
+  transition: border-color 0.18s, background 0.18s, transform 0.18s;
 }
-.landing-btn-ghost:hover { border-color: #6B7280; background: rgba(255,255,255,0.04); }
+.landing-btn-ghost:hover { border-color: #6B7280; background: rgba(255,255,255,0.04); transform: translateY(-1px); }
 .landing-btn-primary {
   padding: 10px 22px;
   border-radius: 10px;
@@ -3064,15 +3065,23 @@ kbd {
   cursor: pointer;
   font-family: inherit;
   box-shadow: 0 4px 20px rgba(79,70,229,0.35);
+  transition: filter 0.18s, transform 0.18s, box-shadow 0.18s;
 }
-.landing-btn-primary:hover { filter: brightness(1.08); }
+.landing-btn-primary:hover { filter: brightness(1.08); transform: translateY(-1px); box-shadow: 0 10px 28px rgba(79,70,229,0.38); }
+.landing-btn-primary:focus-visible,
+.landing-btn-ghost:focus-visible,
+.landing-contact-form input:focus-visible,
+.landing-contact-form textarea:focus-visible {
+  outline: 2px solid #818cf8;
+  outline-offset: 2px;
+}
 .landing-hero {
   flex: 1;
   display: flex;
   flex-direction: column;
   align-items: center;
   text-align: center;
-  padding: 40px 24px 64px;
+  padding: 52px 24px 72px;
   max-width: 900px;
   margin: 0 auto;
 }
@@ -3098,17 +3107,25 @@ kbd {
 .landing-hero .landing-lead {
   font-size: clamp(1rem, 2.2vw, 1.2rem);
   color: #9CA3AF;
-  max-width: 560px;
-  margin-bottom: 36px;
+  max-width: 640px;
+  margin-bottom: 30px;
   line-height: 1.65;
 }
-.landing-cta-row { display: flex; gap: 14px; flex-wrap: wrap; justify-content: center; margin-bottom: 48px; }
+.landing-cta-row { display: flex; gap: 14px; flex-wrap: wrap; justify-content: center; margin-bottom: 14px; }
+.landing-hero-main-cta { padding: 14px 28px; font-size: 16px; min-height: 48px; }
+.landing-hero-secondary-cta { padding: 14px 28px; font-size: 16px; min-height: 48px; }
+.landing-trust-line {
+  margin: 0 0 42px;
+  font-size: 14px;
+  color: #C7D2FE;
+  opacity: 0.95;
+}
 .landing-features {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-  gap: 20px;
+  gap: 18px;
   width: 100%;
-  max-width: 1000px;
+  max-width: 980px;
   text-align: left;
 }
 .landing-feature-card {
@@ -3116,9 +3133,9 @@ kbd {
   border: 1px solid #1F2937;
   border-radius: 16px;
   padding: 24px;
-  transition: border-color 0.2s, box-shadow 0.2s;
+  transition: border-color 0.2s, box-shadow 0.2s, transform 0.2s;
 }
-.landing-feature-card:hover { border-color: #374151; box-shadow: 0 8px 32px rgba(0,0,0,0.35); }
+.landing-feature-card:hover { border-color: #374151; box-shadow: 0 8px 32px rgba(0,0,0,0.35); transform: translateY(-3px); }
 .landing-feature-card .icon { font-size: 28px; margin-bottom: 12px; display: block; }
 .landing-feature-card h3 { font-size: 17px; font-weight: 700; margin-bottom: 8px; color: #F3F4F6; }
 .landing-feature-card p { font-size: 14px; color: #9CA3AF; line-height: 1.55; }
@@ -3156,7 +3173,14 @@ kbd {
 }
 @media (max-width: 640px) {
   .landing-nav { flex-direction: column; gap: 16px; }
-  .landing-hero { padding-top: 24px; }
+  .landing-nav-actions { width: 100%; justify-content: center; }
+  .landing-hero { padding: 28px 16px 56px; }
+  .landing-hero h1 { font-size: clamp(1.8rem, 9vw, 2.2rem); }
+  .landing-hero .landing-lead { margin-bottom: 22px; }
+  .landing-hero-main-cta,
+  .landing-hero-secondary-cta { width: 100%; }
+  .landing-cta-row { width: 100%; gap: 10px; }
+  .landing-trust-line { margin-bottom: 30px; }
 }
 
 </style>
@@ -3178,10 +3202,10 @@ kbd {
     <h1>Help your team deliver more work with less chaos</h1>
     <p class="landing-lead">ALTER.CO gives your team one shared place to plan projects, run tasks, track time, and capture ideas so everyone stays aligned and deadlines stop slipping.</p>
     <div class="landing-cta-row">
-      <button type="button" class="landing-btn-primary" style="padding:14px 28px;font-size:16px;" onclick="showAuthScreen('register')">Start free workspace</button>
-      <button type="button" class="landing-btn-ghost" style="padding:14px 28px;font-size:16px;" onclick="showAuthScreen('login')">I already have an account</button>
+      <button type="button" class="landing-btn-primary landing-hero-main-cta" onclick="showAuthScreen('register')">Start free workspace</button>
+      <button type="button" class="landing-btn-ghost landing-hero-secondary-cta" onclick="showAuthScreen('login')">I already have an account</button>
     </div>
-    <p class="landing-lead" style="margin-top:10px;font-size:14px;opacity:0.9;">No credit card required · Setup in minutes · Built for real team workflows</p>
+    <p class="landing-trust-line">No credit card required · Setup in minutes · Built for real team workflows</p>
     <div class="landing-features">
       <div class="landing-feature-card">
         <span class="icon">📊</span>
@@ -4485,6 +4509,12 @@ kbd {
           <h3>Integrations</h3>
           <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:14px;">
             <div style="background:#0d1117;border:1px solid #1F2937;border-radius:10px;padding:16px;text-align:center;">
+              <div style="font-size:28px;margin-bottom:8px;">📅</div>
+              <div style="font-weight:600;margin-bottom:4px;">Google Calendar</div>
+              <div id="settingsGoogleCalendarStatus" style="font-size:12px;color:#6B7280;margin-bottom:12px;">Checking connection...</div>
+              <button id="settingsGoogleCalendarBtn" class="btn-sm btn-secondary" onclick="connectGoogleCalendar()">Connect</button>
+            </div>
+            <div style="background:#0d1117;border:1px solid #1F2937;border-radius:10px;padding:16px;text-align:center;">
               <div style="font-size:28px;margin-bottom:8px;">💬</div>
               <div style="font-weight:600;margin-bottom:4px;">Slack</div>
               <div style="font-size:12px;color:#6B7280;margin-bottom:12px;">Get notifications in Slack</div>
@@ -5078,6 +5108,7 @@ let goals         = loadStored('goals', [])
 // Google Calendar integration state (frontend-only; backend will fill these)
 let googleCalendarConnected = false
 let googleCalendarEvents    = []
+let googleCalendarConfigured = true
 let team          = loadStored('team', [])
 let notifications = loadStored('notifications', [])
 let activity      = loadStored('activity', [])
@@ -8296,8 +8327,8 @@ function handleGoogleCalendarOAuthReturn() {
 async function syncGoogleCalendarConnectionState() {
   if (!ALTER_API_BASE || !getAuthToken()) {
     googleCalendarConnected = false
-    var st = document.getElementById('calendarGoogleStatus')
-    if (st) st.textContent = ''
+    googleCalendarConfigured = true
+    updateGoogleCalendarUi()
     return
   }
   try {
@@ -8306,22 +8337,18 @@ async function syncGoogleCalendarConnectionState() {
     })
     if (!r.ok) return
     var d = await r.json()
+    googleCalendarConfigured = d.configured !== false
     googleCalendarConnected = !!d.connected
-    var statusEl = document.getElementById('calendarGoogleStatus')
-    if (statusEl) {
-      if (!d.configured) {
-        statusEl.textContent = 'Google Calendar: add GOOGLE_CLIENT_* env on the server to enable sync'
-      } else if (!d.connected) {
-        statusEl.textContent = 'Not connected — click Connect Google Calendar'
-      } else {
-        statusEl.textContent = 'Google Calendar connected'
-      }
-    }
+    updateGoogleCalendarUi()
   } catch (e) {}
 }
 
 // Start Google Calendar OAuth flow via backend (?token=JWT — required for linking the Google account to this user)
 function connectGoogleCalendar() {
+  if (googleCalendarConnected) {
+    disconnectGoogleCalendar()
+    return
+  }
   if (!ensureCurrentUser()) {
     showToast('Sign in to connect Google Calendar', 'error')
     return
@@ -8336,6 +8363,55 @@ function connectGoogleCalendar() {
     return
   }
   window.location.href = base + '/auth/google/calendar?token=' + encodeURIComponent(getAuthToken())
+}
+
+async function disconnectGoogleCalendar() {
+  if (!ALTER_API_BASE || !getAuthToken()) {
+    showToast('Sign in to manage Google Calendar connection', 'error')
+    return
+  }
+  try {
+    var r = await fetch(ALTER_API_BASE + '/api/integrations/google/calendar/disconnect', {
+      method: 'POST',
+      headers: { Authorization: 'Bearer ' + getAuthToken() }
+    })
+    if (!r.ok) throw new Error('disconnect failed')
+    googleCalendarConnected = false
+    googleCalendarEvents = []
+    updateGoogleCalendarUi()
+    renderCalendar()
+    showToast('Google Calendar disconnected', 'success')
+  } catch (e) {
+    showToast('Could not disconnect Google Calendar right now.', 'error')
+  }
+}
+
+function updateGoogleCalendarUi() {
+  var calendarStatusEl = document.getElementById('calendarGoogleStatus')
+  var calendarBtn = document.getElementById('calendarConnectGoogleBtn')
+  var settingsStatusEl = document.getElementById('settingsGoogleCalendarStatus')
+  var settingsBtn = document.getElementById('settingsGoogleCalendarBtn')
+
+  var statusText = ''
+  if (!ALTER_API_BASE || !getAuthToken()) {
+    statusText = ''
+  } else if (!googleCalendarConfigured) {
+    statusText = 'Google Calendar: add GOOGLE_CLIENT_* env on the server to enable sync'
+  } else if (!googleCalendarConnected) {
+    statusText = 'Not connected — click Connect Google Calendar'
+  } else {
+    statusText = 'Google Calendar connected'
+  }
+
+  if (calendarStatusEl) calendarStatusEl.textContent = statusText
+  if (settingsStatusEl) {
+    settingsStatusEl.textContent = statusText || 'Sign in to manage this connection'
+    settingsStatusEl.style.color = googleCalendarConnected ? '#10B981' : '#6B7280'
+  }
+
+  var btnLabel = googleCalendarConnected ? 'Disconnect Google Calendar' : 'Connect Google Calendar'
+  if (calendarBtn) calendarBtn.textContent = btnLabel
+  if (settingsBtn) settingsBtn.textContent = googleCalendarConnected ? 'Disconnect' : 'Connect'
 }
 
 // Fetch Google Calendar events for the visible month from backend
@@ -8363,6 +8439,7 @@ async function refreshGoogleCalendarEvents() {
     googleCalendarEvents = Array.isArray(data) ? data : (data.events || [])
     if (data && data.connected === false) {
       googleCalendarConnected = false
+      updateGoogleCalendarUi()
     }
 
     const statusEl = document.getElementById('calendarGoogleStatus')
@@ -10264,6 +10341,9 @@ function switchSettingsTab(tabId, el) {
 
   document.querySelectorAll('.settings-tab').forEach(t => t.classList.remove('active'))
   if (el) el.classList.add('active')
+  if (tabId === 'integrations') {
+    syncGoogleCalendarConnectionState()
+  }
 }
 
 function saveProfileSettings() {
