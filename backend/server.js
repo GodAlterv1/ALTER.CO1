@@ -703,12 +703,29 @@ const WORKSPACE_KEYS = [
   'pages'
 ]
 
+const WORKSPACE_META_KEY = '_keyUpdatedAt'
+
 function emptyWorkspace() {
   const out = {}
   for (const k of WORKSPACE_KEYS) {
     out[k] = k === 'userSettings' ? {} : []
   }
+  out[WORKSPACE_META_KEY] = {}
   return out
+}
+
+function ensureWorkspaceMeta(data) {
+  if (!data || typeof data !== 'object') return {}
+  if (!data[WORKSPACE_META_KEY] || typeof data[WORKSPACE_META_KEY] !== 'object' || Array.isArray(data[WORKSPACE_META_KEY])) {
+    data[WORKSPACE_META_KEY] = {}
+  }
+  return data[WORKSPACE_META_KEY]
+}
+
+function touchWorkspaceKeyMeta(data, key) {
+  const meta = ensureWorkspaceMeta(data)
+  meta[key] = new Date().toISOString()
+  return meta[key]
 }
 
 // ----- Auth -----
@@ -1045,12 +1062,14 @@ app.get('/api/workspace', authMiddleware, (req, res) => {
   const fileUserId = resolveWorkspaceFileUserId(req.userId)
   let data = readWorkspace(fileUserId)
   if (!data || typeof data !== 'object') data = emptyWorkspace()
+  const meta = ensureWorkspaceMeta(data)
   const out = emptyWorkspace()
   for (const k of WORKSPACE_KEYS) {
     if (data[k] !== undefined && data[k] !== null) {
       out[k] = Array.isArray(data[k]) ? data[k] : (k === 'userSettings' && typeof data[k] === 'object' ? data[k] : out[k])
     }
   }
+  out[WORKSPACE_META_KEY] = meta
   res.json(out)
 })
 
@@ -1058,13 +1077,15 @@ app.put('/api/workspace', authMiddleware, (req, res) => {
   const fileUserId = resolveWorkspaceFileUserId(req.userId)
   const data = req.body || {}
   const current = readWorkspace(fileUserId) || emptyWorkspace()
+  ensureWorkspaceMeta(current)
   for (const key of WORKSPACE_KEYS) {
     if (data[key] !== undefined) {
       current[key] = data[key]
+      touchWorkspaceKeyMeta(current, key)
     }
   }
   writeWorkspace(fileUserId, current)
-  res.json({ ok: true })
+  res.json({ ok: true, keyUpdatedAt: current[WORKSPACE_META_KEY] || {} })
 })
 
 // Partial workspace update for backend-first writes (e.g. tasks/team updates)
@@ -1080,6 +1101,7 @@ app.patch('/api/workspace/:key', authMiddleware, (req, res) => {
   }
 
   const value = data.value
+  const expectedUpdatedAt = data.expectedUpdatedAt ? String(data.expectedUpdatedAt) : ''
   const expectObject = key === 'userSettings'
   if (expectObject && (typeof value !== 'object' || value === null || Array.isArray(value))) {
     return res.status(400).json({ error: `"${key}" must be an object` })
@@ -1090,9 +1112,20 @@ app.patch('/api/workspace/:key', authMiddleware, (req, res) => {
 
   const fileUserId = resolveWorkspaceFileUserId(req.userId)
   const current = readWorkspace(fileUserId) || emptyWorkspace()
+  const meta = ensureWorkspaceMeta(current)
+  const currentUpdatedAt = meta[key] ? String(meta[key]) : ''
+  if (expectedUpdatedAt && currentUpdatedAt && expectedUpdatedAt !== currentUpdatedAt) {
+    return res.status(409).json({
+      error: 'stale_write',
+      message: 'Workspace data changed since last read',
+      key,
+      currentUpdatedAt
+    })
+  }
   current[key] = value
+  const updatedAt = touchWorkspaceKeyMeta(current, key)
   writeWorkspace(fileUserId, current)
-  res.json({ ok: true })
+  res.json({ ok: true, key, updatedAt })
 })
 
 // Join another user's workspace team using their workspace invite code (from userSettings.workspaceInviteCode)

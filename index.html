@@ -5419,6 +5419,7 @@ function autoAssociateLabelsWithInputs() {
 autoAssociateLabelsWithInputs()
 
 var syncWorkspaceTimeout = null
+var workspaceKeyUpdatedAt = {}
 let pendingConfirm = null
 
 function getAuthToken() { return localStorage.getItem('alco_token') || '' }
@@ -5465,6 +5466,9 @@ function applyWorkspaceToState(data) {
   if (Array.isArray(data.apiKeys)) apiKeys = data.apiKeys
   if (Array.isArray(data.pages)) pages = data.pages
   if (data.userSettings && typeof data.userSettings === 'object') userSettings = data.userSettings
+  if (data._keyUpdatedAt && typeof data._keyUpdatedAt === 'object') {
+    workspaceKeyUpdatedAt = data._keyUpdatedAt
+  }
 }
 
 function syncWorkspaceToBackend() {
@@ -5492,22 +5496,51 @@ function syncWorkspaceToBackend() {
     body: JSON.stringify(payload)
   }).then(function (r) {
     if (r.status === 401) clearAuthToken()
+    if (!r.ok) return null
+    return r.json().catch(function () { return null })
+  }).then(function (body) {
+    if (body && body.keyUpdatedAt && typeof body.keyUpdatedAt === 'object') {
+      workspaceKeyUpdatedAt = body.keyUpdatedAt
+    }
   }).catch(function () {})
 }
 
 function syncWorkspaceKeyToBackend(key, value) {
   var token = getAuthToken()
   if (!ALTER_API_BASE || !token || !key) return Promise.resolve(false)
+  var expectedUpdatedAt = workspaceKeyUpdatedAt && workspaceKeyUpdatedAt[key] ? workspaceKeyUpdatedAt[key] : ''
   return fetch(ALTER_API_BASE + '/api/workspace/' + encodeURIComponent(key), {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
-    body: JSON.stringify({ value: value })
+    body: JSON.stringify({ value: value, expectedUpdatedAt: expectedUpdatedAt })
   }).then(function (r) {
     if (r.status === 401) clearAuthToken()
-    return r.ok
+    if (r.status === 409) {
+      loadWorkspaceFromBackend().then(function (fresh) {
+        if (!fresh) return
+        applyWorkspaceToState(fresh)
+        renderAllPages()
+        showToast('Workspace data changed by another user. Reloaded latest.', 'warning')
+      }).catch(function () {})
+      return false
+    }
+    if (!r.ok) return false
+    return r.json().then(function (body) {
+      if (body && body.key && body.updatedAt) {
+        workspaceKeyUpdatedAt[body.key] = body.updatedAt
+      }
+      return true
+    }).catch(function () { return true })
   }).catch(function () {
     return false
   })
+}
+
+function toWorkspaceStorageKey(localKey) {
+  if (localKey === 'audit') return 'auditLogs'
+  if (localKey === 'time') return 'timeEntries'
+  if (localKey === 'usersettings') return 'userSettings'
+  return localKey
 }
 
 function scheduleSyncWorkspace() {
@@ -5671,9 +5704,20 @@ function escapeHtml(str) {
 function save(key, data) {
   localStorage.setItem('alco_' + key, JSON.stringify(data))
   if (ALTER_API_BASE && getAuthToken()) {
-    // Backend-first for high-collaboration data. Keep local cache as fallback/offline copy.
-    if (key === 'tasks' || key === 'team') {
-      syncWorkspaceKeyToBackend(key, data).then(function (ok) {
+    // Backend-first for collaboration-heavy keys. Keep local cache as fallback/offline copy.
+    var workspaceKey = toWorkspaceStorageKey(key)
+    var backendFirstKeys = {
+      projects: true,
+      tasks: true,
+      events: true,
+      goals: true,
+      team: true,
+      notifications: true,
+      activity: true,
+      auditLogs: true
+    }
+    if (backendFirstKeys[workspaceKey]) {
+      syncWorkspaceKeyToBackend(workspaceKey, data).then(function (ok) {
         // If partial sync fails, fall back to full workspace sync attempt.
         if (!ok) scheduleSyncWorkspace()
       })
