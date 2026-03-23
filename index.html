@@ -3502,10 +3502,10 @@ kbd {
 
         <div id="dashboardOnboarding" class="onboarding-panel hidden">
           <div class="onboarding-panel-head">
-            <h4>Get your workspace ready</h4>
+            <h4>First 10-minute success</h4>
             <button type="button" class="onboarding-dismiss" onclick="dismissDashboardOnboarding()" title="Dismiss">×</button>
           </div>
-          <p class="onboarding-lead">Complete these steps so ALTER.CO reflects real work — not an empty shell.</p>
+          <p class="onboarding-lead" id="dashboardOnboardingLead">Complete these 5 quick steps to make your workspace useful in under 10 minutes.</p>
           <div class="onboarding-steps" id="dashboardOnboardingSteps"></div>
         </div>
 
@@ -6377,6 +6377,7 @@ function renderDashboardPulseAndOnboarding() {
 
   const onboard = document.getElementById('dashboardOnboarding')
   const stepsEl = document.getElementById('dashboardOnboardingSteps')
+  const leadEl = document.getElementById('dashboardOnboardingLead')
   if (!onboard || !stepsEl) return
 
   if (isDashboardOnboardingDismissed()) {
@@ -6386,9 +6387,21 @@ function renderDashboardPulseAndOnboarding() {
 
   const hasProject = projects.length > 0
   const hasTask = tasks.length > 0
-  const hasGoal = goals.length > 0
-  const doneCount = [hasProject, hasTask, hasGoal].filter(Boolean).length
-  if (doneCount === 3) {
+  const hasEvent = events.length > 0
+  const hasGoogleConnected = !!googleCalendarConnected
+  const hasTeammate = Array.isArray(team) && team.length > 0
+  const doneCount = [hasProject, hasTask, hasEvent, hasGoogleConnected, hasTeammate].filter(Boolean).length
+  const totalSteps = 5
+  const progressPct = Math.round((doneCount / totalSteps) * 100)
+  if (leadEl) {
+    if (doneCount === totalSteps) {
+      leadEl.textContent = 'Nice work. Your workspace is activated and ready for real execution.'
+    } else {
+      leadEl.textContent = `${doneCount}/${totalSteps} complete (${progressPct}%). Finish the checklist to unlock your first 10-minute success.`
+    }
+  }
+
+  if (doneCount === totalSteps) {
     onboard.classList.add('hidden')
     return
   }
@@ -6396,8 +6409,10 @@ function renderDashboardPulseAndOnboarding() {
 
   const steps = [
     { ok: hasProject, label: 'Create a project', action: 'openCreateProjectModal()' },
-    { ok: hasTask, label: 'Add your first task', action: "switchPage('tasks', null)" },
-    { ok: hasGoal, label: 'Define a goal or OKR', action: "switchPage('goals', null)" }
+    { ok: hasTask, label: 'Add your first task', action: "switchPage('tasks', null);setTimeout(function(){openCreateTaskModal()},120)" },
+    { ok: hasEvent, label: 'Add your first calendar event', action: "switchPage('calendar', null);setTimeout(function(){openCreateEventModal()},120)" },
+    { ok: hasGoogleConnected, label: 'Connect Google Calendar', action: "switchPage('calendar', null);setTimeout(function(){connectGoogleCalendar()},120)" },
+    { ok: hasTeammate, label: 'Invite a teammate', action: "switchPage('team',null);setTimeout(function(){openInviteTeamModal()},120)" }
   ]
   stepsEl.innerHTML = steps.map(s => {
     if (s.ok) {
