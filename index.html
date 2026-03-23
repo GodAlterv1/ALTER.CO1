@@ -4071,6 +4071,7 @@ kbd {
         <div class="calendar-quick-add">
           <input id="calendarQuickAddInput" type="text" placeholder="Quick add: Team sync tomorrow 10am for 45m">
           <button class="btn-secondary btn-sm" onclick="quickAddCalendarEvent()">Quick Add</button>
+          <button id="calendarUndoBtn" class="btn-secondary btn-sm" onclick="undoCalendarAction()" disabled>Undo</button>
         </div>
       </div>
     </div>
@@ -5340,6 +5341,7 @@ var calendarView = 'month'           // 'month' or 'week' (week is UI-only for n
 var selectedCalendarDate = null      // 'YYYY-MM-DD'
 var draggedCalendarEventId = null
 var draggedCalendarOccurrenceId = null
+var lastCalendarUndoAction = null
 
 // Billing state
 let billingPeriod = 'monthly' // 'monthly' or 'yearly'
@@ -5513,6 +5515,31 @@ function toLocalDateTimeInputValue(dateLike) {
   const hh = String(d.getHours()).padStart(2, '0')
   const mm = String(d.getMinutes()).padStart(2, '0')
   return `${y}-${m}-${day}T${hh}:${mm}`
+}
+
+function toLocalDateOnlyValue(dateLike) {
+  const d = dateLike instanceof Date ? dateLike : new Date(dateLike)
+  if (isNaN(d.getTime())) return ''
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
+}
+
+function setCalendarUndoAction(label, fn) {
+  lastCalendarUndoAction = typeof fn === 'function' ? { label: label || 'Undo', fn } : null
+  const btn = document.getElementById('calendarUndoBtn')
+  if (!btn) return
+  btn.disabled = !lastCalendarUndoAction
+  btn.textContent = lastCalendarUndoAction ? `Undo ${lastCalendarUndoAction.label}` : 'Undo'
+}
+
+function undoCalendarAction() {
+  if (!lastCalendarUndoAction || typeof lastCalendarUndoAction.fn !== 'function') return
+  const action = lastCalendarUndoAction
+  lastCalendarUndoAction = null
+  setCalendarUndoAction('', null)
+  action.fn()
 }
 
 function greeting() {
@@ -8203,13 +8230,16 @@ function expandRecurringEvents(inputEvents) {
 
     let cursor = new Date(baseStart)
     let guard = 0
+    const exclusions = Array.isArray(recurrence.exdates) ? recurrence.exdates : []
     while (cursor <= capEnd && guard < 500) {
       const occStart = new Date(cursor)
       const occEnd = new Date(occStart.getTime() + durationMs)
-      if (occEnd >= horizonStart) {
+      const occDay = toLocalDateOnlyValue(occStart)
+      const isExcluded = exclusions.includes(occDay)
+      if (occEnd >= horizonStart && !isExcluded) {
         expanded.push({
           ...ev,
-          id: `${ev.id}__${occStart.toISOString().slice(0, 10)}`,
+          id: `${ev.id}__${occDay}`,
           masterEventId: ev.id,
           start: toLocalDateTimeInputValue(occStart),
           end: toLocalDateTimeInputValue(occEnd),
@@ -8261,7 +8291,7 @@ function renderCalendarSmartAlerts() {
       if (bStart >= aEnd) break
       const bEnd = new Date(allLocal[j].end)
       if (aStart < bEnd && aEnd > bStart) {
-        const day = aStart.toISOString().slice(0, 10)
+        const day = toLocalDateOnlyValue(aStart)
         collisions.push({ day, a: allLocal[i].title, b: allLocal[j].title })
       }
       if (collisions.length >= 3) break
@@ -8398,7 +8428,7 @@ function renderCalendarDayDetail(dateStr) {
   if (!detailDateEl || !listEl) return
 
   if (!dateStr) {
-    const todayIso = new Date().toISOString().slice(0, 10)
+    const todayIso = toLocalDateOnlyValue(new Date())
     detailDateEl.textContent = 'Today agenda'
     const todayEvents = getAllCalendarEvents()
       .filter(e => String(e.start || '').slice(0, 10) === todayIso)
@@ -8442,13 +8472,14 @@ function renderCalendarDayDetail(dateStr) {
     const isReadOnly = !!ev.source && ev.source !== 'local'
     const deleteId = ev.masterEventId || ev.id
     const editId = ev.masterEventId || ev.id
+    const occurrenceId = ev.id
     return `
       <div class="calendar-day-event">
         <div class="calendar-day-event-time">${t.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})}</div>
         <div class="calendar-day-event-body">
           <div style="display:flex;align-items:center;gap:8px;">
             <div class="calendar-day-event-title">${escapeHtml(ev.title)}</div>
-            ${!isReadOnly ? `<button class="btn-xs btn-secondary" style="margin-left:auto;padding:2px 6px;font-size:10px;" onclick="openEditEventModal('${editId}')">Edit</button><button class="btn-xs btn-danger" style="padding:2px 6px;font-size:10px;" onclick="deleteEvent('${deleteId}')">✕</button>` : ''}
+            ${!isReadOnly ? `<button class="btn-xs btn-secondary" style="margin-left:auto;padding:2px 6px;font-size:10px;" onclick="openEditEventModal('${editId}', '${occurrenceId}')">Edit</button><button class="btn-xs btn-danger" style="padding:2px 6px;font-size:10px;" onclick="deleteEvent('${deleteId}', '${occurrenceId}')">✕</button>` : ''}
           </div>
           ${ev.description ? `<div class="calendar-day-event-desc">${escapeHtml(ev.description)}</div>` : ''}
         </div>
@@ -8472,9 +8503,26 @@ function openCreateEventModal()  {
   if (modal) modal.classList.add('active')
 }
 
-function openEditEventModal(eventId) {
+function openEditEventModal(eventId, occurrenceId) {
   const ev = events.find(e => e.id === eventId)
   if (!ev) return showToast('Event not found', 'error')
+  if (ev.recurrence && ev.recurrence.freq && occurrenceId && occurrenceId !== eventId) {
+    const editSeries = window.confirm('Edit entire recurring series?\nPress OK for entire series, Cancel for this occurrence only.')
+    if (!editSeries) {
+      const occ = expandRecurringEvents([ev]).find(e => e.id === occurrenceId)
+      if (occ) {
+        const copy = { ...ev }
+        delete copy.recurrence
+        copy.id = genId()
+        copy.start = occ.start
+        copy.end = occ.end
+        copy.created = new Date().toISOString()
+        events.push(copy)
+        save('events', events)
+        return openEditEventModal(copy.id, copy.id)
+      }
+    }
+  }
   const modal = document.getElementById('createEventModal')
   const titleEl = document.getElementById('eventModalTitle')
   const primaryBtn = document.getElementById('eventModalPrimaryBtn')
@@ -8516,6 +8564,7 @@ function closeCreateEventModal() {
 }
 
 function saveEvent() {
+  const before = events.slice()
   let eventId = document.getElementById('modalEventId')?.value || ''
   let title = document.getElementById('modalEventTitle').value.trim()
   let start = document.getElementById('modalEventStart').value
@@ -8575,6 +8624,12 @@ function saveEvent() {
   save('events', events)
   closeCreateEventModal()
   renderCalendar()
+  setCalendarUndoAction(eventId ? 'edit' : 'create', function () {
+    events = before
+    save('events', events)
+    renderCalendar()
+    showToast('Undo complete', 'success')
+  })
   if (eventId) {
     addActivity(`Updated event: ${title}`)
     addAuditLog('update', `Updated event "${title}"`, 'update')
@@ -8704,6 +8759,7 @@ function renderCalendar() {
         const readOnly = !!e.source && e.source !== 'local'
         const deleteId = e.masterEventId || e.id
         const editId = e.masterEventId || e.id
+        const occurrenceId = e.id
         return `
           <div style="display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid #1F2937;">
             <div style="background:#4f46e5;color:white;padding:6px 10px;border-radius:8px;font-size:12px;font-weight:700;min-width:50px;text-align:center;">
@@ -8713,7 +8769,7 @@ function renderCalendar() {
               <div style="font-size:14px;font-weight:500;">${escapeHtml(e.title)}</div>
               <div style="font-size:12px;color:#6B7280;">${timeLabel}</div>
             </div>
-            ${!readOnly ? `<button class="btn-sm btn-secondary" style="margin-left:auto;" onclick="openEditEventModal('${editId}')">Edit</button><button class="btn-sm btn-danger" onclick="deleteEvent('${deleteId}')">✕</button>` : ''}
+            ${!readOnly ? `<button class="btn-sm btn-secondary" style="margin-left:auto;" onclick="openEditEventModal('${editId}', '${occurrenceId}')">Edit</button><button class="btn-sm btn-danger" onclick="deleteEvent('${deleteId}', '${occurrenceId}')">✕</button>` : ''}
           </div>
         `
       }).join('')
@@ -8730,11 +8786,43 @@ function calendarDayClick(y, m, d) {
   renderCalendar()
 }
 
-function deleteEvent(id) {
+function deleteEvent(id, occurrenceId) {
   let ev = events.find(e => e.id === id)
+  if (!ev) return
+  const before = events.slice()
+
+  if (ev.recurrence && ev.recurrence.freq && occurrenceId && occurrenceId !== id) {
+    const deleteSeries = window.confirm('Delete entire recurring series?\nPress OK for entire series, Cancel for only this occurrence.')
+    if (!deleteSeries) {
+      const occ = expandRecurringEvents([ev]).find(e => e.id === occurrenceId)
+      if (!occ) return
+      const occDate = toLocalDateOnlyValue(occ.start)
+      if (!ev.recurrence.exdates || !Array.isArray(ev.recurrence.exdates)) ev.recurrence.exdates = []
+      if (!ev.recurrence.exdates.includes(occDate)) ev.recurrence.exdates.push(occDate)
+      save('events', events)
+      renderCalendar()
+      setCalendarUndoAction('delete', function () {
+        events = before
+        save('events', events)
+        renderCalendar()
+        showToast('Undo complete', 'success')
+      })
+      addAuditLog('delete', `Deleted recurring occurrence "${ev.title}" on ${occDate}`, 'delete')
+      showToast('Occurrence deleted', 'success')
+      updateStats()
+      return
+    }
+  }
+
   events = events.filter(e => e.id !== id && e.masterEventId !== id)
   save('events', events)
   renderCalendar()
+  setCalendarUndoAction('delete', function () {
+    events = before
+    save('events', events)
+    renderCalendar()
+    showToast('Undo complete', 'success')
+  })
   addAuditLog('delete', `Deleted event "${ev?.title || id}"`, 'delete')
   showToast('Event deleted', 'success')
   updateStats()
@@ -8770,6 +8858,7 @@ function calendarWeekCellDrop(ev, targetDateIso) {
 }
 
 function moveCalendarEventToDate(eventId, occurrenceId, targetDateIso) {
+  const before = events.slice()
   let idx = events.findIndex(e => e.id === eventId)
   if (idx < 0) return
   let current = events[idx]
@@ -8812,6 +8901,12 @@ function moveCalendarEventToDate(eventId, occurrenceId, targetDateIso) {
   }
   save('events', events)
   renderCalendar()
+  setCalendarUndoAction('move', function () {
+    events = before
+    save('events', events)
+    renderCalendar()
+    showToast('Undo complete', 'success')
+  })
   if (conflicts.length) showToast(`Moved with ${conflicts.length} conflict(s)`, 'warning')
   else showToast('Event rescheduled', 'success')
 }
