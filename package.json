@@ -4,7 +4,9 @@
   "description": "ALTER.CO – app and API in one",
   "scripts": {
     "build": "npm install --prefix backend",
-    "start": "node backend/server.js"
+    "start": "node backend/server.js",
+    "smoke": "npm --prefix backend run smoke",
+    "bugbash": "npm --prefix backend run bugbash"
   },
   "engines": {
     "node": ">=18"

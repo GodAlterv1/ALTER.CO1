@@ -5,7 +5,9 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "dev": "node server.js"
+    "dev": "node server.js",
+    "smoke": "node scripts/smoke-test.js",
+    "bugbash": "node scripts/bug-bash-mode.js"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",

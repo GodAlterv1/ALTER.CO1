@@ -1417,6 +1417,12 @@ button:disabled { opacity: 0.5; cursor: not-allowed; transform: none; box-shadow
   background: rgba(120,53,15,0.22);
   color: #fcd34d;
 }
+.calendar-alert-actions {
+  margin-top: 6px;
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
 .calendar-alert.ok {
   border-color: rgba(52,211,153,0.28);
   background: rgba(6,95,70,0.2);
@@ -5342,6 +5348,7 @@ var selectedCalendarDate = null      // 'YYYY-MM-DD'
 var draggedCalendarEventId = null
 var draggedCalendarOccurrenceId = null
 var lastCalendarUndoAction = null
+var calendarConflictSuggestions = []
 
 // Billing state
 let billingPeriod = 'monthly' // 'monthly' or 'yearly'
@@ -8283,6 +8290,7 @@ function renderCalendarSmartAlerts() {
   if (!alertsEl) return
   const allLocal = expandRecurringEvents(events.slice()).sort((a, b) => new Date(a.start) - new Date(b.start))
   const collisions = []
+  calendarConflictSuggestions = []
   for (let i = 0; i < allLocal.length; i++) {
     for (let j = i + 1; j < allLocal.length; j++) {
       const aStart = new Date(allLocal[i].start)
@@ -8292,7 +8300,15 @@ function renderCalendarSmartAlerts() {
       const bEnd = new Date(allLocal[j].end)
       if (aStart < bEnd && aEnd > bStart) {
         const day = toLocalDateOnlyValue(aStart)
-        collisions.push({ day, a: allLocal[i].title, b: allLocal[j].title })
+        const item = {
+          day,
+          a: allLocal[i].title,
+          b: allLocal[j].title,
+          aId: allLocal[i].masterEventId || allLocal[i].id,
+          bId: allLocal[j].masterEventId || allLocal[j].id
+        }
+        collisions.push(item)
+        calendarConflictSuggestions.push(item)
       }
       if (collisions.length >= 3) break
     }
@@ -8305,8 +8321,54 @@ function renderCalendarSmartAlerts() {
   }
 
   alertsEl.innerHTML = collisions.map(c => (
-    `<div class="calendar-alert">Conflict on ${escapeHtml(c.day)}: <strong>${escapeHtml(c.a)}</strong> overlaps with <strong>${escapeHtml(c.b)}</strong>.</div>`
+    `<div class="calendar-alert">Conflict on ${escapeHtml(c.day)}: <strong>${escapeHtml(c.a)}</strong> overlaps with <strong>${escapeHtml(c.b)}</strong>.
+      <div class="calendar-alert-actions">
+        <button class="btn-secondary btn-sm" onclick="viewCalendarConflictDay('${escapeHtml(c.day)}')">View</button>
+        <button class="btn-secondary btn-sm" onclick="autoShiftCalendarConflict('${escapeHtml(c.aId)}', '${escapeHtml(c.bId)}')">Auto-shift 30m</button>
+      </div>
+    </div>`
   )).join('')
+}
+
+function viewCalendarConflictDay(dayIso) {
+  if (!dayIso) return
+  const d = new Date(dayIso + 'T00:00:00')
+  if (isNaN(d.getTime())) return
+  currentDate = new Date(d.getFullYear(), d.getMonth(), d.getDate())
+  selectedCalendarDate = dayIso
+  renderCalendar()
+  showToast('Opened conflict day in calendar', 'info')
+}
+
+function autoShiftCalendarConflict(firstEventId, secondEventId) {
+  const targetId = secondEventId || firstEventId
+  const idx = events.findIndex(e => e.id === targetId)
+  if (idx < 0) {
+    showToast('Auto-shift works for directly editable local events.', 'info')
+    return
+  }
+  const before = events.slice()
+  const ev = events[idx]
+  const s = new Date(ev.start)
+  const e = new Date(ev.end)
+  if (isNaN(s.getTime()) || isNaN(e.getTime())) return
+  const shiftedStart = new Date(s.getTime() + 30 * 60000)
+  const shiftedEnd = new Date(e.getTime() + 30 * 60000)
+  events[idx] = {
+    ...ev,
+    start: toLocalDateTimeInputValue(shiftedStart),
+    end: toLocalDateTimeInputValue(shiftedEnd),
+    updated: new Date().toISOString()
+  }
+  save('events', events)
+  renderCalendar()
+  setCalendarUndoAction('shift', function () {
+    events = before
+    save('events', events)
+    renderCalendar()
+    showToast('Undo complete', 'success')
+  })
+  showToast('Shifted event by 30 minutes', 'success')
 }
 
 function quickAddCalendarEvent() {
