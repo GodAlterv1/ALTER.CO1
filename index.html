@@ -3581,7 +3581,7 @@ kbd {
       <!-- TOP BAR -->
       <div class="topbar">
         <div class="topbar-left">
-          <div class="topbar-breadcrumb">ALTER.CO / <span id="topbarTitle">Dashboard</span></div>
+          <div class="topbar-breadcrumb">ALTER.CO / <span id="topbarTitle">Dashboard</span> <span id="topbarSyncStatus" style="margin-left:8px;font-size:11px;color:#6B7280;">Live sync off</span></div>
         </div>
         <div class="topbar-search" onclick="openCommandPalette()">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
@@ -5420,6 +5420,9 @@ autoAssociateLabelsWithInputs()
 
 var syncWorkspaceTimeout = null
 var workspaceKeyUpdatedAt = {}
+var liveWorkspaceRefreshTimer = null
+var liveWorkspaceRefreshInFlight = false
+var lastLiveWorkspaceRefreshAt = ''
 let pendingConfirm = null
 
 function getAuthToken() { return localStorage.getItem('alco_token') || '' }
@@ -5448,6 +5451,84 @@ function loadWorkspaceFromBackend() {
     if (!r.ok) throw new Error('Load failed')
     return r.json()
   })
+}
+
+function setLiveSyncStatus(text, color) {
+  var el = document.getElementById('topbarSyncStatus')
+  if (!el) return
+  el.textContent = text
+  if (color) el.style.color = color
+}
+
+function getChangedWorkspaceKeys(prevMeta, nextMeta) {
+  var keys = ['projects', 'tasks', 'events', 'goals', 'team', 'notifications', 'activity', 'auditLogs']
+  var out = []
+  keys.forEach(function (k) {
+    var a = prevMeta && prevMeta[k] ? String(prevMeta[k]) : ''
+    var b = nextMeta && nextMeta[k] ? String(nextMeta[k]) : ''
+    if (a && b && a !== b) out.push(k)
+  })
+  return out
+}
+
+function stopLiveWorkspaceRefreshLoop() {
+  if (liveWorkspaceRefreshTimer) clearTimeout(liveWorkspaceRefreshTimer)
+  liveWorkspaceRefreshTimer = null
+  liveWorkspaceRefreshInFlight = false
+  setLiveSyncStatus('Live sync off', '#6B7280')
+}
+
+function scheduleLiveWorkspaceRefresh(delayMs) {
+  if (liveWorkspaceRefreshTimer) clearTimeout(liveWorkspaceRefreshTimer)
+  liveWorkspaceRefreshTimer = setTimeout(function () {
+    liveWorkspaceRefreshTimer = null
+    refreshWorkspaceLive(false)
+  }, Math.max(1000, delayMs || 15000))
+}
+
+function refreshWorkspaceLive(forceToast) {
+  if (!ALTER_API_BASE || !getAuthToken() || !currentUser) return
+  if (liveWorkspaceRefreshInFlight) return
+  liveWorkspaceRefreshInFlight = true
+  setLiveSyncStatus('Syncing...', '#9CA3AF')
+  loadWorkspaceFromBackend()
+    .then(function (fresh) {
+      if (!fresh) return
+      var oldMeta = workspaceKeyUpdatedAt || {}
+      var nextMeta = (fresh && fresh._keyUpdatedAt && typeof fresh._keyUpdatedAt === 'object') ? fresh._keyUpdatedAt : {}
+      var changed = getChangedWorkspaceKeys(oldMeta, nextMeta)
+      applyWorkspaceToState(fresh)
+      if (changed.length) {
+        renderAllPages()
+        renderNotifications()
+        if (forceToast || document.visibilityState === 'visible') {
+          showToast('Workspace updated: ' + changed.join(', '), 'info')
+        }
+      }
+      lastLiveWorkspaceRefreshAt = new Date().toISOString()
+      setLiveSyncStatus('Live · ' + timeAgo(lastLiveWorkspaceRefreshAt), '#6B7280')
+    })
+    .catch(function () {
+      if (!getAuthToken() || !currentUser) {
+        stopLiveWorkspaceRefreshLoop()
+        return
+      }
+      setLiveSyncStatus('Sync issue', '#f59e0b')
+    })
+    .finally(function () {
+      liveWorkspaceRefreshInFlight = false
+      var nextDelay = document.visibilityState === 'visible' ? 15000 : 30000
+      scheduleLiveWorkspaceRefresh(nextDelay)
+    })
+}
+
+function startLiveWorkspaceRefreshLoop() {
+  if (!ALTER_API_BASE || !getAuthToken() || !currentUser) {
+    stopLiveWorkspaceRefreshLoop()
+    return
+  }
+  setLiveSyncStatus('Live sync on', '#10B981')
+  scheduleLiveWorkspaceRefresh(2500)
 }
 
 function applyWorkspaceToState(data) {
@@ -6052,12 +6133,25 @@ function demoLogin() {
 
 /** Marketing landing vs auth vs app */
 function showLandingScreen() {
+  stopLiveWorkspaceRefreshLoop()
   var land = document.getElementById('landingScreen')
   var login = document.getElementById('loginScreen')
   var app = document.getElementById('app')
   if (land) land.classList.remove('hidden')
   if (login) login.classList.add('hidden')
   if (app) app.classList.add('hidden')
+}
+
+if (typeof document !== 'undefined' && !window.__alcoLiveSyncVisibilityBound) {
+  window.__alcoLiveSyncVisibilityBound = true
+  document.addEventListener('visibilitychange', function () {
+    if (!currentUser || !ALTER_API_BASE || !getAuthToken()) return
+    if (document.visibilityState === 'visible') {
+      refreshWorkspaceLive(false)
+    } else {
+      scheduleLiveWorkspaceRefresh(30000)
+    }
+  })
 }
 
 function showAuthScreen(tab) {
@@ -6134,6 +6228,7 @@ function initializeApp() {
       if (googleCalendarConnected) refreshGoogleCalendarEvents()
     })
   }
+  startLiveWorkspaceRefreshLoop()
 }
 
 function renderAllPages() {
