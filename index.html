@@ -3610,6 +3610,10 @@ kbd {
                 </div>
               </div>
             </div>
+            <div class="card">
+              <h3>Activation Insights</h3>
+              <div id="dashboardActivationInsights" style="font-size:13px;color:#9CA3AF;line-height:1.55;"></div>
+            </div>
           </div>
         </div>
 
@@ -3835,6 +3839,11 @@ kbd {
             <input type="checkbox" id="taskMyOnly" onchange="filterTasks()">
             My tasks only
           </label>
+          <select id="taskSavedViewSelect" onchange="applySelectedTaskSavedView()" style="padding:10px 14px;background:#111827;border:1px solid #1F2937;color:white;border-radius:8px;cursor:pointer;font-size:13px;min-width:190px;">
+            <option value="">Saved view...</option>
+          </select>
+          <button type="button" class="btn-secondary btn-sm" onclick="saveCurrentTaskViewPrompt()">Save view</button>
+          <button type="button" class="btn-secondary btn-sm" onclick="deleteSelectedTaskSavedView()">Delete view</button>
         </div>
         <div class="kanban-board">
           <div class="kanban-column">
@@ -5904,12 +5913,14 @@ function initializeApp() {
 function renderAllPages() {
   updateStats()
   populateTaskProjectFilter()
+  renderTaskSavedViews()
   renderProjects()
   renderTasks()
   renderIdeas()
   renderCalendar()
   renderTeam()
   renderActivityFeed()
+  renderDashboardActivationInsights()
   renderDashboardCharts()
   renderProfile()
   populateTimerProjectSelect()
@@ -6149,6 +6160,8 @@ function updateCommandResults() {
 
   // Ideas search
   let filteredIdeas = q ? ideas.filter(i => (i.title || '').toLowerCase().includes(q) || (i.description || '').toLowerCase().includes(q)).slice(0, 3) : []
+  let savedViews = Array.isArray(userSettings.taskSavedViews) ? userSettings.taskSavedViews : []
+  let filteredTaskViews = q ? savedViews.filter(v => (v.name || '').toLowerCase().includes(q)).slice(0, 6) : savedViews.slice(0, 4)
 
   if (filteredPages.length) {
     html += `<div class="command-section-label">Navigation</div>`
@@ -6188,6 +6201,27 @@ function updateCommandResults() {
     html += `<div class="command-section-label">Ideas</div>`
     filteredIdeas.forEach(i => {
       let item = { icon:'💡', label: i.title, sub: i.category || 'idea', action: () => switchPage('ideas', null) }
+      commandItems.push(item)
+      html += commandItemHtml(item)
+    })
+  }
+
+  if (filteredTaskViews.length) {
+    html += `<div class="command-section-label">Task Views</div>`
+    filteredTaskViews.forEach(v => {
+      let item = {
+        icon:'🧭',
+        label: v.name || 'Saved view',
+        sub: 'Apply saved task filters',
+        action: () => {
+          switchPage('tasks', null)
+          setTimeout(function () {
+            const sel = document.getElementById('taskSavedViewSelect')
+            if (sel) sel.value = v.id
+            applyTaskFilterState(v.state || {})
+          }, 120)
+        }
+      }
       commandItems.push(item)
       html += commandItemHtml(item)
     })
@@ -6453,6 +6487,24 @@ function renderDashboardSuggestions() {
     return
   }
   el.innerHTML = slice.map(s => `<button type="button" class="workspace-suggestion-chip" onclick="${s.action}">${escapeHtml(s.label)}</button>`).join('')
+}
+
+function renderDashboardActivationInsights() {
+  const el = document.getElementById('dashboardActivationInsights')
+  if (!el) return
+  const hasProject = projects.length > 0
+  const hasTask = tasks.length > 0
+  const hasEvent = events.length > 0
+  const hasGoogleConnected = !!googleCalendarConnected
+  const hasTeammate = Array.isArray(team) && team.length > 0
+  const done = [hasProject, hasTask, hasEvent, hasGoogleConnected, hasTeammate].filter(Boolean).length
+  const score = Math.round((done / 5) * 100)
+  const lines = [
+    `Activation score: <strong style="color:#E5E7EB;">${score}%</strong>`,
+    `Projects: ${hasProject ? 'Yes' : 'No'} · Tasks: ${hasTask ? 'Yes' : 'No'} · Events: ${hasEvent ? 'Yes' : 'No'}`,
+    `Google Calendar: ${hasGoogleConnected ? 'Connected' : 'Not connected'} · Team: ${hasTeammate ? 'Invited' : 'No teammate yet'}`
+  ]
+  el.innerHTML = lines.join('<br>')
 }
 
 function updateStats() {
@@ -7208,21 +7260,94 @@ function renderTasks(taskList) {
   })
 }
 
+function getTaskFilterState() {
+  return {
+    q: (document.getElementById('taskSearch')?.value || '').toLowerCase(),
+    status: document.getElementById('taskFilter')?.value || '',
+    priority: document.getElementById('taskPriorityFilter')?.value || '',
+    myOnly: !!document.getElementById('taskMyOnly')?.checked,
+    projectId: document.getElementById('taskProjectFilter')?.value || ''
+  }
+}
 
-function filterTasks() {
-  let search   = document.getElementById('taskSearch').value.toLowerCase()
-  let status   = document.getElementById('taskFilter').value
-  let priority = document.getElementById('taskPriorityFilter').value
-  let myOnly   = document.getElementById('taskMyOnly')?.checked
-  let projectId = document.getElementById('taskProjectFilter')?.value || ''
-  let filtered = tasks.filter(t => {
-    let ms = t.title.toLowerCase().includes(search) || (t.description||'').toLowerCase().includes(search)
-    let mst = !status || t.status === status
-    let mp  = !priority || t.priority === priority
-    let mo  = !myOnly || t.assignee === currentUser.id
-    let mproj = !projectId || t.projectId === projectId
+function getFilteredTasksByState(state) {
+  const s = state || getTaskFilterState()
+  return tasks.filter(t => {
+    let ms = t.title.toLowerCase().includes(s.q) || (t.description || '').toLowerCase().includes(s.q)
+    let mst = !s.status || t.status === s.status
+    let mp = !s.priority || t.priority === s.priority
+    let mo = !s.myOnly || t.assignee === currentUser.id
+    let mproj = !s.projectId || t.projectId === s.projectId
     return ms && mst && mp && mo && mproj
   })
+}
+
+function renderTaskSavedViews() {
+  const sel = document.getElementById('taskSavedViewSelect')
+  if (!sel) return
+  const views = Array.isArray(userSettings.taskSavedViews) ? userSettings.taskSavedViews : []
+  sel.innerHTML = '<option value="">Saved view...</option>' + views.map(v => `<option value="${escapeHtml(v.id)}">${escapeHtml(v.name)}</option>`).join('')
+}
+
+function applyTaskFilterState(state) {
+  if (!state || typeof state !== 'object') return
+  const searchEl = document.getElementById('taskSearch')
+  const statusEl = document.getElementById('taskFilter')
+  const priorityEl = document.getElementById('taskPriorityFilter')
+  const myOnlyEl = document.getElementById('taskMyOnly')
+  const projectEl = document.getElementById('taskProjectFilter')
+  if (searchEl) searchEl.value = state.q || ''
+  if (statusEl) statusEl.value = state.status || ''
+  if (priorityEl) priorityEl.value = state.priority || ''
+  if (myOnlyEl) myOnlyEl.checked = !!state.myOnly
+  if (projectEl) projectEl.value = state.projectId || ''
+  filterTasks()
+}
+
+function saveCurrentTaskViewPrompt() {
+  const name = window.prompt('Name this task view:')
+  if (!name || !name.trim()) return
+  const cleanName = name.trim().slice(0, 60)
+  if (!userSettings || typeof userSettings !== 'object') userSettings = {}
+  if (!Array.isArray(userSettings.taskSavedViews)) userSettings.taskSavedViews = []
+  const state = getTaskFilterState()
+  const item = { id: genId(), name: cleanName, state }
+  userSettings.taskSavedViews.push(item)
+  save('usersettings', userSettings)
+  renderTaskSavedViews()
+  const sel = document.getElementById('taskSavedViewSelect')
+  if (sel) sel.value = item.id
+  showToast('Saved task view', 'success')
+}
+
+function applySelectedTaskSavedView() {
+  const sel = document.getElementById('taskSavedViewSelect')
+  if (!sel) return
+  const id = sel.value
+  if (!id) return
+  const views = Array.isArray(userSettings.taskSavedViews) ? userSettings.taskSavedViews : []
+  const row = views.find(v => v.id === id)
+  if (!row) return
+  applyTaskFilterState(row.state || {})
+}
+
+function deleteSelectedTaskSavedView() {
+  const sel = document.getElementById('taskSavedViewSelect')
+  if (!sel || !sel.value) return showToast('Select a saved view first', 'info')
+  const id = sel.value
+  const views = Array.isArray(userSettings.taskSavedViews) ? userSettings.taskSavedViews : []
+  const row = views.find(v => v.id === id)
+  if (!row) return
+  if (!window.confirm(`Delete saved view "${row.name}"?`)) return
+  userSettings.taskSavedViews = views.filter(v => v.id !== id)
+  save('usersettings', userSettings)
+  renderTaskSavedViews()
+  showToast('Saved view deleted', 'success')
+}
+
+
+function filterTasks() {
+  let filtered = getFilteredTasksByState(getTaskFilterState())
   renderTasks(filtered)
 }
 
@@ -9130,6 +9255,7 @@ function updateGoogleCalendarUi() {
     calendarBtn.textContent = googleCalendarConnected ? 'Google Calendar Connected' : 'Connect Google Calendar'
   }
   if (settingsBtn) settingsBtn.textContent = googleCalendarConnected ? 'Disconnect' : 'Connect'
+  renderDashboardActivationInsights()
 }
 
 // Fetch Google Calendar events for the visible month from backend
