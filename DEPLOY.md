@@ -104,6 +104,10 @@ npm run smoke
 
 Use your **HTTPS** service URL (no trailing slash). This runs register/login, workspace PUT + PATCH, calendar endpoints, and deletes the temp user.
 
+**No Node on your PC?** On GitHub: open your repo → **Actions** → **Smoke test (production)** → **Run workflow** (optional: change the URL). GitHub runs `npm run smoke` in the cloud.
+
+You can also double-click **`run-smoke-production.bat`** in the project folder if Node is installed.
+
 ---
 
 ## If the build failed last time
