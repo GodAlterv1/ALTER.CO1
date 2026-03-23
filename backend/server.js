@@ -1212,6 +1212,40 @@ app.post('/api/integrations/email/task-assigned', authMiddleware, async (req, re
   }
 })
 
+app.post('/api/integrations/email/mention', authMiddleware, async (req, res) => {
+  try {
+    if (!isEmailConfigured()) {
+      return res.status(503).json({ error: 'Email not configured on server' })
+    }
+    const { to, contextLabel, snippet, linkType, linkId } = req.body || {}
+    if (!to || !String(to).includes('@')) {
+      return res.status(400).json({ error: 'Missing or invalid "to" email' })
+    }
+    const fromUser = req.username || 'A teammate'
+    const ctx = contextLabel ? String(contextLabel).slice(0, 200) : 'ALTER.CO'
+    const snip = snippet ? String(snippet).slice(0, 800) : ''
+    const lt = linkType ? String(linkType) : ''
+    const lid = linkId ? String(linkId) : ''
+    const ok = await sendEmailSafe({
+      to: String(to).trim(),
+      subject: `You were mentioned in ALTER.CO — ${ctx}`,
+      text:
+        `${fromUser} mentioned you.\n\n` +
+        `Where: ${ctx}\n` +
+        (snip ? `\n"${snip}"\n` : '\n') +
+        (lt && lid ? `\nContext: ${lt} (${lid})\n` : '') +
+        `\nOpen ALTER.CO to see the full thread and reply.\n`
+    })
+    if (!ok) {
+      return res.status(500).json({ error: 'Failed to send mention email' })
+    }
+    res.json({ ok: true })
+  } catch (e) {
+    console.error('Error sending mention email', e)
+    res.status(500).json({ error: 'Failed to send mention email' })
+  }
+})
+
 // ----- Integrations: Google Calendar OAuth + read-only sync -----
 app.get('/api/integrations/google/calendar/start', authMiddleware, (req, res) => {
   if (!isGoogleCalendarOAuthConfigured()) {

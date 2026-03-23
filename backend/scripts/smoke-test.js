@@ -103,6 +103,31 @@ async function main() {
   }
   pass();
 
+  step("PATCH workspace userSettings (partial update)");
+  const patchMarker = `${marker}-patch`;
+  const patchUserSettings = { ...(wsAfter.body.userSettings || {}), smokePatchMarker: patchMarker };
+  const patchBody = { value: patchUserSettings };
+  const expectedAt =
+    wsAfter.body._keyUpdatedAt && typeof wsAfter.body._keyUpdatedAt === "object"
+      ? wsAfter.body._keyUpdatedAt.userSettings
+      : "";
+  if (expectedAt) patchBody.expectedUpdatedAt = String(expectedAt);
+  const wsPatch = await request("/api/workspace/userSettings", {
+    method: "PATCH",
+    headers: { ...authHeaders, "Content-Type": "application/json" },
+    body: JSON.stringify(patchBody)
+  });
+  if (!wsPatch.res.ok || !wsPatch.body || !wsPatch.body.ok) {
+    return fail("PATCH /api/workspace/:key failed", JSON.stringify(wsPatch.body));
+  }
+  const wsPatchRead = await request("/api/workspace", { headers: authHeaders });
+  const patchRead =
+    wsPatchRead.body && wsPatchRead.body.userSettings && wsPatchRead.body.userSettings.smokePatchMarker;
+  if (!wsPatchRead.res.ok || patchRead !== patchMarker) {
+    return fail("PATCH workspace round-trip failed", JSON.stringify(wsPatchRead.body));
+  }
+  pass();
+
   step("Google Calendar integration status");
   const calStatus = await request("/api/integrations/google/calendar/status", { headers: authHeaders });
   if (!calStatus.res.ok || !calStatus.body || typeof calStatus.body.connected !== "boolean") {

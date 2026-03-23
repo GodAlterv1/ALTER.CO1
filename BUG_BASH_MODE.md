@@ -20,6 +20,7 @@ Then run commands again.
 - Health endpoint responds.
 - Register/login/auth works.
 - Workspace read/write round-trip works.
+- `PATCH /api/workspace/:key` partial update (e.g. `userSettings`) round-trip works.
 - Google Calendar status endpoint responds for authenticated user.
 - Calendar events endpoint responds.
 - Temp smoke user cleanup works.
@@ -32,6 +33,10 @@ Then run commands again.
 - Quick add natural language input.
 - Google Calendar connect/sync/disconnect.
 - Task-to-calendar conversion.
+- Notifications: @mentions (task/event), **Open** link navigates to correct task or calendar day.
+- **What’s new** (✨) opens once and marks seen after dismiss.
+- **Settings → Workspace**: local analytics summary (export/clear optional).
+- Comment edit/delete on tasks and calendar event comments (author vs admin).
 - No console errors on core pages.
 
 ## Notes

@@ -19,6 +19,7 @@ Your repo must have this structure (Render runs from the **root** of the repo):
 ALTER.CO/
   package.json       ← build + start run from here
   index.html
+  js/app.js          ← main app script (loaded by index.html)
   render.yaml
   backend/
     package.json
@@ -89,6 +90,19 @@ git push -u origin main
 - Wait until the deploy is **green** (a few minutes).
 - Your URL will look like: **https://alter-co.onrender.com** (or whatever name you chose).
 - Open that URL: you should see the ALTER.CO login page. Sign up and use the app; the same URL is used for the site and the API.
+
+---
+
+## Smoke tests against production
+
+After deploy, you can run the same smoke suite against your live URL (PowerShell):
+
+```powershell
+$env:SMOKE_BASE_URL="https://YOUR-SERVICE.onrender.com"
+npm run smoke
+```
+
+Use your **HTTPS** service URL (no trailing slash). This runs register/login, workspace PUT + PATCH, calendar endpoints, and deletes the temp user.
 
 ---
 
