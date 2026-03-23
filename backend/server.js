@@ -42,6 +42,20 @@ function isGoogleCalendarOAuthConfigured() {
   return Boolean(GOOGLE_CLIENT_ID && GOOGLE_CLIENT_SECRET && GOOGLE_CLIENT_REDIRECT_URI)
 }
 
+function buildGoogleOAuthUrl(userId) {
+  const state = signGoogleOAuthState(userId)
+  const params = new URLSearchParams({
+    client_id: GOOGLE_CLIENT_ID,
+    redirect_uri: GOOGLE_CLIENT_REDIRECT_URI,
+    response_type: 'code',
+    scope: GOOGLE_CALENDAR_SCOPES,
+    access_type: 'offline',
+    prompt: 'consent',
+    state
+  })
+  return 'https://accounts.google.com/o/oauth2/v2/auth?' + params.toString()
+}
+
 /** In-memory access token cache: userId -> { accessToken, expiresAt } */
 const googleAccessTokenCache = new Map()
 
@@ -1138,6 +1152,17 @@ app.post('/api/integrations/email/task-assigned', authMiddleware, async (req, re
 })
 
 // ----- Integrations: Google Calendar OAuth + read-only sync -----
+app.get('/api/integrations/google/calendar/start', authMiddleware, (req, res) => {
+  if (!isGoogleCalendarOAuthConfigured()) {
+    return res.status(503).json({
+      error: 'Google Calendar OAuth is not configured on this server',
+      configured: false
+    })
+  }
+  const authUrl = buildGoogleOAuthUrl(req.userId)
+  res.json({ configured: true, authUrl })
+})
+
 /**
  * Start OAuth: GET /auth/google/calendar?token=JWT
  * (Browser navigation cannot send Authorization headers; token is short-lived JWT from login.)
@@ -1175,17 +1200,7 @@ app.get('/auth/google/calendar', (req, res) => {
     return res.status(401).send(htmlMessagePage('Invalid session', 'Please sign in again.'))
   }
 
-  const state = signGoogleOAuthState(userId)
-  const params = new URLSearchParams({
-    client_id: GOOGLE_CLIENT_ID,
-    redirect_uri: GOOGLE_CLIENT_REDIRECT_URI,
-    response_type: 'code',
-    scope: GOOGLE_CALENDAR_SCOPES,
-    access_type: 'offline',
-    prompt: 'consent',
-    state
-  })
-  res.redirect(302, 'https://accounts.google.com/o/oauth2/v2/auth?' + params.toString())
+  res.redirect(302, buildGoogleOAuthUrl(userId))
 })
 
 app.get('/auth/google/calendar/callback', async (req, res) => {

@@ -4938,9 +4938,10 @@ kbd {
 <div id="createEventModal" class="modal" onclick="handleModalBackdrop(event)">
   <div class="modal-content" onclick="event.stopPropagation()">
     <div class="modal-header">
-      <h2>📅 Create New Event</h2>
+      <h2 id="eventModalTitle">📅 Create New Event</h2>
       <button class="modal-close" onclick="closeCreateEventModal()">✕</button>
     </div>
+    <input id="modalEventId" type="hidden" value="">
     <div class="form-group">
       <label>Event Title *</label>
       <input id="modalEventTitle" placeholder="e.g. Sprint Review" type="text">
@@ -4984,7 +4985,7 @@ kbd {
       </div>
     </div>
     <div style="display:flex;gap:10px;margin-top:20px;">
-      <button onclick="saveEvent()">Create Event</button>
+      <button id="eventModalPrimaryBtn" onclick="saveEvent()">Create Event</button>
       <button onclick="closeCreateEventModal()" class="btn-secondary">Cancel</button>
     </div>
   </div>
@@ -5338,6 +5339,7 @@ let currentTaskDetailId = null
 var calendarView = 'month'           // 'month' or 'week' (week is UI-only for now)
 var selectedCalendarDate = null      // 'YYYY-MM-DD'
 var draggedCalendarEventId = null
+var draggedCalendarOccurrenceId = null
 
 // Billing state
 let billingPeriod = 'monthly' // 'monthly' or 'yearly'
@@ -5500,6 +5502,17 @@ function timeAgo(iso) {
   if (diff < 3600000) return Math.floor(diff/60000) + 'm ago'
   if (diff < 86400000) return Math.floor(diff/3600000) + 'h ago'
   return Math.floor(diff/86400000) + 'd ago'
+}
+
+function toLocalDateTimeInputValue(dateLike) {
+  const d = dateLike instanceof Date ? dateLike : new Date(dateLike)
+  if (isNaN(d.getTime())) return ''
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  const hh = String(d.getHours()).padStart(2, '0')
+  const mm = String(d.getMinutes()).padStart(2, '0')
+  return `${y}-${m}-${day}T${hh}:${mm}`
 }
 
 function greeting() {
@@ -7311,7 +7324,7 @@ function convertTaskToCalendarEvent(taskId) {
   const task = tasks.find(t => t.id === taskId)
   if (!task) return
 
-  let start = task.dueDate || (selectedCalendarDate ? (selectedCalendarDate + 'T09:00') : new Date().toISOString().slice(0, 16))
+  let start = task.dueDate || (selectedCalendarDate ? (selectedCalendarDate + 'T09:00') : toLocalDateTimeInputValue(new Date()))
   if (typeof start === 'string' && !start.includes('T')) start = start + 'T09:00'
   const startDate = new Date(start)
   if (isNaN(startDate.getTime())) return showToast('Task date is invalid for calendar conversion', 'error')
@@ -7319,14 +7332,14 @@ function convertTaskToCalendarEvent(taskId) {
   const eventTitle = `Task: ${task.title}`
   const eventDesc = (task.description || '').trim()
   const eventColor = task.priority === 'high' ? 'event-red' : task.priority === 'low' ? 'event-green' : 'event-orange'
-  const conflicts = findEventConflicts(startDate.toISOString().slice(0, 16), endDate.toISOString().slice(0, 16))
+  const conflicts = findEventConflicts(toLocalDateTimeInputValue(startDate), toLocalDateTimeInputValue(endDate))
 
   events.push({
     id: genId(),
     title: eventTitle,
     description: eventDesc,
-    start: startDate.toISOString().slice(0, 16),
-    end: endDate.toISOString().slice(0, 16),
+    start: toLocalDateTimeInputValue(startDate),
+    end: toLocalDateTimeInputValue(endDate),
     color: eventColor,
     linkedTaskId: task.id,
     author: currentUser.id,
@@ -8122,7 +8135,7 @@ function getAllCalendarEvents() {
     try {
       const d = new Date(dateTimeLocal)
       if (isNaN(d.getTime())) return dateTimeLocal
-      return new Date(d.getTime() + hours * 60 * 60 * 1000).toISOString().slice(0, 16)
+      return toLocalDateTimeInputValue(new Date(d.getTime() + hours * 60 * 60 * 1000))
     } catch (e) {
       return dateTimeLocal
     }
@@ -8198,8 +8211,8 @@ function expandRecurringEvents(inputEvents) {
           ...ev,
           id: `${ev.id}__${occStart.toISOString().slice(0, 10)}`,
           masterEventId: ev.id,
-          start: occStart.toISOString().slice(0, 16),
-          end: occEnd.toISOString().slice(0, 16),
+          start: toLocalDateTimeInputValue(occStart),
+          end: toLocalDateTimeInputValue(occEnd),
           source: 'local'
         })
       }
@@ -8350,8 +8363,8 @@ function parseNaturalQuickEvent(text) {
   const end = new Date(start.getTime() + durationMin * 60000)
   return {
     title: title.charAt(0).toUpperCase() + title.slice(1),
-    start: start.toISOString().slice(0, 16),
-    end: end.toISOString().slice(0, 16),
+    start: toLocalDateTimeInputValue(start),
+    end: toLocalDateTimeInputValue(end),
     description: ''
   }
 }
@@ -8428,13 +8441,14 @@ function renderCalendarDayDetail(dateStr) {
     const t = new Date(ev.start)
     const isReadOnly = !!ev.source && ev.source !== 'local'
     const deleteId = ev.masterEventId || ev.id
+    const editId = ev.masterEventId || ev.id
     return `
       <div class="calendar-day-event">
         <div class="calendar-day-event-time">${t.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})}</div>
         <div class="calendar-day-event-body">
           <div style="display:flex;align-items:center;gap:8px;">
             <div class="calendar-day-event-title">${escapeHtml(ev.title)}</div>
-            ${!isReadOnly ? `<button class="btn-xs btn-danger" style="margin-left:auto;padding:2px 6px;font-size:10px;" onclick="deleteEvent('${deleteId}')">✕</button>` : ''}
+            ${!isReadOnly ? `<button class="btn-xs btn-secondary" style="margin-left:auto;padding:2px 6px;font-size:10px;" onclick="openEditEventModal('${editId}')">Edit</button><button class="btn-xs btn-danger" style="padding:2px 6px;font-size:10px;" onclick="deleteEvent('${deleteId}')">✕</button>` : ''}
           </div>
           ${ev.description ? `<div class="calendar-day-event-desc">${escapeHtml(ev.description)}</div>` : ''}
         </div>
@@ -8447,18 +8461,62 @@ function renderCalendarDayDetail(dateStr) {
 /* ===================================================
    CALENDAR
 =================================================== */
-function openCreateEventModal()  { document.getElementById('createEventModal').classList.add('active') }
+function openCreateEventModal()  {
+  const modal = document.getElementById('createEventModal')
+  const titleEl = document.getElementById('eventModalTitle')
+  const primaryBtn = document.getElementById('eventModalPrimaryBtn')
+  const idEl = document.getElementById('modalEventId')
+  if (titleEl) titleEl.textContent = '📅 Create New Event'
+  if (primaryBtn) primaryBtn.textContent = 'Create Event'
+  if (idEl) idEl.value = ''
+  if (modal) modal.classList.add('active')
+}
+
+function openEditEventModal(eventId) {
+  const ev = events.find(e => e.id === eventId)
+  if (!ev) return showToast('Event not found', 'error')
+  const modal = document.getElementById('createEventModal')
+  const titleEl = document.getElementById('eventModalTitle')
+  const primaryBtn = document.getElementById('eventModalPrimaryBtn')
+  const idEl = document.getElementById('modalEventId')
+  if (idEl) idEl.value = ev.id
+  if (titleEl) titleEl.textContent = '✏️ Edit Event'
+  if (primaryBtn) primaryBtn.textContent = 'Save changes'
+  const titleInput = document.getElementById('modalEventTitle')
+  const startInput = document.getElementById('modalEventStart')
+  const endInput = document.getElementById('modalEventEnd')
+  const colorInput = document.getElementById('modalEventColor')
+  const descInput = document.getElementById('modalEventDesc')
+  const repeatInput = document.getElementById('modalEventRepeat')
+  const repeatUntilInput = document.getElementById('modalEventRepeatUntil')
+  if (titleInput) titleInput.value = ev.title || ''
+  if (startInput) startInput.value = typeof ev.start === 'string' ? ev.start.slice(0, 16) : ''
+  if (endInput) endInput.value = typeof ev.end === 'string' ? ev.end.slice(0, 16) : ''
+  if (colorInput) colorInput.value = ev.color || ''
+  if (descInput) descInput.value = ev.description || ''
+  if (repeatInput) repeatInput.value = (ev.recurrence && ev.recurrence.freq) ? ev.recurrence.freq : 'none'
+  if (repeatUntilInput) repeatUntilInput.value = (ev.recurrence && ev.recurrence.until) ? ev.recurrence.until : ''
+  if (modal) modal.classList.add('active')
+}
+
 function closeCreateEventModal() {
   document.getElementById('createEventModal').classList.remove('active')
   ;['modalEventTitle','modalEventDesc'].forEach(id => { let el = document.getElementById(id); if(el) el.value = '' })
   ;['modalEventStart','modalEventEnd'].forEach(id => { let el = document.getElementById(id); if(el) el.value = '' })
+  let eventIdEl = document.getElementById('modalEventId')
+  if (eventIdEl) eventIdEl.value = ''
   let repeatEl = document.getElementById('modalEventRepeat')
   if (repeatEl) repeatEl.value = 'none'
   let untilEl = document.getElementById('modalEventRepeatUntil')
   if (untilEl) untilEl.value = ''
+  let titleEl = document.getElementById('eventModalTitle')
+  if (titleEl) titleEl.textContent = '📅 Create New Event'
+  let primaryBtn = document.getElementById('eventModalPrimaryBtn')
+  if (primaryBtn) primaryBtn.textContent = 'Create Event'
 }
 
 function saveEvent() {
+  let eventId = document.getElementById('modalEventId')?.value || ''
   let title = document.getElementById('modalEventTitle').value.trim()
   let start = document.getElementById('modalEventStart').value
   let end   = document.getElementById('modalEventEnd').value
@@ -8472,19 +8530,19 @@ function saveEvent() {
   // Sensible defaults when times not provided
   if (!start) {
     if (selectedCalendarDate) start = selectedCalendarDate + 'T09:00'
-    else start = new Date().toISOString().slice(0, 16)
+    else start = toLocalDateTimeInputValue(new Date())
   }
 
   if (!end) {
     let startDate = new Date(start)
-    end = new Date(startDate.getTime() + 60 * 60 * 1000).toISOString().slice(0, 16)
+    end = toLocalDateTimeInputValue(new Date(startDate.getTime() + 60 * 60 * 1000))
   }
 
   if (new Date(end) <= new Date(start)) {
     return showToast('End time must be after start time', 'error')
   }
 
-  const conflicts = findEventConflicts(start, end)
+  const conflicts = findEventConflicts(start, end, eventId || undefined)
   const recurrence = repeat !== 'none'
     ? {
         freq: repeat,
@@ -8493,21 +8551,41 @@ function saveEvent() {
       }
     : null
 
-  events.push({
-    id: genId(), title, description: desc,
-    start, end, color,
-    recurrence,
-    author: currentUser.id, created: new Date().toISOString()
-  })
+  if (eventId) {
+    const idx = events.findIndex(e => e.id === eventId)
+    if (idx < 0) return showToast('Event not found', 'error')
+    events[idx] = {
+      ...events[idx],
+      title,
+      description: desc,
+      start,
+      end,
+      color,
+      recurrence,
+      updated: new Date().toISOString()
+    }
+  } else {
+    events.push({
+      id: genId(), title, description: desc,
+      start, end, color,
+      recurrence,
+      author: currentUser.id, created: new Date().toISOString()
+    })
+  }
   save('events', events)
   closeCreateEventModal()
   renderCalendar()
-  addActivity(`Created event: ${title}`)
-  addAuditLog('create', `Created event "${title}"`, 'create')
-  if (conflicts.length) {
-    showToast(`Event created with ${conflicts.length} conflict(s)`, 'warning')
+  if (eventId) {
+    addActivity(`Updated event: ${title}`)
+    addAuditLog('update', `Updated event "${title}"`, 'update')
   } else {
-    showToast('Event created!', 'success')
+    addActivity(`Created event: ${title}`)
+    addAuditLog('create', `Created event "${title}"`, 'create')
+  }
+  if (conflicts.length) {
+    showToast(`${eventId ? 'Event updated' : 'Event created'} with ${conflicts.length} conflict(s)`, 'warning')
+  } else {
+    showToast(eventId ? 'Event updated!' : 'Event created!', 'success')
   }
   updateStats()
 }
@@ -8566,7 +8644,7 @@ function renderCalendar() {
             ${dayEvents.slice(0, 4).map(e => {
               const moveId = e.masterEventId || e.id
               const canDrag = !(e.source && e.source !== 'local')
-              return `<div class="day-event ${escapeHtml(e.color||'')} ${canDrag ? 'draggable-event' : ''}" ${canDrag ? `draggable="true" ondragstart="startCalendarEventDrag(event, '${escapeHtml(moveId)}')"` : ''}>${escapeHtml(e.title)}</div>`
+              return `<div class="day-event ${escapeHtml(e.color||'')} ${canDrag ? 'draggable-event' : ''}" ${canDrag ? `draggable="true" ondragstart="startCalendarEventDrag(event, '${escapeHtml(moveId)}', '${escapeHtml(e.id)}')"` : ''}>${escapeHtml(e.title)}</div>`
             }).join('')}
             ${dayEvents.length > 4 ? `<div style="font-size:9px;color:#4B5563;">+${dayEvents.length - 4} more</div>` : ''}
           </div>
@@ -8625,6 +8703,7 @@ function renderCalendar() {
         const timeLabel = d.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})
         const readOnly = !!e.source && e.source !== 'local'
         const deleteId = e.masterEventId || e.id
+        const editId = e.masterEventId || e.id
         return `
           <div style="display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid #1F2937;">
             <div style="background:#4f46e5;color:white;padding:6px 10px;border-radius:8px;font-size:12px;font-weight:700;min-width:50px;text-align:center;">
@@ -8634,7 +8713,7 @@ function renderCalendar() {
               <div style="font-size:14px;font-weight:500;">${escapeHtml(e.title)}</div>
               <div style="font-size:12px;color:#6B7280;">${timeLabel}</div>
             </div>
-            ${!readOnly ? `<button class="btn-sm btn-danger" style="margin-left:auto;" onclick="deleteEvent('${deleteId}')">✕</button>` : ''}
+            ${!readOnly ? `<button class="btn-sm btn-secondary" style="margin-left:auto;" onclick="openEditEventModal('${editId}')">Edit</button><button class="btn-sm btn-danger" onclick="deleteEvent('${deleteId}')">✕</button>` : ''}
           </div>
         `
       }).join('')
@@ -8661,8 +8740,9 @@ function deleteEvent(id) {
   updateStats()
 }
 
-function startCalendarEventDrag(ev, eventId) {
+function startCalendarEventDrag(ev, eventId, occurrenceId) {
   draggedCalendarEventId = eventId
+  draggedCalendarOccurrenceId = occurrenceId || eventId
   try {
     ev.dataTransfer.effectAllowed = 'move'
     ev.dataTransfer.setData('text/plain', eventId)
@@ -8682,15 +8762,37 @@ function calendarWeekCellDrop(ev, targetDateIso) {
   ev.preventDefault()
   if (ev.currentTarget && ev.currentTarget.classList) ev.currentTarget.classList.remove('drop-target')
   const eventId = draggedCalendarEventId || (ev.dataTransfer ? ev.dataTransfer.getData('text/plain') : '')
+  const occurrenceId = draggedCalendarOccurrenceId || eventId
   draggedCalendarEventId = null
+  draggedCalendarOccurrenceId = null
   if (!eventId) return
-  moveCalendarEventToDate(eventId, targetDateIso)
+  moveCalendarEventToDate(eventId, occurrenceId, targetDateIso)
 }
 
-function moveCalendarEventToDate(eventId, targetDateIso) {
-  const idx = events.findIndex(e => e.id === eventId)
+function moveCalendarEventToDate(eventId, occurrenceId, targetDateIso) {
+  let idx = events.findIndex(e => e.id === eventId)
   if (idx < 0) return
-  const current = events[idx]
+  let current = events[idx]
+
+  if (current.recurrence && current.recurrence.freq) {
+    const moveSeries = window.confirm('Move entire recurring series?\nPress OK for entire series, Cancel for this occurrence only.')
+    if (!moveSeries) {
+      const occ = expandRecurringEvents([current]).find(e => e.id === occurrenceId)
+      if (occ) {
+        const copy = { ...current }
+        delete copy.recurrence
+        copy.id = genId()
+        copy.masterEventId = undefined
+        copy.start = occ.start
+        copy.end = occ.end
+        copy.created = new Date().toISOString()
+        events.push(copy)
+        idx = events.length - 1
+        current = events[idx]
+      }
+    }
+  }
+
   const oldStart = new Date(current.start)
   const oldEnd = new Date(current.end)
   if (isNaN(oldStart.getTime()) || isNaN(oldEnd.getTime())) return
@@ -8698,8 +8800,8 @@ function moveCalendarEventToDate(eventId, targetDateIso) {
   nextStart.setHours(oldStart.getHours(), oldStart.getMinutes(), 0, 0)
   const duration = oldEnd.getTime() - oldStart.getTime()
   const nextEnd = new Date(nextStart.getTime() + duration)
-  const nextStartIso = nextStart.toISOString().slice(0, 16)
-  const nextEndIso = nextEnd.toISOString().slice(0, 16)
+  const nextStartIso = toLocalDateTimeInputValue(nextStart)
+  const nextEndIso = toLocalDateTimeInputValue(nextEnd)
   const conflicts = findEventConflicts(nextStartIso, nextEndIso, current.id)
 
   events[idx] = {
@@ -8726,6 +8828,11 @@ function handleGoogleCalendarOAuthReturn() {
     var rest = u.searchParams.toString()
     window.history.replaceState({}, '', u.pathname + (rest ? '?' + rest : '') + u.hash)
     if (g === 'connected') {
+      // Optimistically reflect connected state immediately after OAuth redirect.
+      googleCalendarConnected = true
+      googleCalendarConfigured = true
+      updateGoogleCalendarUi()
+      setTimeout(function () { syncGoogleCalendarConnectionState() }, 250)
       showToast('Google Calendar connected', 'success')
     } else if (g === 'error') {
       var detail = reason === 'no_refresh_token'
@@ -8747,16 +8854,22 @@ async function syncGoogleCalendarConnectionState() {
     var r = await fetch(ALTER_API_BASE + '/api/integrations/google/calendar/status', {
       headers: { Authorization: 'Bearer ' + getAuthToken() }
     })
-    if (!r.ok) return
+    if (!r.ok) {
+      // Keep current UI state if the status endpoint is temporarily unavailable.
+      updateGoogleCalendarUi()
+      return
+    }
     var d = await r.json()
     googleCalendarConfigured = d.configured !== false
     googleCalendarConnected = !!d.connected
     updateGoogleCalendarUi()
-  } catch (e) {}
+  } catch (e) {
+    updateGoogleCalendarUi()
+  }
 }
 
 // Start Google Calendar OAuth flow via backend (?token=JWT — required for linking the Google account to this user)
-function connectGoogleCalendar() {
+async function connectGoogleCalendar() {
   if (googleCalendarConnected) {
     showToast('Google Calendar is already connected. Manage disconnect in Settings > Integrations.', 'info')
     return
@@ -8774,7 +8887,19 @@ function connectGoogleCalendar() {
     showToast('API base URL is not configured (alterApiBaseMeta).', 'error')
     return
   }
-  window.location.href = base + '/auth/google/calendar?token=' + encodeURIComponent(getAuthToken())
+  try {
+    const r = await fetch(base + '/api/integrations/google/calendar/start', {
+      headers: { Authorization: 'Bearer ' + getAuthToken() }
+    })
+    const d = await r.json().catch(() => ({}))
+    if (!r.ok || !d.authUrl) {
+      showToast((d && d.error) || 'Could not start Google Calendar connect flow.', 'error')
+      return
+    }
+    window.location.href = d.authUrl
+  } catch (e) {
+    showToast('Could not start Google Calendar connect flow.', 'error')
+  }
 }
 
 function manageGoogleCalendarIntegration() {
