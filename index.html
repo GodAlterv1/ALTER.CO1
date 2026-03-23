@@ -1535,6 +1535,61 @@ button:disabled { opacity: 0.5; cursor: not-allowed; transform: none; box-shadow
   gap: 18px;
   margin-bottom: 22px;
 }
+.team-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(300px, 1fr);
+  gap: 20px;
+  align-items: start;
+}
+.team-main-col,
+.team-side-col {
+  min-width: 0;
+}
+.team-side-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.team-side-col .team-stats-row {
+  grid-template-columns: 1fr;
+  margin-bottom: 0;
+}
+.team-side-card {
+  border: 1px solid #1F2937;
+  border-radius: 12px;
+  background: #0d1117;
+  overflow: hidden;
+}
+.team-side-card .team-section-head {
+  border-bottom: 1px solid #1F2937;
+}
+.team-code-details {
+  border-top: 1px solid #1F2937;
+  background: #0b1220;
+}
+.team-code-details summary {
+  cursor: pointer;
+  list-style: none;
+  padding: 14px 16px;
+  font-size: 12px;
+  color: #9CA3AF;
+  font-weight: 600;
+}
+.team-code-details summary::-webkit-details-marker {
+  display: none;
+}
+.team-code-details summary::after {
+  content: 'Show';
+  float: right;
+  color: #6B7280;
+  font-weight: 500;
+}
+.team-code-details[open] summary::after {
+  content: 'Hide';
+}
+.team-code-details-body {
+  padding: 0 16px 16px;
+}
 
 .team-panel {
   padding: 20px 22px;
@@ -1594,6 +1649,11 @@ button:disabled { opacity: 0.5; cursor: not-allowed; transform: none; box-shadow
 
 @media (max-width: 720px) {
   .team-stats-row { grid-template-columns: 1fr; }
+}
+@media (max-width: 1100px) {
+  .team-layout {
+    grid-template-columns: 1fr;
+  }
 }
 
 .team-stat-tile {
@@ -4133,83 +4193,100 @@ kbd {
         <div class="workspace-header">
           <div>
             <h1>Team</h1>
-            <p>Invite people, assign roles, and share how others can join your workspace.</p>
+            <p>Manage members, pending invites, and workspace access in one clear place.</p>
           </div>
           <button id="teamInviteBtn" onclick="openInviteTeamModal()">+ Invite by email</button>
         </div>
 
-        <div class="team-invite-grid">
-          <div id="teamInviteCodePanel" class="team-panel team-panel--accent" style="display:none;">
-            <h3 class="team-panel-title"><span>🔑</span> Invite by code</h3>
-            <p class="team-panel-lead">Share this code so teammates can join your team list after sign-up or from this page (server accounts).</p>
-            <div class="team-code-row">
-              <code id="teamInviteCodeDisplay" class="team-code-box">—</code>
-              <button type="button" class="btn-secondary btn-sm" onclick="copyWorkspaceInviteCode()">Copy</button>
-              <button type="button" class="btn-sm" onclick="generateWorkspaceInviteCode()">New code</button>
+        <div class="team-layout">
+          <div class="team-main-col">
+            <div class="team-toolbar">
+              <span class="team-toolbar-label">Filter</span>
+              <select id="teamRoleFilter" onchange="renderTeam()" style="padding:8px 12px;background:#020617;border:1px solid #1F2937;color:white;border-radius:8px;font-size:12px;">
+                <option value="">All roles</option>
+                <option value="owner">Owner</option>
+                <option value="admin">Admin</option>
+                <option value="manager">Manager</option>
+                <option value="member">Member</option>
+              </select>
+              <select id="teamStatusFilter" onchange="renderTeam()" style="padding:8px 12px;background:#020617;border:1px solid #1F2937;color:white;border-radius:8px;font-size:12px;">
+                <option value="">Everyone</option>
+                <option value="accepted">Active only</option>
+                <option value="pending">Pending only</option>
+              </select>
+              <button type="button" class="btn-secondary btn-sm" onclick="document.getElementById('teamRoleFilter').value='';document.getElementById('teamStatusFilter').value='';renderTeam();">Reset filters</button>
             </div>
-            <p style="font-size:11px;color:#6B7280;margin:0;">Generating a new code invalidates the previous one.</p>
-          </div>
 
-          <div id="teamJoinByCodePanel" class="team-panel" style="display:none;">
-            <h3 class="team-panel-title"><span>🚪</span> Join with a code</h3>
-            <p class="team-panel-lead">Paste the code from your admin. You will be added to their workspace team (server).</p>
-            <div class="team-code-row">
-              <input id="teamJoinCodeInput" type="text" placeholder="e.g. K7X9M2P4" autocomplete="off" style="flex:1;min-width:160px;max-width:260px;padding:10px 14px;background:#020617;border:1px solid #1F2937;color:white;border-radius:8px;font-size:14px;font-family:ui-monospace,monospace;letter-spacing:0.08em;text-transform:uppercase;" oninput="this.value=this.value.toUpperCase()">
-              <button type="button" class="btn-sm" onclick="joinTeamWithInviteCode()">Join</button>
+            <div class="team-section">
+              <div class="team-section-head">
+                <h3>People</h3>
+                <span class="team-section-hint">You and teammates with access. Role changes apply to how work is assigned and managed.</span>
+              </div>
+              <div class="section-label">Active</div>
+              <div class="team-grid" id="teamList"></div>
+            </div>
+
+            <div class="team-section">
+              <div class="team-section-head">
+                <h3>Invitations</h3>
+                <span class="team-section-hint">Email invites that have not been accepted yet.</span>
+              </div>
+              <div class="team-grid" id="inviteList"></div>
             </div>
           </div>
-        </div>
 
-        <div class="team-stats-row">
-          <div class="team-stat-tile">
-            <span class="ts-label">Active members</span>
-            <span class="ts-value" id="teamStatTotal">1</span>
-            <span style="font-size:11px;color:#4B5563;">Including you</span>
-          </div>
-          <div class="team-stat-tile">
-            <span class="ts-label">Pending invites</span>
-            <span class="ts-value" id="teamStatPending">0</span>
-            <span style="font-size:11px;color:#4B5563;">Awaiting response</span>
-          </div>
-          <div class="team-stat-tile">
-            <span class="ts-label">Admins</span>
-            <span class="ts-value" id="teamStatAdmins">1</span>
-            <span style="font-size:11px;color:#4B5563;">Owner + admins</span>
-          </div>
-        </div>
+          <aside class="team-side-col">
+            <div class="team-side-stack">
+              <div class="team-stats-row">
+                <div class="team-stat-tile">
+                  <span class="ts-label">Active members</span>
+                  <span class="ts-value" id="teamStatTotal">1</span>
+                  <span style="font-size:11px;color:#4B5563;">Including you</span>
+                </div>
+                <div class="team-stat-tile">
+                  <span class="ts-label">Pending invites</span>
+                  <span class="ts-value" id="teamStatPending">0</span>
+                  <span style="font-size:11px;color:#4B5563;">Awaiting response</span>
+                </div>
+                <div class="team-stat-tile">
+                  <span class="ts-label">Admins</span>
+                  <span class="ts-value" id="teamStatAdmins">1</span>
+                  <span style="font-size:11px;color:#4B5563;">Owner + admins</span>
+                </div>
+              </div>
 
-        <div class="team-toolbar">
-          <span class="team-toolbar-label">Filter</span>
-          <select id="teamRoleFilter" onchange="renderTeam()" style="padding:8px 12px;background:#020617;border:1px solid #1F2937;color:white;border-radius:8px;font-size:12px;">
-            <option value="">All roles</option>
-            <option value="owner">Owner</option>
-            <option value="admin">Admin</option>
-            <option value="manager">Manager</option>
-            <option value="member">Member</option>
-          </select>
-          <select id="teamStatusFilter" onchange="renderTeam()" style="padding:8px 12px;background:#020617;border:1px solid #1F2937;color:white;border-radius:8px;font-size:12px;">
-            <option value="">Everyone</option>
-            <option value="accepted">Active only</option>
-            <option value="pending">Pending only</option>
-          </select>
-          <button type="button" class="btn-secondary btn-sm" onclick="document.getElementById('teamRoleFilter').value='';document.getElementById('teamStatusFilter').value='';renderTeam();">Reset filters</button>
-        </div>
+              <div class="team-side-card">
+                <div class="team-section-head">
+                  <h3>Access & Invite Codes</h3>
+                  <span class="team-section-hint">Advanced sharing tools. Email invite remains the primary action for clarity.</span>
+                </div>
+                <details class="team-code-details">
+                  <summary>Manage invite code and join by code</summary>
+                  <div class="team-code-details-body">
+                    <div id="teamInviteCodePanel" class="team-panel team-panel--accent" style="display:none;margin-bottom:12px;">
+                      <h3 class="team-panel-title"><span>🔑</span> Invite by code</h3>
+                      <p class="team-panel-lead">Share this code so teammates can join your team list after sign-up or from this page (server accounts).</p>
+                      <div class="team-code-row">
+                        <code id="teamInviteCodeDisplay" class="team-code-box">—</code>
+                        <button type="button" class="btn-secondary btn-sm" onclick="copyWorkspaceInviteCode()">Copy</button>
+                        <button type="button" class="btn-sm" onclick="generateWorkspaceInviteCode()">New code</button>
+                      </div>
+                      <p style="font-size:11px;color:#6B7280;margin:0;">Generating a new code invalidates the previous one.</p>
+                    </div>
 
-        <div class="team-section">
-          <div class="team-section-head">
-            <h3>People</h3>
-            <span class="team-section-hint">You and teammates with access. Role changes apply to how work is assigned and managed.</span>
-          </div>
-          <div class="section-label">Active</div>
-          <div class="team-grid" id="teamList"></div>
-        </div>
-
-        <div class="team-section">
-          <div class="team-section-head">
-            <h3>Invitations</h3>
-            <span class="team-section-hint">Email invites that have not been accepted yet.</span>
-          </div>
-          <div class="team-grid" id="inviteList"></div>
+                    <div id="teamJoinByCodePanel" class="team-panel" style="display:none;">
+                      <h3 class="team-panel-title"><span>🚪</span> Join with a code</h3>
+                      <p class="team-panel-lead">Paste the code from your admin. You will be added to their workspace team (server).</p>
+                      <div class="team-code-row">
+                        <input id="teamJoinCodeInput" type="text" placeholder="e.g. K7X9M2P4" autocomplete="off" style="flex:1;min-width:160px;max-width:260px;padding:10px 14px;background:#020617;border:1px solid #1F2937;color:white;border-radius:8px;font-size:14px;font-family:ui-monospace,monospace;letter-spacing:0.08em;text-transform:uppercase;" oninput="this.value=this.value.toUpperCase()">
+                        <button type="button" class="btn-sm" onclick="joinTeamWithInviteCode()">Join</button>
+                      </div>
+                    </div>
+                  </div>
+                </details>
+              </div>
+            </div>
+          </aside>
         </div>
       </div>
 
