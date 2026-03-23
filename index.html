@@ -3732,6 +3732,10 @@ kbd {
               <h3>Activation Insights</h3>
               <div id="dashboardActivationInsights" style="font-size:13px;color:#9CA3AF;line-height:1.55;"></div>
             </div>
+            <div class="card">
+              <h3>Weekly Digest</h3>
+              <div id="dashboardWeeklyDigest" style="font-size:13px;color:#9CA3AF;line-height:1.55;"></div>
+            </div>
           </div>
         </div>
 
@@ -4090,7 +4094,7 @@ kbd {
           <div class="form-group">
             <label>Updates / Comments</label>
             <div id="taskDetailUpdates" style="font-size:12px;color:#9CA3AF;margin-bottom:6px;"></div>
-            <textarea id="taskDetailUpdateInput" rows="2" placeholder="Add a quick update..."></textarea>
+            <textarea id="taskDetailUpdateInput" rows="2" placeholder="Add a comment... (use @username to mention)"></textarea>
           </div>
         </div>
         <div class="task-detail-footer">
@@ -4831,6 +4835,7 @@ kbd {
     <div class="notification-tabs">
       <button class="notif-tab active" onclick="filterNotifs('all', this)">All</button>
       <button class="notif-tab" onclick="filterNotifs('unread', this)">Unread</button>
+      <button class="notif-tab" onclick="filterNotifs('mentions', this)">Mentions</button>
     </div>
     <div class="notifications-list" id="notificationsList"></div>
   </div>
@@ -5424,6 +5429,7 @@ var liveWorkspaceRefreshTimer = null
 var liveWorkspaceRefreshInFlight = false
 var lastLiveWorkspaceRefreshAt = ''
 var liveWorkspaceErrorCount = 0
+var presenceHeartbeatTimer = null
 let pendingConfirm = null
 
 function getAuthToken() {
@@ -5873,6 +5879,80 @@ function toLocalDateOnlyValue(dateLike) {
   return `${y}-${m}-${day}`
 }
 
+function getWorkspaceMentionTargets() {
+  const out = []
+  if (currentUser && currentUser.id) {
+    out.push({
+      id: currentUser.id,
+      username: String(currentUser.username || '').toLowerCase(),
+      label: currentUser.username || currentUser.fullName || 'you'
+    })
+  }
+  team.filter(m => m && m.status === 'accepted').forEach(m => {
+    const email = String(m.email || '').trim()
+    const handle = email ? email.split('@')[0].toLowerCase() : ''
+    out.push({ id: m.id, username: handle, label: handle || email || 'member' })
+  })
+  return out.filter(x => x.id && x.username)
+}
+
+function extractMentionedUserIds(text) {
+  const raw = String(text || '')
+  const matches = raw.match(/@([a-zA-Z0-9._-]{2,40})/g) || []
+  if (!matches.length) return []
+  const targets = getWorkspaceMentionTargets()
+  const ids = []
+  matches.forEach(m => {
+    const handle = m.slice(1).toLowerCase()
+    const row = targets.find(t => t.username === handle)
+    if (row && row.id && row.id !== currentUser?.id && !ids.includes(row.id)) ids.push(row.id)
+  })
+  return ids
+}
+
+function fireMentionNotifications(contextLabel, text, linkId) {
+  const mentionedUserIds = extractMentionedUserIds(text)
+  if (!mentionedUserIds.length) return
+  mentionedUserIds.forEach(function (uid) {
+    const target = team.find(t => t.id === uid) || null
+    const label = target && target.email ? target.email.split('@')[0] : uid
+    addNotification(`@${label} mentioned in ${contextLabel}: ${String(text).slice(0, 120)}`, 'mention')
+  })
+  addAuditLog('update', `Added mention in ${contextLabel}`, 'update')
+}
+
+function getPresenceMap() {
+  if (!userSettings || typeof userSettings !== 'object') return {}
+  const map = userSettings.presenceLastSeen
+  if (!map || typeof map !== 'object' || Array.isArray(map)) return {}
+  return map
+}
+
+function isUserOnline(userId) {
+  const map = getPresenceMap()
+  const raw = map && map[userId] ? String(map[userId]) : ''
+  if (!raw) return false
+  const ts = new Date(raw).getTime()
+  if (!ts || isNaN(ts)) return false
+  return (Date.now() - ts) <= 2 * 60 * 1000
+}
+
+function getLastSeenLabel(userId) {
+  const map = getPresenceMap()
+  const raw = map && map[userId] ? String(map[userId]) : ''
+  if (!raw) return 'Offline'
+  if (isUserOnline(userId)) return 'Online now'
+  return 'Last seen ' + timeAgo(raw)
+}
+
+function updatePresenceHeartbeat() {
+  if (!currentUser || !currentUser.id) return
+  if (!userSettings || typeof userSettings !== 'object') userSettings = {}
+  if (!userSettings.presenceLastSeen || typeof userSettings.presenceLastSeen !== 'object') userSettings.presenceLastSeen = {}
+  userSettings.presenceLastSeen[currentUser.id] = new Date().toISOString()
+  save('usersettings', userSettings)
+}
+
 function setCalendarUndoAction(label, fn) {
   lastCalendarUndoAction = typeof fn === 'function' ? { label: label || 'Undo', fn } : null
   const btn = document.getElementById('calendarUndoBtn')
@@ -6158,6 +6238,8 @@ function demoLogin() {
 /** Marketing landing vs auth vs app */
 function showLandingScreen() {
   stopLiveWorkspaceRefreshLoop()
+  if (presenceHeartbeatTimer) clearInterval(presenceHeartbeatTimer)
+  presenceHeartbeatTimer = null
   var land = document.getElementById('landingScreen')
   var login = document.getElementById('loginScreen')
   var app = document.getElementById('app')
@@ -6172,6 +6254,7 @@ if (typeof document !== 'undefined' && !window.__alcoLiveSyncVisibilityBound) {
     if (!currentUser || !ALTER_API_BASE || !getAuthToken()) return
     if (document.visibilityState === 'visible') {
       refreshWorkspaceLive(false)
+      updatePresenceHeartbeat()
     } else {
       scheduleLiveWorkspaceRefresh(30000)
     }
@@ -6244,6 +6327,9 @@ function initializeApp() {
   updateSidebarUser()
   renderAllPages()
   renderNotifications()
+  updatePresenceHeartbeat()
+  if (presenceHeartbeatTimer) clearInterval(presenceHeartbeatTimer)
+  presenceHeartbeatTimer = setInterval(updatePresenceHeartbeat, 60000)
   setupKeyboardShortcuts()
   var greetEl = document.getElementById('dashboardGreeting')
   if (greetEl) greetEl.textContent = greeting() + ', ' + (currentUser.fullName || currentUser.username) + ' 👋'
@@ -6253,6 +6339,7 @@ function initializeApp() {
     })
   }
   startLiveWorkspaceRefreshLoop()
+  maybeSendWeeklyDigestReminder()
 }
 
 function renderAllPages() {
@@ -6266,6 +6353,7 @@ function renderAllPages() {
   renderTeam()
   renderActivityFeed()
   renderDashboardActivationInsights()
+  renderWeeklyDigestCard()
   renderDashboardCharts()
   renderProfile()
   populateTimerProjectSelect()
@@ -6850,6 +6938,51 @@ function renderDashboardActivationInsights() {
     `Google Calendar: ${hasGoogleConnected ? 'Connected' : 'Not connected'} · Team: ${hasTeammate ? 'Invited' : 'No teammate yet'}`
   ]
   el.innerHTML = lines.join('<br>')
+}
+
+function getWeeklyDigestStats() {
+  const now = new Date()
+  const weekEnd = new Date(now.getTime() + 7 * 86400000)
+  const overdue = tasks.filter(t => {
+    if (t.status === 'done' || t.status === 'completed') return false
+    const d = parseTaskDueDate(t)
+    return d && d < now
+  }).length
+  const dueSoon = tasks.filter(t => {
+    if (t.status === 'done' || t.status === 'completed') return false
+    const d = parseTaskDueDate(t)
+    return d && d >= now && d <= weekEnd
+  }).length
+  const mentionsUnread = notifications.filter(n => !n.read && n.type === 'mention').length
+  return { overdue, dueSoon, mentionsUnread }
+}
+
+function renderWeeklyDigestCard() {
+  const el = document.getElementById('dashboardWeeklyDigest')
+  if (!el) return
+  const stats = getWeeklyDigestStats()
+  const summary = []
+  summary.push(`Overdue tasks: <strong style="color:${stats.overdue ? '#fca5a5' : '#86efac'};">${stats.overdue}</strong>`)
+  summary.push(`Due in 7 days: <strong style="color:#bfdbfe;">${stats.dueSoon}</strong>`)
+  summary.push(`Unread mentions: <strong style="color:${stats.mentionsUnread ? '#fde68a' : '#86efac'};">${stats.mentionsUnread}</strong>`)
+  summary.push(stats.overdue || stats.dueSoon || stats.mentionsUnread
+    ? 'Focus this week: clear overdue first, then close due-soon tasks.'
+    : 'Everything looks healthy this week. Keep momentum.')
+  el.innerHTML = summary.join('<br>')
+}
+
+function maybeSendWeeklyDigestReminder() {
+  if (!currentUser || !currentUser.id) return
+  if (userSettings && userSettings.notifWeeklyEnabled === false) return
+  const key = 'alco_weekly_digest_last_' + currentUser.id
+  const now = new Date()
+  const weekNumber = `${now.getFullYear()}-W${Math.ceil((((now - new Date(now.getFullYear(),0,1)) / 86400000) + new Date(now.getFullYear(),0,1).getDay()+1) / 7)}`
+  let last = ''
+  try { last = localStorage.getItem(key) || '' } catch (e) {}
+  if (last === weekNumber) return
+  const stats = getWeeklyDigestStats()
+  addNotification(`Weekly digest: ${stats.overdue} overdue, ${stats.dueSoon} due soon, ${stats.mentionsUnread} unread mentions.`, 'digest')
+  try { localStorage.setItem(key, weekNumber) } catch (e) {}
 }
 
 function updateStats() {
@@ -7738,11 +7871,11 @@ function openTaskDetail(id) {
       ? task.updates.slice().sort((a,b) => new Date(b.createdAt||b.created) - new Date(a.createdAt||a.created))
       : []
     if (!updates.length) {
-      updatesEl.innerHTML = '<span style="font-size:12px;color:#6B7280;">No updates yet. Add one below to capture progress.</span>'
+      updatesEl.innerHTML = '<span style="font-size:12px;color:#6B7280;">No comments yet. Add one below to capture context for the team.</span>'
     } else {
       updatesEl.innerHTML = `
         <ul style="list-style:none;padding:0;margin:0;display:flex;flex-direction:column;gap:4px;">
-          ${updates.slice(0,4).map(u => {
+          ${updates.slice(0,8).map(u => {
             const d = u.createdAt || u.created
             const when = d ? new Date(d).toLocaleDateString(undefined,{ month:'short', day:'numeric' }) : ''
             const who  = u.authorName || ''
@@ -7799,6 +7932,7 @@ function saveTaskDetail() {
       authorId: currentUser.id,
       authorName: currentUser.fullName || currentUser.username
     })
+    fireMentionNotifications(`task "${task.title}"`, updateText, task.id)
   }
 
   save('tasks', tasks)
@@ -9020,16 +9154,19 @@ function renderCalendarDayDetail(dateStr) {
     const isReadOnly = !!ev.source && ev.source !== 'local'
     const deleteId = ev.masterEventId || ev.id
     const editId = ev.masterEventId || ev.id
+    const commentId = ev.masterEventId || ev.id
     const occurrenceId = ev.id
+    const commentCount = (events.find(x => x.id === commentId)?.comments || []).length
     return `
       <div class="calendar-day-event">
         <div class="calendar-day-event-time">${t.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})}</div>
         <div class="calendar-day-event-body">
           <div style="display:flex;align-items:center;gap:8px;">
             <div class="calendar-day-event-title">${escapeHtml(ev.title)}</div>
-            ${!isReadOnly ? `<button class="btn-xs btn-secondary" style="margin-left:auto;padding:2px 6px;font-size:10px;" onclick="openEditEventModal('${editId}', '${occurrenceId}')">Edit</button><button class="btn-xs btn-danger" style="padding:2px 6px;font-size:10px;" onclick="deleteEvent('${deleteId}', '${occurrenceId}')">✕</button>` : ''}
+            ${!isReadOnly ? `<button class="btn-xs btn-secondary" style="margin-left:auto;padding:2px 6px;font-size:10px;" onclick="addEventCommentPrompt('${commentId}')">💬 ${commentCount}</button><button class="btn-xs btn-secondary" style="padding:2px 6px;font-size:10px;" onclick="openEditEventModal('${editId}', '${occurrenceId}')">Edit</button><button class="btn-xs btn-danger" style="padding:2px 6px;font-size:10px;" onclick="deleteEvent('${deleteId}', '${occurrenceId}')">✕</button>` : ''}
           </div>
           ${ev.description ? `<div class="calendar-day-event-desc">${escapeHtml(ev.description)}</div>` : ''}
+          ${renderEventCommentPreview(commentId)}
         </div>
       </div>
     `
@@ -9166,6 +9303,7 @@ function saveEvent() {
       id: genId(), title, description: desc,
       start, end, color,
       recurrence,
+      comments: [],
       author: currentUser.id, created: new Date().toISOString()
     })
   }
@@ -9191,6 +9329,34 @@ function saveEvent() {
     showToast(eventId ? 'Event updated!' : 'Event created!', 'success')
   }
   updateStats()
+}
+
+function renderEventCommentPreview(eventId) {
+  const ev = events.find(e => e.id === eventId)
+  if (!ev || !Array.isArray(ev.comments) || !ev.comments.length) return ''
+  const latest = ev.comments.slice().sort((a,b) => new Date(b.createdAt) - new Date(a.createdAt))[0]
+  if (!latest) return ''
+  return `<div style="font-size:11px;color:#9CA3AF;margin-top:4px;">Latest comment: ${escapeHtml(latest.authorName || 'Member')} - ${escapeHtml(String(latest.text || '').slice(0, 80))}</div>`
+}
+
+function addEventCommentPrompt(eventId) {
+  const ev = events.find(e => e.id === eventId)
+  if (!ev) return showToast('Event not found', 'error')
+  const text = window.prompt('Add a comment (use @username to mention):')
+  if (!text || !text.trim()) return
+  if (!Array.isArray(ev.comments)) ev.comments = []
+  ev.comments.unshift({
+    id: genId(),
+    text: text.trim(),
+    authorId: currentUser?.id || '',
+    authorName: currentUser?.fullName || currentUser?.username || 'Member',
+    createdAt: new Date().toISOString()
+  })
+  save('events', events)
+  renderCalendar()
+  addActivity(`Commented on event: ${ev.title}`)
+  fireMentionNotifications(`event "${ev.title}"`, text.trim(), ev.id)
+  showToast('Event comment added', 'success')
 }
 
 function renderCalendar() {
@@ -9307,6 +9473,8 @@ function renderCalendar() {
         const readOnly = !!e.source && e.source !== 'local'
         const deleteId = e.masterEventId || e.id
         const editId = e.masterEventId || e.id
+        const commentId = e.masterEventId || e.id
+        const commentCount = (events.find(x => x.id === commentId)?.comments || []).length
         const occurrenceId = e.id
         return `
           <div style="display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid #1F2937;">
@@ -9316,8 +9484,9 @@ function renderCalendar() {
             <div>
               <div style="font-size:14px;font-weight:500;">${escapeHtml(e.title)}</div>
               <div style="font-size:12px;color:#6B7280;">${timeLabel}</div>
+              ${renderEventCommentPreview(commentId)}
             </div>
-            ${!readOnly ? `<button class="btn-sm btn-secondary" style="margin-left:auto;" onclick="openEditEventModal('${editId}', '${occurrenceId}')">Edit</button><button class="btn-sm btn-danger" onclick="deleteEvent('${deleteId}', '${occurrenceId}')">✕</button>` : ''}
+            ${!readOnly ? `<button class="btn-sm btn-secondary" style="margin-left:auto;" onclick="addEventCommentPrompt('${commentId}')">💬 ${commentCount}</button><button class="btn-sm btn-secondary" onclick="openEditEventModal('${editId}', '${occurrenceId}')">Edit</button><button class="btn-sm btn-danger" onclick="deleteEvent('${deleteId}', '${occurrenceId}')">✕</button>` : ''}
           </div>
         `
       }).join('')
@@ -10138,6 +10307,8 @@ function renderTeam() {
     const emailSafe = (m.email || '').trim()
     const initial = emailSafe ? emailSafe.charAt(0).toUpperCase() : '?'
     const displayName = emailSafe ? emailSafe.split('@')[0] : 'Member'
+    const online = isUserOnline(m.id)
+    const presenceLabel = getLastSeenLabel(m.id)
 
     let taskCount = tasks.filter(t => t.assignee === m.id).length
     if (isAccepted) {
@@ -10145,7 +10316,7 @@ function renderTeam() {
         <div class="member-card">
           <div class="member-card-inner">
             <div class="member-avatar">
-              <div class="member-online-dot"></div>
+              <div class="member-online-dot" style="background:${online ? '#22c55e' : '#6B7280'};"></div>
               ${initial}
             </div>
             <div class="member-card-body">
@@ -10157,6 +10328,7 @@ function renderTeam() {
               </div>
               <div class="member-stats">
                 <div><span class="member-stat-val">${taskCount}</span>tasks assigned</div>
+                <div style="font-size:11px;color:${online ? '#86efac' : '#9CA3AF'};align-self:flex-end;">${escapeHtml(presenceLabel)}</div>
               </div>
               ${canManageTeam ? `
                 <div class="member-card-actions">
@@ -10289,11 +10461,13 @@ function buildCurrentUserCard() {
     : 0
   const role = currentUser.role || 'owner'
   const display = currentUser.fullName || currentUser.username || 'You'
+  const online = isUserOnline(currentUser.id)
+  const presenceLabel = getLastSeenLabel(currentUser.id)
   return `
     <div class="member-card member-card--you">
       <div class="member-card-inner">
         <div class="member-avatar">
-          <div class="member-online-dot"></div>
+          <div class="member-online-dot" style="background:${online ? '#22c55e' : '#6B7280'};"></div>
           ${display.charAt(0).toUpperCase()}
         </div>
         <div class="member-card-body">
@@ -10302,7 +10476,7 @@ function buildCurrentUserCard() {
           <div class="member-meta">
             <span class="role-badge ${escapeHtml(role)}">${escapeHtml(role)}</span>
           </div>
-          <div class="member-stats"><div><span class="member-stat-val">${taskCount}</span>tasks assigned to you</div></div>
+          <div class="member-stats"><div><span class="member-stat-val">${taskCount}</span>tasks assigned to you</div><div style="font-size:11px;color:${online ? '#86efac' : '#9CA3AF'};align-self:flex-end;">${escapeHtml(presenceLabel)}</div></div>
           <button type="button" class="btn-sm btn-secondary" onclick="switchPage('settings',null)">Edit profile</button>
         </div>
       </div>
@@ -10380,7 +10554,9 @@ function addNotification(text, type) {
 }
 
 function renderNotifications(filter) {
-  let list = filter === 'unread' ? notifications.filter(n => !n.read) : notifications
+  let list = notifications
+  if (filter === 'unread') list = notifications.filter(n => !n.read)
+  if (filter === 'mentions') list = notifications.filter(n => n.type === 'mention')
   let html = list.slice(0, 30).map(n => `
     <div class="notification-item ${n.read ? '' : 'unread'}" onclick="markNotifRead('${n.id}')">
       <div class="notif-dot ${n.read ? 'read' : ''}"></div>
