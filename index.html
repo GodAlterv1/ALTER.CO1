@@ -5495,6 +5495,21 @@ function syncWorkspaceToBackend() {
   }).catch(function () {})
 }
 
+function syncWorkspaceKeyToBackend(key, value) {
+  var token = getAuthToken()
+  if (!ALTER_API_BASE || !token || !key) return Promise.resolve(false)
+  return fetch(ALTER_API_BASE + '/api/workspace/' + encodeURIComponent(key), {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+    body: JSON.stringify({ value: value })
+  }).then(function (r) {
+    if (r.status === 401) clearAuthToken()
+    return r.ok
+  }).catch(function () {
+    return false
+  })
+}
+
 function scheduleSyncWorkspace() {
   if (!ALTER_API_BASE || !getAuthToken()) return
   if (syncWorkspaceTimeout) clearTimeout(syncWorkspaceTimeout)
@@ -5655,7 +5670,17 @@ function escapeHtml(str) {
 
 function save(key, data) {
   localStorage.setItem('alco_' + key, JSON.stringify(data))
-  if (ALTER_API_BASE && getAuthToken()) scheduleSyncWorkspace()
+  if (ALTER_API_BASE && getAuthToken()) {
+    // Backend-first for high-collaboration data. Keep local cache as fallback/offline copy.
+    if (key === 'tasks' || key === 'team') {
+      syncWorkspaceKeyToBackend(key, data).then(function (ok) {
+        // If partial sync fails, fall back to full workspace sync attempt.
+        if (!ok) scheduleSyncWorkspace()
+      })
+      return
+    }
+    scheduleSyncWorkspace()
+  }
 }
 
 function genId() { return Date.now().toString(36) + Math.random().toString(36).substr(2, 5) }

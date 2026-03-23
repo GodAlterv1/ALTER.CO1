@@ -1067,6 +1067,34 @@ app.put('/api/workspace', authMiddleware, (req, res) => {
   res.json({ ok: true })
 })
 
+// Partial workspace update for backend-first writes (e.g. tasks/team updates)
+app.patch('/api/workspace/:key', authMiddleware, (req, res) => {
+  const key = String(req.params.key || '').trim()
+  if (!WORKSPACE_KEYS.includes(key)) {
+    return res.status(400).json({ error: 'Invalid workspace key' })
+  }
+
+  const data = req.body || {}
+  if (!Object.prototype.hasOwnProperty.call(data, 'value')) {
+    return res.status(400).json({ error: 'Missing "value" in request body' })
+  }
+
+  const value = data.value
+  const expectObject = key === 'userSettings'
+  if (expectObject && (typeof value !== 'object' || value === null || Array.isArray(value))) {
+    return res.status(400).json({ error: `"${key}" must be an object` })
+  }
+  if (!expectObject && !Array.isArray(value)) {
+    return res.status(400).json({ error: `"${key}" must be an array` })
+  }
+
+  const fileUserId = resolveWorkspaceFileUserId(req.userId)
+  const current = readWorkspace(fileUserId) || emptyWorkspace()
+  current[key] = value
+  writeWorkspace(fileUserId, current)
+  res.json({ ok: true })
+})
+
 // Join another user's workspace team using their workspace invite code (from userSettings.workspaceInviteCode)
 app.post('/api/team/join-with-code', authMiddleware, authBurstLimiter, (req, res) => {
   const { code } = req.body || {}
