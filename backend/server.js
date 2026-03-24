@@ -363,8 +363,13 @@ function addUserToOwnerTeam(ownerId, joinerUserId) {
   if (!joiner) return { ok: false, error: 'no_user' }
   const ownerWs = readWorkspace(ownerId) || emptyWorkspace()
   if (!ownerWs.userSettings || typeof ownerWs.userSettings !== 'object') ownerWs.userSettings = {}
-  const team = Array.isArray(ownerWs.team) ? ownerWs.team.slice() : []
+  let team = Array.isArray(ownerWs.team) ? ownerWs.team.slice() : []
   const emailLower = (joiner.email || '').toLowerCase()
+  // Drop stale email invites so joining by code works after an email invite was sent
+  team = team.filter(m => {
+    if (!m || m.status !== 'pending') return true
+    return (m.email || '').toLowerCase() !== emailLower
+  })
   if (team.some(m => (m.email || '').toLowerCase() === emailLower || m.id === joiner.id)) {
     return { ok: false, error: 'already_member' }
   }
@@ -1185,7 +1190,19 @@ app.get('/api/workspace', authMiddleware, (req, res) => {
     }
   }
   out[WORKSPACE_META_KEY] = meta
-  res.json(out)
+  // team[] only lists invitees — the JSON file owner is implicit. Expose owner so members can see who runs the workspace.
+  const users = readUsers()
+  const ownerRow = users.find(u => u.id === fileUserId)
+  const workspaceOwnerSummary = ownerRow
+    ? {
+        id: ownerRow.id,
+        username: ownerRow.username || '',
+        email: ownerRow.email || '',
+        fullName: ownerRow.full_name || '',
+        role: ownerRow.role || 'member'
+      }
+    : null
+  res.json({ ...out, workspaceOwnerSummary })
 })
 
 app.put('/api/workspace', authMiddleware, (req, res) => {

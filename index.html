@@ -74,11 +74,32 @@ img, video, svg {
   min-height: 220px;
   width: 100%;
 }
+.chart-container.chart-zoomable {
+  cursor: zoom-in;
+  border-radius: 8px;
+  transition: box-shadow 0.15s ease;
+}
+.chart-container.chart-zoomable:hover {
+  box-shadow: inset 0 0 0 1px rgba(79, 70, 229, 0.25);
+}
 .chart-container canvas {
   display: block !important;
   width: 100% !important;
   height: 100% !important;
   max-height: 220px;
+}
+.modal-chart-zoom {
+  max-width: min(920px, 96vw);
+  width: 100%;
+}
+.chart-zoom-chart-wrap {
+  position: relative;
+  height: 330px !important;
+  min-height: 330px !important;
+  width: 100%;
+}
+.chart-zoom-chart-wrap canvas {
+  max-height: 330px !important;
 }
 
 /* Avoid cards/columns forcing horizontal scroll */
@@ -188,6 +209,141 @@ input[type="time"]::-webkit-calendar-picker-indicator {
   filter: invert(0.8);
   opacity: 0.9;
   cursor: pointer;
+}
+
+/* Goals & OKRs — planning path + KR editors */
+.goal-modal-kr-list,
+.goal-modal-ms-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.goal-kr-row {
+  background: #0f172a;
+  border: 1px solid #1e293b;
+  border-radius: 10px;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.goal-kr-row-top {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+.goal-kr-title {
+  flex: 1;
+  min-width: 140px;
+  padding: 8px 10px;
+  background: #020617;
+  border: 1px solid #1F2937;
+  border-radius: 8px;
+  color: #e2e8f0;
+  font-size: 13px;
+}
+.goal-kr-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  font-size: 11px;
+  color: #94a3b8;
+}
+.goal-kr-meta input[type="number"] {
+  width: 56px;
+  padding: 4px 6px;
+  background: #020617;
+  border: 1px solid #1F2937;
+  border-radius: 6px;
+  color: #e2e8f0;
+  font-size: 12px;
+}
+.goal-kr-meta label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+}
+.goal-ms-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  background: #0f172a;
+  border: 1px solid #1e293b;
+  border-radius: 10px;
+  padding: 8px 10px;
+}
+.goal-ms-row .goal-ms-title {
+  flex: 1;
+  min-width: 160px;
+  padding: 8px 10px;
+  background: #020617;
+  border: 1px solid #1F2937;
+  border-radius: 8px;
+  color: #e2e8f0;
+  font-size: 13px;
+}
+.goal-ms-row input[type="datetime-local"] {
+  flex: 1;
+  min-width: 180px;
+}
+.goal-card-path {
+  position: relative;
+  margin-top: 12px;
+  padding-left: 4px;
+}
+.goal-card-path-line {
+  position: absolute;
+  left: 11px;
+  top: 6px;
+  bottom: 6px;
+  width: 2px;
+  background: linear-gradient(180deg, #4f46e5, #7c3aed, #a855f7);
+  border-radius: 2px;
+  opacity: 0.55;
+}
+.goal-card-step {
+  position: relative;
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 6px 0 6px 0;
+  padding-left: 32px;
+}
+.goal-card-step-btn {
+  position: absolute;
+  left: 0;
+  top: 4px;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: 2px solid #4f46e5;
+  background: #020617;
+  color: #a5b4fc;
+  font-size: 12px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+  transition: background 0.15s, border-color 0.15s, transform 0.15s;
+}
+.goal-card-step-btn:hover {
+  transform: scale(1.08);
+  border-color: #a78bfa;
+}
+.goal-card-step-btn.done {
+  background: linear-gradient(135deg, #4f46e5, #7c3aed);
+  border-color: transparent;
+  color: white;
+}
+.goal-kr-slider {
+  width: 100%;
+  accent-color: #7c3aed;
+  height: 6px;
 }
 
 .login-box button.btn-primary-login {
@@ -528,12 +684,28 @@ input[type="time"]::-webkit-calendar-picker-indicator {
   gap: 10px;
 }
 
-.sidebar-logo h2 {
+.sidebar-logo-btn {
+  border: none;
+  background: none;
+  padding: 0;
+  margin: 0;
+  cursor: pointer;
+  font: inherit;
   font-size: 20px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  text-align: left;
   background: linear-gradient(135deg, #4f46e5, #7c3aed);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
+  transition: opacity 0.15s ease;
+}
+.sidebar-logo-btn:hover { opacity: 0.88; }
+.sidebar-logo-btn:focus-visible {
+  outline: 2px solid rgba(79, 70, 229, 0.55);
+  outline-offset: 3px;
+  border-radius: 4px;
 }
 
 .sidebar-plan-badge {
@@ -648,8 +820,26 @@ input[type="time"]::-webkit-calendar-picker-indicator {
 }
 
 .topbar-left { display: flex; align-items: center; gap: 15px; }
-.topbar-breadcrumb { font-size: 14px; color: #6B7280; }
+.topbar-breadcrumb { font-size: 14px; color: #6B7280; display: flex; align-items: center; flex-wrap: wrap; gap: 0 4px; }
 .topbar-breadcrumb span { color: #E5E7EB; font-weight: 600; }
+.topbar-brand-link {
+  border: none;
+  background: none;
+  padding: 2px 4px;
+  margin: -2px -4px;
+  cursor: pointer;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  color: #6B7280;
+  border-radius: 4px;
+  transition: color 0.15s ease, background 0.15s ease;
+}
+.topbar-brand-link:hover { color: #E5E7EB; background: rgba(255,255,255,0.04); }
+.topbar-brand-link:focus-visible {
+  outline: 2px solid rgba(79, 70, 229, 0.5);
+  outline-offset: 1px;
+}
 
 .topbar-search {
   display: flex;
@@ -2999,20 +3189,40 @@ kbd {
 .pages-row-body { flex: 1; min-width: 0; }
 .pages-row-title { font-weight: 600; font-size: 13px; line-height: 1.35; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .pages-row-meta { font-size: 10px; color: #6B7280; margin-top: 4px; }
-.pages-row-del {
-  opacity: 0;
+.pages-row-del-btn {
   flex-shrink: 0;
-  border: none;
-  background: transparent;
-  color: #6B7280;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  border: 1px solid #374151;
+  background: #0f172a;
+  color: #9CA3AF;
+  font-size: 11px;
+  font-weight: 500;
+  font-family: inherit;
   cursor: pointer;
-  padding: 2px 4px;
-  border-radius: 4px;
-  font-size: 12px;
-  line-height: 1;
+  line-height: 1.2;
+  opacity: 0;
+  transition: opacity 0.15s, border-color 0.15s, color 0.15s, background 0.15s;
 }
-.pages-row:hover .pages-row-del { opacity: 1; }
-.pages-row-del:hover { color: #f87171; background: rgba(255,255,255,0.06); }
+.pages-row-del-icon { font-size: 13px; line-height: 1; opacity: 0.95; }
+.pages-row-del-label { letter-spacing: 0.02em; }
+.pages-row:hover .pages-row-del-btn { opacity: 1; }
+.pages-row-del-btn:hover {
+  color: #fecaca;
+  border-color: rgba(220, 38, 38, 0.45);
+  background: rgba(127, 29, 29, 0.25);
+}
+.pages-row-del-btn:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(79, 70, 229, 0.45);
+  opacity: 1;
+}
+@media (max-width: 1100px) {
+  .pages-row-del-btn { opacity: 0.85; }
+}
 
 .docs-main { min-width: 0; background: #0B0F18; }
 .docs-article { padding: 0 !important; max-width: none !important; margin: 0 !important; border: none !important; background: transparent !important; box-shadow: none !important; }
@@ -3511,7 +3721,7 @@ kbd {
     <!-- SIDEBAR -->
     <div class="sidebar">
       <div class="sidebar-logo">
-        <h2>ALTER.CO</h2>
+        <button type="button" class="sidebar-logo-btn" onclick="switchPage('dashboard', null)" title="Go to Dashboard" aria-label="ALTER.CO — go to Dashboard">ALTER.CO</button>
         <span class="sidebar-plan-badge" id="sidebarPlanBadge">FREE</span>
       </div>
       <div class="sidebar-nav">
@@ -3613,7 +3823,12 @@ kbd {
       <!-- TOP BAR -->
       <div class="topbar">
         <div class="topbar-left">
-          <div class="topbar-breadcrumb">ALTER.CO / <span id="topbarTitle">Dashboard</span> <span id="topbarSyncStatus" style="margin-left:8px;font-size:11px;color:#6B7280;">Live sync off</span></div>
+          <div class="topbar-breadcrumb">
+            <button type="button" class="topbar-brand-link" onclick="switchPage('dashboard', null)" title="Go to Dashboard" aria-label="ALTER.CO — go to Dashboard">ALTER.CO</button>
+            <span style="opacity:0.5;user-select:none;" aria-hidden="true">/</span>
+            <span id="topbarTitle">Dashboard</span>
+            <span id="topbarSyncStatus" style="margin-left:8px;font-size:11px;color:#6B7280;">Live sync off</span>
+          </div>
         </div>
         <div class="topbar-search" onclick="openCommandPalette()">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
@@ -3714,19 +3929,19 @@ kbd {
         <div class="dashboard-grid">
           <div class="card">
             <h3>Projects by Priority</h3>
-            <div class="chart-container"><canvas id="projectsChart"></canvas></div>
+            <div class="chart-container chart-zoomable"><canvas id="projectsChart"></canvas></div>
           </div>
           <div class="card">
             <h3>Task Distribution</h3>
-            <div class="chart-container"><canvas id="tasksChart"></canvas></div>
+            <div class="chart-container chart-zoomable"><canvas id="tasksChart"></canvas></div>
           </div>
           <div class="card">
             <h3>Completion Trend</h3>
-            <div class="chart-container"><canvas id="completionChart"></canvas></div>
+            <div class="chart-container chart-zoomable"><canvas id="completionChart"></canvas></div>
           </div>
           <div class="card">
             <h3>Overall Activity</h3>
-            <div class="chart-container"><canvas id="activityChart"></canvas></div>
+            <div class="chart-container chart-zoomable"><canvas id="activityChart"></canvas></div>
           </div>
         </div>
 
@@ -4121,19 +4336,48 @@ kbd {
             </div>
           </div>
           <div class="form-group">
+            <div style="font-size:12px;color:#9CA3AF;margin-bottom:4px;">All properties</div>
+            <div id="taskDetailProperties"></div>
+          </div>
+          <div class="form-group">
             <div style="font-size:12px;color:#9CA3AF;margin-bottom:4px;">Time logged on this task</div>
             <div id="taskDetailTimeSummary" style="font-size:13px;color:#9CA3AF;"></div>
+          </div>
+          <div class="form-group">
+            <div style="font-size:12px;color:#9CA3AF;margin-bottom:4px;">Recent time entries</div>
+            <div id="taskDetailTimeEntries" style="max-height:200px;overflow-y:auto;"></div>
           </div>
           <div class="form-group">
             <label>Updates / Comments</label>
             <div id="taskDetailUpdates" style="font-size:12px;color:#9CA3AF;margin-bottom:6px;"></div>
             <textarea id="taskDetailUpdateInput" rows="2" placeholder="Add a comment... (use @username to mention)"></textarea>
           </div>
+          <div class="form-group">
+            <div style="font-size:12px;color:#9CA3AF;margin-bottom:4px;">Audit (this task)</div>
+            <div id="taskDetailAudit" style="max-height:200px;overflow-y:auto;font-size:12px;"></div>
+          </div>
         </div>
         <div class="task-detail-footer">
           <button class="btn-secondary" onclick="closeTaskDetail()">Close</button>
           <button class="btn-secondary" onclick="if(currentTaskDetailId) convertTaskToCalendarEvent(currentTaskDetailId)">Add to calendar</button>
           <button onclick="saveTaskDetail()">Save changes</button>
+        </div>
+      </div>
+
+      <!-- PROJECT DETAIL SIDE PANEL -->
+      <div id="projectDetailPanel" class="task-detail-panel hidden" style="z-index:6001;">
+        <div class="task-detail-header">
+          <div style="min-width:0;">
+            <div style="font-size:11px;color:#6B7280;margin-bottom:2px;">Project overview</div>
+            <h3 id="projectDetailTitle" style="font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"></h3>
+          </div>
+          <button class="btn-xs btn-secondary" onclick="closeProjectDetail()">✕</button>
+        </div>
+        <div class="task-detail-body" id="projectDetailBody"></div>
+        <div class="task-detail-footer">
+          <button class="btn-secondary" onclick="closeProjectDetail()">Close</button>
+          <button class="btn-secondary" onclick="if(currentProjectDetailId) goToTasksForProject(currentProjectDetailId)">Open board</button>
+          <button onclick="if(currentProjectDetailId) editProject(currentProjectDetailId)">Edit project</button>
         </div>
       </div>
 
@@ -4164,7 +4408,7 @@ kbd {
         <div class="workspace-header">
           <div>
             <h1>Goals & OKRs</h1>
-            <p>Set high-level objectives and track progress across projects and tasks</p>
+            <p>Objectives with measurable key results, planning steps, and live progress — built for people who want a clear path to the finish line</p>
           </div>
           <button onclick="openCreateGoalModal()">+ New Goal</button>
         </div>
@@ -4187,7 +4431,8 @@ kbd {
         </div>
         <div class="dashboard-grid">
           <div class="card">
-            <h3>Current Quarter Goals</h3>
+            <h3>Your objectives</h3>
+            <p style="font-size:12px;color:#6B7280;margin:-6px 0 12px;">Use key results for metrics and milestones as your step-by-step plan. Check off steps and drag progress on each KR from the card.</p>
             <div id="goalsList"></div>
           </div>
           <div class="card">
@@ -4427,6 +4672,7 @@ kbd {
               <div class="docs-sidebar-secondary">
                 <button type="button" class="btn-secondary btn-sm" onclick="duplicateCurrentPage()" title="Duplicate current page">Duplicate</button>
                 <button type="button" class="btn-secondary btn-sm" onclick="exportCurrentPageAsText()" title="Copy plain text">Copy text</button>
+                <button type="button" class="btn-sm btn-danger docs-delete-page-btn" onclick="deleteCurrentPage()" title="Delete the page you’re editing">Delete page</button>
               </div>
             </div>
             <div class="docs-search-wrap">
@@ -4503,31 +4749,31 @@ kbd {
         <div class="dashboard-grid">
           <div class="card">
             <h3>Project Timeline</h3>
-            <div class="chart-container"><canvas id="timelineChart"></canvas></div>
+            <div class="chart-container chart-zoomable"><canvas id="timelineChart"></canvas></div>
           </div>
           <div class="card">
             <h3>Team Productivity</h3>
-            <div class="chart-container"><canvas id="productivityChart"></canvas></div>
+            <div class="chart-container chart-zoomable"><canvas id="productivityChart"></canvas></div>
           </div>
           <div class="card">
             <h3>Project Status Distribution</h3>
-            <div class="chart-container"><canvas id="statusChart"></canvas></div>
+            <div class="chart-container chart-zoomable"><canvas id="statusChart"></canvas></div>
           </div>
           <div class="card">
             <h3>Time Logged Per Project</h3>
-            <div class="chart-container"><canvas id="timeChart"></canvas></div>
+            <div class="chart-container chart-zoomable"><canvas id="timeChart"></canvas></div>
           </div>
           <div class="card">
             <h3>Idea Votes Ranking</h3>
-            <div class="chart-container"><canvas id="ideasChart"></canvas></div>
+            <div class="chart-container chart-zoomable"><canvas id="ideasChart"></canvas></div>
           </div>
           <div class="card">
             <h3>Weekly Task Throughput</h3>
-            <div class="chart-container"><canvas id="throughputChart"></canvas></div>
+            <div class="chart-container chart-zoomable"><canvas id="throughputChart"></canvas></div>
           </div>
           <div class="card">
             <h3>My Productivity (Last 6 Weeks)</h3>
-            <div class="chart-container"><canvas id="myProductivityChart"></canvas></div>
+            <div class="chart-container chart-zoomable"><canvas id="myProductivityChart"></canvas></div>
           </div>
         </div>
       </div>
@@ -5309,12 +5555,34 @@ kbd {
       </div>
     </div>
     <div class="form-group">
-      <label>Key Results (one per line)</label>
-      <textarea id="modalGoalKRs" placeholder="e.g. Hit 500 weekly active users&#10;e.g. Close 3 enterprise deals"></textarea>
+      <label>Key results (measurable outcomes)</label>
+      <p style="font-size:12px;color:#6B7280;margin:0 0 8px;">Add targets and track % until each outcome is done.</p>
+      <div id="modalGoalKRsList" class="goal-modal-kr-list"></div>
+      <button type="button" class="btn-xs btn-secondary" style="margin-top:8px;" onclick="addGoalKRRow()">+ Add key result</button>
+    </div>
+    <div class="form-group">
+      <label>Planning steps / milestones</label>
+      <p style="font-size:12px;color:#6B7280;margin:0 0 8px;">Break the goal into ordered steps — your path from here to done.</p>
+      <div id="modalGoalMilestonesList" class="goal-modal-ms-list"></div>
+      <button type="button" class="btn-xs btn-secondary" style="margin-top:8px;" onclick="addGoalMilestoneRow()">+ Add step</button>
     </div>
     <div style="display:flex;gap:10px;margin-top:20px;">
       <button onclick="saveGoal()">Save Goal</button>
       <button onclick="closeCreateGoalModal()" class="btn-secondary">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- Chart zoom (larger preview, same data as dashboard/analytics charts) -->
+<div id="chartZoomModal" class="modal" onclick="if(event.target===this)closeChartZoomModal()" style="z-index:2100;">
+  <div class="modal-content modal-chart-zoom" onclick="event.stopPropagation()">
+    <div class="modal-header">
+      <h2 id="chartZoomTitle">Chart</h2>
+      <button type="button" class="modal-close" onclick="closeChartZoomModal()" aria-label="Close enlarged chart">✕</button>
+    </div>
+    <p style="font-size:12px;color:#6B7280;margin:-12px 0 14px;">Larger preview (about 50% more height than the card). Esc or click outside to close.</p>
+    <div class="chart-zoom-chart-wrap">
+      <canvas id="chartZoomCanvas"></canvas>
     </div>
   </div>
 </div>

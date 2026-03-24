@@ -84,6 +84,8 @@ autoAssociateLabelsWithInputs()
 var syncWorkspaceTimeout = null
 var currentNotificationFilter = 'all'
 var workspaceKeyUpdatedAt = {}
+/** Set from GET /api/workspace — owner of the shared JSON file (not duplicated in team[]). */
+var workspaceOwnerSummary = null
 var googleAuthClientId = ''
 var googleAuthInitAttempted = false
 var liveWorkspaceRefreshTimer = null
@@ -222,13 +224,35 @@ function startLiveWorkspaceRefreshLoop() {
   scheduleLiveWorkspaceRefresh(2500)
 }
 
+/**
+ * When live sync GET runs before a PATCH finishes, the server snapshot may omit rows
+ * just created locally. Re-attach any local-only items (same pattern as offline-first).
+ */
+function mergeWorkspaceArrayWithPendingLocal(serverArr, localArr) {
+  const server = Array.isArray(serverArr) ? serverArr : []
+  const local = Array.isArray(localArr) ? localArr : []
+  const serverIds = new Set(server.filter(x => x && x.id).map(x => x.id))
+  const pending = local.filter(x => x && x.id && !serverIds.has(x.id))
+  return server.concat(pending)
+}
+
 function applyWorkspaceToState(data) {
   if (!data) return
   if (Array.isArray(data.projects)) projects = data.projects
   if (Array.isArray(data.tasks)) tasks = data.tasks
   if (Array.isArray(data.ideas)) ideas = data.ideas
   if (Array.isArray(data.events)) events = data.events
-  if (Array.isArray(data.goals)) goals = data.goals
+  if (Array.isArray(data.goals)) {
+    const serverIds = new Set(data.goals.filter(x => x && x.id).map(x => x.id))
+    const pendingLocalGoals = goals.filter(x => x && x.id && !serverIds.has(x.id))
+    goals = mergeWorkspaceArrayWithPendingLocal(data.goals, goals)
+    try {
+      localStorage.setItem('alco_goals', JSON.stringify(goals))
+    } catch (e) {}
+    if (pendingLocalGoals.length && ALTER_API_BASE && getAuthToken()) {
+      scheduleSyncWorkspace()
+    }
+  }
   if (Array.isArray(data.timeEntries)) timeEntries = data.timeEntries
   if (Array.isArray(data.team)) team = data.team
   if (Array.isArray(data.notifications)) notifications = data.notifications
@@ -240,6 +264,11 @@ function applyWorkspaceToState(data) {
   if (data.userSettings && typeof data.userSettings === 'object') userSettings = data.userSettings
   if (data._keyUpdatedAt && typeof data._keyUpdatedAt === 'object') {
     workspaceKeyUpdatedAt = data._keyUpdatedAt
+  }
+  if (data.workspaceOwnerSummary && typeof data.workspaceOwnerSummary === 'object' && data.workspaceOwnerSummary.id) {
+    workspaceOwnerSummary = data.workspaceOwnerSummary
+  } else {
+    workspaceOwnerSummary = null
   }
 }
 
@@ -328,6 +357,7 @@ var charts       = {}
 currentDate  = new Date()
 let draggedTaskId= null
 let currentTaskDetailId = null
+let currentProjectDetailId = null
 // Calendar view state
 var calendarView = 'month'           // 'month' or 'week' (week is UI-only for now)
 var selectedCalendarDate = null      // 'YYYY-MM-DD'
@@ -549,12 +579,28 @@ function getWorkspaceMentionTargets() {
       label: currentUser.username || currentUser.fullName || 'you'
     })
   }
-  team.filter(m => m && m.status === 'accepted').forEach(m => {
+  if (workspaceOwnerSummary && workspaceOwnerSummary.id && currentUser && workspaceOwnerSummary.id !== currentUser.id) {
+    const email = String(workspaceOwnerSummary.email || '').trim()
+    const handleFromEmail = email ? email.split('@')[0].toLowerCase() : ''
+    const un = String(workspaceOwnerSummary.username || '').toLowerCase()
+    out.push({
+      id: workspaceOwnerSummary.id,
+      username: un || handleFromEmail || 'owner',
+      label: workspaceOwnerSummary.username || workspaceOwnerSummary.fullName || handleFromEmail || 'owner'
+    })
+  }
+  team.filter(m => m && m.status === 'accepted' && (!currentUser || m.id !== currentUser.id)).forEach(m => {
     const email = String(m.email || '').trim()
     const handle = email ? email.split('@')[0].toLowerCase() : ''
     out.push({ id: m.id, username: handle, label: handle || email || 'member' })
   })
-  return out.filter(x => x.id && x.username)
+  const seen = new Set()
+  return out.filter(x => {
+    if (!x.id || !x.username) return false
+    if (seen.has(x.id)) return false
+    seen.add(x.id)
+    return true
+  })
 }
 
 function extractMentionedUserIds(text) {
@@ -596,7 +642,7 @@ function fireMentionNotifications(contextLabel, text, link) {
     }
   })
   logAnalyticsEvent('mention_sent', { count: mentionedUserIds.length })
-  addAuditLog('update', `Added mention in ${contextLabel}`, 'update')
+  addAuditLog('update', `Added mention in ${contextLabel}`, 'update', link && link.type === 'task' && link.id ? { taskId: link.id } : {})
 }
 
 function canModerateWorkspace() {
@@ -1238,6 +1284,7 @@ function initializeApp() {
   startLiveWorkspaceRefreshLoop()
   maybeSendWeeklyDigestReminder()
   maybePromptWhatsNew()
+  setupChartZoom()
 }
 
 function renderAllPages() {
@@ -1635,6 +1682,12 @@ function handleKeyDown(e) {
   }
   // Escape - close modals, palette, overlays
   if (e.key === 'Escape') {
+    var cz = document.getElementById('chartZoomModal')
+    if (cz && cz.classList.contains('active')) {
+      e.preventDefault()
+      closeChartZoomModal()
+      return
+    }
     e.preventDefault()
     document.querySelectorAll('.modal.active').forEach(m => m.classList.remove('active'))
     var cp = document.getElementById('commandPalette')
@@ -1890,6 +1943,28 @@ function maybeSendWeeklyDigestReminder() {
   try { localStorage.setItem(key, weekNumber) } catch (e) {}
 }
 
+/** Pending row is obsolete if someone accepted with the same email (data can lag behind join-with-code). */
+function isTeamPendingSuperseded(m) {
+  if (!m || m.status !== 'pending') return false
+  const e = (m.email || '').toLowerCase()
+  if (!e) return false
+  return team.some(x => x && x.status === 'accepted' && (x.email || '').toLowerCase() === e)
+}
+
+/** You + accepted teammates + workspace owner when owner is not you (owner is not stored in team[]). */
+function workspacePeopleHeadcount() {
+  if (!currentUser) return Math.max(1, team.filter(m => m.status === 'accepted').length)
+  const acceptedOthers = team.filter(m => m.status === 'accepted' && m.id !== currentUser.id).length
+  const ownerExtra =
+    workspaceOwnerSummary &&
+    workspaceOwnerSummary.id &&
+    workspaceOwnerSummary.id !== currentUser.id &&
+    !team.some(m => m && m.id === workspaceOwnerSummary.id)
+      ? 1
+      : 0
+  return acceptedOthers + 1 + ownerExtra
+}
+
 function updateStats() {
   let doneTasks = tasks.filter(t => t.status === 'done').length
   let rate      = tasks.length > 0 ? Math.round((doneTasks / tasks.length) * 100) : 0
@@ -1907,7 +1982,7 @@ function updateStats() {
   const nMotion = tasks.filter(t => t.status === 'in-progress' || t.status === 'review').length
   const activeProjCount = projects.filter(p => p.status === 'active').length
   const completedProjCount = projects.filter(p => p.status === 'completed').length
-  const pendingInvites = team.filter(m => m.status === 'pending').length
+  const pendingInvites = team.filter(m => m.status === 'pending' && !isTeamPendingSuperseded(m)).length
 
   const setTrendText = (id, text) => {
     const el = document.getElementById(id)
@@ -1916,7 +1991,7 @@ function updateStats() {
 
   document.getElementById('statProjects').textContent   = projects.length
   document.getElementById('statTasks').textContent      = activeTasks
-  document.getElementById('statTeam').textContent       = team.length + 1
+  document.getElementById('statTeam').textContent       = String(workspacePeopleHeadcount())
   document.getElementById('statCompletion').textContent = rate + '%'
   document.getElementById('statHours').textContent      = formatHours(weekSecs)
   document.getElementById('statIdeas').textContent      = ideas.length
@@ -1927,7 +2002,7 @@ function updateStats() {
 
   setTrendText('statProjectsTrendText', `${activeProjCount} active • ${completedProjCount} completed`)
   setTrendText('statTasksTrendText', `${nTodo} todo • ${nMotion} in progress / review`)
-  setTrendText('statTeamTrendText', pendingInvites ? `${pendingInvites} invite(s) pending` : `${team.length + 1} people in workspace`)
+  setTrendText('statTeamTrendText', pendingInvites ? `${pendingInvites} invite(s) pending` : `${workspacePeopleHeadcount()} people in workspace`)
   setTrendText('statCompletionTrendText', tasks.length ? `${doneTasks} of ${tasks.length} tasks done` : 'Add tasks to measure throughput')
   setTrendText('statHoursTrendText', `${formatHours(totalSecs)} all-time • ${formatHours(weekSecs)} this week`)
   setTrendText('statIdeasTrendText', ideas.length ? `${ideas.length} in backlog` : 'Capture ideas from the team')
@@ -2056,7 +2131,7 @@ function saveProject() {
   renderDashboardCharts()
   addActivity(`Created project: ${name}`)
   addNotification(`Project "${name}" created`, 'project')
-  addAuditLog('create', `Created project "${name}"`, 'create')
+  addAuditLog('create', `Created project "${name}"`, 'create', { projectId: project.id })
   showToast('Project created!', 'success')
   updateStats()
   populateTimerProjectSelect()
@@ -2077,6 +2152,179 @@ function getProjectTaskStats(projectId) {
     ip: ts.filter(t => t.status === 'in-progress').length,
     rev: ts.filter(t => t.status === 'review').length
   }
+}
+
+function formatDetailTimestamp(iso) {
+  if (!iso) return '—'
+  const d = new Date(iso)
+  return isNaN(d.getTime()) ? String(iso) : d.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })
+}
+
+function renderDetailKvRow(label, valueHtml) {
+  return `<div style="display:flex;justify-content:space-between;gap:12px;padding:5px 0;border-bottom:1px solid #1F2937;font-size:12px;">
+    <span style="color:#9CA3AF;flex-shrink:0;">${escapeHtml(label)}</span>
+    <span style="color:#E5E7EB;text-align:right;word-break:break-word;max-width:68%;">${valueHtml}</span>
+  </div>`
+}
+
+function collectAuditLogsForProject(projectId) {
+  const p = projects.find(x => x.id === projectId)
+  if (!p) return []
+  const taskIdSet = new Set(tasks.filter(t => t.projectId === projectId).map(t => t.id))
+  const quoted = p.name ? `"${p.name}"` : ''
+  return auditLogs.filter(l => {
+    if (l.projectId === projectId) return true
+    if (l.taskId && taskIdSet.has(l.taskId)) return true
+    if (quoted && String(l.text || '').includes(quoted)) return true
+    return false
+  })
+}
+
+function collectAuditLogsForTask(task) {
+  if (!task) return []
+  const tid = task.id
+  const quoted = task.title ? `"${task.title}"` : ''
+  return auditLogs.filter(l => {
+    if (l.taskId === tid) return true
+    if (quoted && String(l.text || '').includes(quoted) && /task/i.test(String(l.text || ''))) return true
+    return false
+  })
+}
+
+function renderDetailAuditHtml(logs, max) {
+  const cap = typeof max === 'number' ? max : 50
+  const slice = logs.slice(0, cap)
+  const iconMap = { create: '➕', update: '✏️', delete: '🗑', login: '🔑', other: '⚡' }
+  if (!slice.length) {
+    return '<div style="color:#6B7280;font-size:12px;">No matching audit entries yet.</div>'
+  }
+  return slice.map(log => `
+    <div style="padding:8px 0;border-bottom:1px solid #1F2937;">
+      <div style="display:flex;gap:8px;align-items:flex-start;">
+        <span style="flex-shrink:0;">${iconMap[log.iconType] || '⚡'}</span>
+        <div style="min-width:0;flex:1;">
+          <div style="color:#E5E7EB;font-size:12px;">${escapeHtml(log.text)}</div>
+          <div style="color:#6B7280;font-size:11px;">${escapeHtml(log.user)} · ${escapeHtml(timeAgo(log.timestamp))}</div>
+        </div>
+      </div>
+    </div>
+  `).join('')
+}
+
+function getTimeEntriesForProject(projectId) {
+  const taskIdSet = new Set(tasks.filter(t => t.projectId === projectId).map(t => t.id))
+  return timeEntries.filter(e => e.projectId === projectId || (e.taskId && taskIdSet.has(e.taskId)))
+}
+
+function openProjectDetail(projectId) {
+  closeTaskDetail()
+  const p = projects.find(x => x.id === projectId)
+  if (!p) return
+  currentProjectDetailId = projectId
+  const titleEl = document.getElementById('projectDetailTitle')
+  if (titleEl) titleEl.textContent = p.name
+
+  const ownerLabel = p.owner && currentUser && p.owner === currentUser.id
+    ? 'You'
+    : (team.find(m => m.id === p.owner)?.email || '').split('@')[0] || p.owner || '—'
+
+  const st = getProjectTaskStats(p.id)
+  const taskCount = st.total
+  const doneCount = st.done
+  const progress = taskCount > 0 ? Math.round((doneCount / taskCount) * 100) : 0
+
+  let deadlineLine = '—'
+  if (p.deadline) {
+    const raw = new Date(p.deadline)
+    if (!isNaN(raw.getTime())) deadlineLine = formatDetailTimestamp(p.deadline)
+  }
+  let startLine = '—'
+  if (p.startDate) {
+    const sd = new Date(p.startDate.includes('T') ? p.startDate : p.startDate + 'T12:00')
+    if (!isNaN(sd.getTime())) startLine = formatDetailTimestamp(sd.toISOString())
+  }
+
+  let projEntries = getTimeEntriesForProject(p.id)
+  projEntries = projEntries.slice().sort((a, b) => {
+    const ta = new Date(a.created || a.date || 0).getTime()
+    const tb = new Date(b.created || b.date || 0).getTime()
+    return tb - ta
+  })
+  const totalSecs = projEntries.reduce((s, e) => s + (e.duration || 0), 0)
+  const projTasks = tasks.filter(t => t.projectId === p.id)
+  const byTask = {}
+  projTasks.forEach(t => { byTask[t.id] = { title: t.title, secs: 0 } })
+  projEntries.forEach(e => {
+    const dur = e.duration || 0
+    if (e.taskId && byTask[e.taskId]) byTask[e.taskId].secs += dur
+    else if (e.taskId && !byTask[e.taskId]) {
+      if (!byTask['__orphan']) byTask['__orphan'] = { title: 'Other task (moved/removed)', secs: 0 }
+      byTask['__orphan'].secs += dur
+    } else if (!e.taskId) {
+      if (!byTask['__proj']) byTask['__proj'] = { title: 'Project time (no task)', secs: 0 }
+      byTask['__proj'].secs += dur
+    }
+  })
+  const breakdownRows = Object.keys(byTask).map(k => {
+    const row = byTask[k]
+    if (!row.secs) return ''
+    return renderDetailKvRow(row.title, escapeHtml(formatHours(row.secs)))
+  }).join('')
+
+  const recentEntries = projEntries.slice(0, 15).map(e => {
+    const who = e.userName || '—'
+    const d = e.date || (e.created ? e.created.split('T')[0] : '')
+    const tk = e.taskId ? (tasks.find(t => t.id === e.taskId)?.title || 'Task') : ''
+    return `<div style="display:flex;justify-content:space-between;gap:8px;font-size:12px;padding:5px 0;border-bottom:1px solid #1F2937;color:#E5E7EB;">
+      <span style="min-width:0;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(e.description || '—')}${tk ? ` <span style="color:#6B7280;">(${escapeHtml(tk)})</span>` : ''}</span>
+      <span style="flex-shrink:0;color:#9CA3AF;">${escapeHtml(d)} · ${escapeHtml(who)} · ${escapeHtml(formatHours(e.duration || 0))}</span>
+    </div>`
+  }).join('')
+
+  const projectAuditSlice = collectAuditLogsForProject(p.id)
+  const goalCount = goals.filter(g => g.projectId === p.id).length
+  const tagsHtml = (p.tags || []).length ? escapeHtml((p.tags || []).join(', ')) : '—'
+
+  const body = document.getElementById('projectDetailBody')
+  if (body) {
+    body.innerHTML = `
+      <div style="font-size:11px;color:#6B7280;margin-bottom:10px;">Full project snapshot — fields, time, and audit lines for this project and its tasks.</div>
+      <div style="font-size:12px;color:#9CA3AF;margin-bottom:4px;">Properties</div>
+      <div style="margin-bottom:14px;">
+        ${renderDetailKvRow('Project ID', `<code style="font-size:11px;">${escapeHtml(p.id)}</code>`)}
+        ${renderDetailKvRow('Status', escapeHtml(p.status || '—'))}
+        ${renderDetailKvRow('Priority', escapeHtml(p.priority || '—'))}
+        ${renderDetailKvRow('Owner', escapeHtml(ownerLabel))}
+        ${renderDetailKvRow('Start', escapeHtml(startLine))}
+        ${renderDetailKvRow('Deadline', escapeHtml(deadlineLine))}
+        ${renderDetailKvRow('Tags', tagsHtml)}
+        ${renderDetailKvRow('Description', escapeHtml((p.description || '').trim() || '—'))}
+        ${renderDetailKvRow('Task progress', escapeHtml(`${doneCount}/${taskCount} done (${progress}%)`))}
+        ${renderDetailKvRow('Goals linked', escapeHtml(String(goalCount)))}
+        ${renderDetailKvRow('Created', escapeHtml(formatDetailTimestamp(p.created)))}
+        ${renderDetailKvRow('Updated', escapeHtml(formatDetailTimestamp(p.updated)))}
+      </div>
+      <div style="font-size:12px;color:#9CA3AF;margin-bottom:4px;">Time on this project</div>
+      <div style="margin-bottom:8px;font-size:13px;color:#E5E7EB;">${totalSecs > 0 ? escapeHtml(formatHours(totalSecs)) + ' total logged' : '<span style="color:#6B7280;">No time logged yet</span>'}</div>
+      ${breakdownRows ? `<div style="font-size:11px;color:#6B7280;margin-bottom:4px;">By task</div><div style="margin-bottom:14px;">${breakdownRows}</div>` : ''}
+      <div style="font-size:11px;color:#6B7280;margin-bottom:4px;">Recent entries (up to 15)</div>
+      <div style="margin-bottom:14px;max-height:220px;overflow-y:auto;">${recentEntries || '<span style="color:#6B7280;font-size:12px;">No entries.</span>'}</div>
+      <div style="font-size:12px;color:#9CA3AF;margin-bottom:4px;">Audit log</div>
+      <div style="max-height:260px;overflow-y:auto;">${renderDetailAuditHtml(projectAuditSlice, 60)}</div>
+    `
+  }
+
+  const panel = document.getElementById('projectDetailPanel')
+  if (panel) {
+    panel.classList.add('active')
+    panel.classList.remove('hidden')
+  }
+}
+
+function closeProjectDetail() {
+  currentProjectDetailId = null
+  const panel = document.getElementById('projectDetailPanel')
+  if (panel) panel.classList.remove('active')
 }
 
 /** Used with “My projects” filter: lead, or has at least one task assigned in this project */
@@ -2267,6 +2515,7 @@ function buildProjectCard(p) {
       </div>
       <div class="project-actions">
         <button class="btn-sm btn-outline" onclick="goToTasksForProject('${p.id}')">Board</button>
+        <button class="btn-sm btn-outline" onclick="openProjectDetail('${p.id}')">Details</button>
         <button class="btn-sm" onclick="editProject('${p.id}')">✏ Edit</button>
         <button class="btn-sm btn-secondary" onclick="addTaskToProject('${p.id}')">+ Task</button>
         <button class="btn-sm btn-danger" onclick="deleteProject('${p.id}')">Delete</button>
@@ -2336,7 +2585,15 @@ function fillAssigneeSelect(selectEl, selectedId) {
   me.value = currentUser.id
   me.textContent = currentUser.fullName || currentUser.username || 'Me'
   selectEl.appendChild(me)
-  team.filter(m => m.status === 'accepted').forEach(m => {
+  if (workspaceOwnerSummary && workspaceOwnerSummary.id && workspaceOwnerSummary.id !== currentUser.id) {
+    const oo = document.createElement('option')
+    oo.value = workspaceOwnerSummary.id
+    const em = (workspaceOwnerSummary.email || '').trim()
+    const lab = workspaceOwnerSummary.fullName || workspaceOwnerSummary.username || 'Workspace owner'
+    oo.textContent = em ? (lab + ' · ' + em) : lab
+    selectEl.appendChild(oo)
+  }
+  team.filter(m => m.status === 'accepted' && m.id !== currentUser.id && (!workspaceOwnerSummary || m.id !== workspaceOwnerSummary.id)).forEach(m => {
     const opt = document.createElement('option')
     opt.value = m.id
     const em = (m.email || '').trim()
@@ -2393,7 +2650,8 @@ function saveEditProject() {
   document.getElementById('editProjectModal').classList.remove('active')
   renderProjects()
   renderDashboardCharts()
-  addAuditLog('update', `Updated project "${name}"`, 'update')
+  addAuditLog('update', `Updated project "${name}"`, 'update', { projectId: id })
+  if (currentProjectDetailId === id) openProjectDetail(id)
   showToast('Project updated!', 'success')
   updateStats()
 }
@@ -2427,7 +2685,8 @@ function reallyDeleteProject(id) {
   renderTimeTracking()
   renderDashboardCharts()
   populateTaskProjectFilter()
-  addAuditLog('delete', `Deleted project "${p?.name}"`, 'delete')
+  addAuditLog('delete', `Deleted project "${p?.name}"`, 'delete', { projectId: id })
+  if (currentProjectDetailId === id) closeProjectDetail()
   showToast('Project deleted', 'success')
   updateStats()
 }
@@ -2512,7 +2771,7 @@ function saveTask() {
   renderDashboardCharts()
   addActivity(`Created task: ${title}`)
   addNotification(`Task "${title}" created`, 'task')
-  addAuditLog('create', `Created task "${title}"`, 'create')
+  addAuditLog('create', `Created task "${title}"`, 'create', { projectId: projId || null, taskId: task.id })
   showToast('Task created!', 'success')
   updateStats()
 }
@@ -2594,7 +2853,7 @@ function confirmDeleteTask(id) {
   renderTimeTracking()
   renderDashboardCharts()
   updateStats()
-  addAuditLog('delete', `Deleted task "${task.title}"`, 'delete')
+  addAuditLog('delete', `Deleted task "${task.title}"`, 'delete', { projectId: task.projectId || null, taskId: id })
   showToast('Task deleted', 'success')
 }
 function deleteTask(id) {
@@ -2620,7 +2879,7 @@ function reallyDeleteTask(id) {
   renderTimeTracking()
   renderDashboardCharts()
   updateStats()
-  addAuditLog('delete', `Deleted task "${task.title}"`, 'delete')
+  addAuditLog('delete', `Deleted task "${task.title}"`, 'delete', { projectId: task.projectId || null, taskId: id })
   showToast('Task deleted', 'success')
 }
 function renderTasks(taskList) {
@@ -2740,6 +2999,7 @@ function filterTasks() {
 function openTaskDetail(id) {
   let task = tasks.find(t => t.id === id)
   if (!task) return
+  closeProjectDetail()
   currentTaskDetailId = id
   let proj = task.projectId ? projects.find(p => p.id === task.projectId) : null
 
@@ -2768,6 +3028,46 @@ function openTaskDetail(id) {
   let trackedSecs = timeEntries.filter(e => e.taskId === id).reduce((s, e) => s + (e.duration||0), 0)
   document.getElementById('taskDetailTimeSummary').textContent =
     trackedSecs > 0 ? `${formatHours(trackedSecs)} logged on this task` : 'No time logged yet'
+
+  const propsEl = document.getElementById('taskDetailProperties')
+  if (propsEl) {
+    const projLine = proj
+      ? `${escapeHtml(proj.name)} <span style="color:#6B7280;font-size:11px;">(${escapeHtml(proj.id)})</span>`
+      : '—'
+    propsEl.innerHTML = [
+      renderDetailKvRow('Task ID', `<code style="font-size:11px;">${escapeHtml(task.id)}</code>`),
+      renderDetailKvRow('Created', escapeHtml(formatDetailTimestamp(task.created))),
+      renderDetailKvRow('Updated', task.updated ? escapeHtml(formatDetailTimestamp(task.updated)) : '—'),
+      renderDetailKvRow('Project', projLine),
+      renderDetailKvRow('Estimated hours', (task.estimatedHours != null && task.estimatedHours > 0) ? escapeHtml(String(task.estimatedHours)) : '—')
+    ].join('')
+  }
+
+  const teEl = document.getElementById('taskDetailTimeEntries')
+  if (teEl) {
+    const ents = timeEntries.filter(e => e.taskId === id).slice().sort((a, b) => {
+      const ta = new Date(a.created || a.date || 0).getTime()
+      const tb = new Date(b.created || b.date || 0).getTime()
+      return tb - ta
+    }).slice(0, 20)
+    if (!ents.length) {
+      teEl.innerHTML = '<span style="color:#6B7280;font-size:12px;">No time entries on this task.</span>'
+    } else {
+      teEl.innerHTML = '<div style="display:flex;flex-direction:column;gap:2px;">' + ents.map(e => {
+        const d = e.date || (e.created ? e.created.split('T')[0] : '')
+        const who = escapeHtml(e.userName || '—')
+        return `<div style="display:flex;justify-content:space-between;gap:8px;font-size:12px;padding:5px 0;border-bottom:1px solid #1F2937;color:#E5E7EB;">
+          <span style="min-width:0;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(e.description || '—')}</span>
+          <span style="flex-shrink:0;color:#9CA3AF;">${escapeHtml(d)} · ${who} · ${escapeHtml(formatHours(e.duration || 0))}</span>
+        </div>`
+      }).join('') + '</div>'
+    }
+  }
+
+  const auEl = document.getElementById('taskDetailAudit')
+  if (auEl) {
+    auEl.innerHTML = renderDetailAuditHtml(collectAuditLogsForTask(task), 50)
+  }
 
   // Updates/comments
   let updatesEl = document.getElementById('taskDetailUpdates')
@@ -2852,7 +3152,7 @@ function saveTaskDetail() {
   renderTasks()
   renderDashboardCharts()
   updateStats()
-  addAuditLog('update', `Updated task "${task.title}" from side panel`, 'update')
+  addAuditLog('update', `Updated task "${task.title}" from side panel`, 'update', { projectId: task.projectId || null, taskId: task.id })
 
   // Email notification: task assigned to someone (respect notification prefs and backend availability)
   try {
@@ -2915,7 +3215,7 @@ function convertTaskToCalendarEvent(taskId) {
   save('events', events)
   renderCalendar()
   addActivity(`Added task to calendar: ${task.title}`)
-  addAuditLog('create', `Converted task "${task.title}" to calendar event`, 'create')
+  addAuditLog('create', `Converted task "${task.title}" to calendar event`, 'create', { projectId: task.projectId || null, taskId: task.id })
   if (conflicts.length) showToast(`Added to calendar with ${conflicts.length} conflict(s)`, 'warning')
   else showToast('Task added to calendar', 'success')
 }
@@ -2929,7 +3229,7 @@ function deleteTaskComment(taskId, commentId) {
   task.updates = task.updates.filter(x => (x.id || x.createdAt || x.created) !== commentId)
   save('tasks', tasks)
   if (currentTaskDetailId === taskId) openTaskDetail(taskId)
-  addAuditLog('update', `Deleted comment on task \"${task.title}\"`, 'update')
+  addAuditLog('update', `Deleted comment on task \"${task.title}\"`, 'update', { projectId: task.projectId || null, taskId: task.id })
   showToast('Comment deleted', 'success')
 }
 
@@ -2994,7 +3294,7 @@ function drop(e) {
   updateStats()
   renderDashboardCharts()
   addActivity(`Moved "${task.title}" → ${newStatus.replace('-',' ')}`)
-  addAuditLog('update', `Moved task "${task.title}" from ${oldStatus} to ${newStatus}`, 'update')
+  addAuditLog('update', `Moved task "${task.title}" from ${oldStatus} to ${newStatus}`, 'update', { projectId: task.projectId || null, taskId: task.id })
   showToast(`Moved to ${newStatus.replace('-',' ')}`, 'info')
 }
 
@@ -3038,7 +3338,7 @@ function handleTaskTouchEnd(e) {
   updateStats()
   renderDashboardCharts()
   addActivity(`Moved "${task.title}" → ${newStatus.replace('-',' ')}`)
-  addAuditLog('update', `Moved task "${task.title}" from ${oldStatus} to ${newStatus}`, 'update')
+  addAuditLog('update', `Moved task "${task.title}" from ${oldStatus} to ${newStatus}`, 'update', { projectId: task.projectId || null, taskId: task.id })
   showToast(`Moved to ${newStatus.replace('-',' ')}`, 'info')
   draggedTaskId = null
 }
@@ -3179,7 +3479,7 @@ function saveTimeEntry(desc, projId, taskId, durationSecs, date) {
   save('time', timeEntries)
   renderTimeTracking()
   updateStats()
-  addAuditLog('create', `Logged ${formatHours(durationSecs)} on "${desc}"`, 'create')
+  addAuditLog('create', `Logged ${formatHours(durationSecs)} on "${desc}"`, 'create', { projectId: projId || null, taskId: taskId || null })
   showToast(`Logged ${formatHours(durationSecs)}`, 'success')
 }
 
@@ -3260,7 +3560,7 @@ function deleteTimeEntry(id) {
   save('time', timeEntries)
   renderTimeTracking()
   updateStats()
-  addAuditLog('delete', `Deleted time entry "${entry?.description || id}"`, 'delete')
+  addAuditLog('delete', `Deleted time entry "${entry?.description || id}"`, 'delete', { projectId: entry?.projectId || null, taskId: entry?.taskId || null })
   showToast('Entry deleted', 'success')
 }
 
@@ -3649,8 +3949,9 @@ function cycleIdeaStatus(id) {
 function convertIdeaToTask(id) {
   let idea = ideas.find(i => i.id === id)
   if (!idea) return
+  const newTaskId = genId()
   tasks.push({
-    id: genId(), title: idea.title, description: idea.description,
+    id: newTaskId, title: idea.title, description: idea.description,
     projectId: '', priority: 'medium', status: 'todo',
     assignee: currentUser.id, created: new Date().toISOString()
   })
@@ -3660,7 +3961,7 @@ function convertIdeaToTask(id) {
   renderTasks()
   renderIdeas()
   addActivity(`Converted idea → task: ${idea.title}`)
-  addAuditLog('create', `Converted idea "${idea.title}" to task`, 'create')
+  addAuditLog('create', `Converted idea "${idea.title}" to task`, 'create', { taskId: newTaskId })
   showToast('Idea converted to task!', 'success')
   updateStats()
 }
@@ -4949,6 +5250,239 @@ function sendInvite() {
 /* ===================================================
    GOALS & OKRs
 =================================================== */
+function migrateGoalsIfNeeded() {
+  if (window._goalsMigratedV2) return
+  window._goalsMigratedV2 = true
+  let changed = false
+  goals.forEach(g => {
+    const before = JSON.stringify({ k: g.keyResults, m: g.milestones })
+    normalizeGoalInPlace(g)
+    if (JSON.stringify({ k: g.keyResults, m: g.milestones }) !== before) changed = true
+  })
+  if (changed) save('goals', goals)
+}
+
+function normalizeGoalInPlace(g) {
+  if (!g) return g
+  if (!Array.isArray(g.keyResults)) g.keyResults = []
+  g.keyResults = g.keyResults.map(kr => {
+    if (typeof kr === 'string') {
+      return { id: genId(), title: kr, target: '', current: '', progress: 0, done: false }
+    }
+    return {
+      id: kr.id || genId(),
+      title: kr.title || '',
+      target: kr.target || '',
+      current: kr.current || '',
+      progress: Math.min(100, Math.max(0, Number(kr.progress) || 0)),
+      done: !!kr.done
+    }
+  })
+  if (!Array.isArray(g.milestones)) g.milestones = []
+  g.milestones = g.milestones.map((m, i) => {
+    if (typeof m === 'string') {
+      return { id: genId(), title: m, dueDate: '', done: false, order: i }
+    }
+    let due = m.dueDate || ''
+    if (due && typeof due === 'string' && !due.includes('T') && due.length <= 10) due = due + 'T09:00'
+    return {
+      id: m.id || genId(),
+      title: m.title || '',
+      dueDate: due,
+      done: !!m.done,
+      order: typeof m.order === 'number' ? m.order : i
+    }
+  })
+  g.milestones.sort((a, b) => (a.order || 0) - (b.order || 0))
+  return g
+}
+
+function computeGoalProgress(g) {
+  normalizeGoalInPlace(g)
+  const krs = g.keyResults || []
+  const ms = g.milestones || []
+  const parts = []
+  if (krs.length) {
+    const avg = krs.reduce((s, kr) => s + (kr.done ? 100 : (Number(kr.progress) || 0)), 0) / krs.length
+    parts.push(avg)
+  }
+  if (ms.length) {
+    parts.push(ms.filter(m => m.done).length / ms.length * 100)
+  }
+  if (!parts.length) return null
+  return Math.round(parts.reduce((a, b) => a + b, 0) / parts.length)
+}
+
+function goalKRRowHtml(kr) {
+  const id = kr.id || ''
+  return `
+    <div class="goal-kr-row" data-kr-id="${escapeHtml(id)}">
+      <div class="goal-kr-row-top">
+        <input type="text" class="goal-kr-title" placeholder="e.g. Reach 500 weekly active users" value="${escapeHtml(kr.title)}">
+        <div class="goal-kr-meta">
+          <span>Progress %</span>
+          <input type="number" class="goal-kr-progress" min="0" max="100" value="${Number(kr.progress) || 0}">
+          <label><input type="checkbox" class="goal-kr-done" ${kr.done ? 'checked' : ''}> Done</label>
+          <button type="button" class="btn-xs btn-danger" onclick="removeGoalKRRow(this)">Remove</button>
+        </div>
+      </div>
+      <div class="goal-kr-meta" style="gap:10px;">
+        <input type="text" class="goal-kr-target" placeholder="Target (e.g. 500 users, $50k)" value="${escapeHtml(kr.target)}" style="flex:1;min-width:120px;padding:6px 8px;background:#020617;border:1px solid #1F2937;border-radius:6px;color:#e2e8f0;font-size:12px;">
+        <input type="text" class="goal-kr-current" placeholder="Current (optional)" value="${escapeHtml(kr.current)}" style="flex:1;min-width:120px;padding:6px 8px;background:#020617;border:1px solid #1F2937;border-radius:6px;color:#e2e8f0;font-size:12px;">
+      </div>
+    </div>`
+}
+
+function goalMilestoneRowHtml(m) {
+  const id = m.id || ''
+  let due = m.dueDate || ''
+  if (due && typeof due === 'string' && !due.includes('T') && due.length <= 10) due = due + 'T09:00'
+  return `
+    <div class="goal-ms-row" data-ms-id="${escapeHtml(id)}">
+      <input type="checkbox" class="goal-ms-done" ${m.done ? 'checked' : ''}>
+      <input type="text" class="goal-ms-title" placeholder="Step title" value="${escapeHtml(m.title)}">
+      <input type="datetime-local" class="goal-ms-due" value="${escapeHtml(due)}">
+      <button type="button" class="btn-xs btn-danger" onclick="removeGoalMilestoneRow(this)">Remove</button>
+    </div>`
+}
+
+function renderGoalKRRows(goal) {
+  const el = document.getElementById('modalGoalKRsList')
+  if (!el) return
+  const rows = goal && Array.isArray(goal.keyResults) && goal.keyResults.length
+    ? goal.keyResults.map(kr => goalKRRowHtml(kr))
+    : [goalKRRowHtml({ id: genId(), title: '', target: '', current: '', progress: 0, done: false })]
+  el.innerHTML = rows.join('')
+}
+
+function renderGoalMilestoneRows(goal) {
+  const el = document.getElementById('modalGoalMilestonesList')
+  if (!el) return
+  const rows = goal && Array.isArray(goal.milestones) && goal.milestones.length
+    ? goal.milestones.map(m => goalMilestoneRowHtml(m))
+    : [goalMilestoneRowHtml({ id: genId(), title: '', dueDate: '', done: false, order: 0 })]
+  el.innerHTML = rows.join('')
+}
+
+function addGoalKRRow() {
+  const el = document.getElementById('modalGoalKRsList')
+  if (!el) return
+  const wrap = document.createElement('div')
+  wrap.innerHTML = goalKRRowHtml({ id: genId(), title: '', target: '', current: '', progress: 0, done: false })
+  el.appendChild(wrap.firstElementChild)
+}
+
+function addGoalMilestoneRow() {
+  const el = document.getElementById('modalGoalMilestonesList')
+  if (!el) return
+  const wrap = document.createElement('div')
+  wrap.innerHTML = goalMilestoneRowHtml({ id: genId(), title: '', dueDate: '', done: false, order: 0 })
+  el.appendChild(wrap.firstElementChild)
+}
+
+function removeGoalKRRow(btn) {
+  const row = btn && btn.closest('.goal-kr-row')
+  if (!row || !row.parentNode) return
+  const list = document.getElementById('modalGoalKRsList')
+  if (list && list.querySelectorAll('.goal-kr-row').length <= 1) {
+    row.querySelector('.goal-kr-title').value = ''
+    row.querySelector('.goal-kr-progress').value = 0
+    row.querySelector('.goal-kr-done').checked = false
+    const t = row.querySelector('.goal-kr-target'); if (t) t.value = ''
+    const c = row.querySelector('.goal-kr-current'); if (c) c.value = ''
+    return
+  }
+  row.remove()
+}
+
+function removeGoalMilestoneRow(btn) {
+  const row = btn && btn.closest('.goal-ms-row')
+  if (!row || !row.parentNode) return
+  const list = document.getElementById('modalGoalMilestonesList')
+  if (list && list.querySelectorAll('.goal-ms-row').length <= 1) {
+    row.querySelector('.goal-ms-title').value = ''
+    row.querySelector('.goal-ms-due').value = ''
+    row.querySelector('.goal-ms-done').checked = false
+    return
+  }
+  row.remove()
+}
+
+function collectGoalKRsFromModal() {
+  const el = document.getElementById('modalGoalKRsList')
+  if (!el) return []
+  return [...el.querySelectorAll('.goal-kr-row')].map(row => {
+    const id = row.getAttribute('data-kr-id') || genId()
+    const title = row.querySelector('.goal-kr-title')?.value?.trim() || ''
+    if (!title) return null
+    return {
+      id,
+      title,
+      target: row.querySelector('.goal-kr-target')?.value?.trim() || '',
+      current: row.querySelector('.goal-kr-current')?.value?.trim() || '',
+      progress: Math.min(100, Math.max(0, parseInt(row.querySelector('.goal-kr-progress')?.value, 10) || 0)),
+      done: !!row.querySelector('.goal-kr-done')?.checked
+    }
+  }).filter(Boolean)
+}
+
+function collectGoalMilestonesFromModal() {
+  const el = document.getElementById('modalGoalMilestonesList')
+  if (!el) return []
+  return [...el.querySelectorAll('.goal-ms-row')].map((row, i) => {
+    const id = row.getAttribute('data-ms-id') || genId()
+    const title = row.querySelector('.goal-ms-title')?.value?.trim() || ''
+    if (!title) return null
+    return {
+      id,
+      title,
+      dueDate: row.querySelector('.goal-ms-due')?.value || '',
+      done: !!row.querySelector('.goal-ms-done')?.checked,
+      order: i
+    }
+  }).filter(Boolean)
+}
+
+function toggleGoalMilestone(goalId, milestoneId) {
+  const g = goals.find(x => x.id === goalId)
+  if (!g) return
+  normalizeGoalInPlace(g)
+  const m = g.milestones.find(x => x.id === milestoneId)
+  if (!m) return
+  m.done = !m.done
+  g.updated = new Date().toISOString()
+  save('goals', goals)
+  renderGoals()
+}
+
+function setGoalKRProgress(goalId, krId, raw) {
+  const g = goals.find(x => x.id === goalId)
+  if (!g) return
+  normalizeGoalInPlace(g)
+  const kr = g.keyResults.find(k => k.id === krId)
+  if (!kr) return
+  const v = Math.min(100, Math.max(0, parseInt(raw, 10) || 0))
+  kr.progress = v
+  kr.done = v >= 100
+  g.updated = new Date().toISOString()
+  save('goals', goals)
+  renderGoals()
+}
+
+function toggleGoalKRDone(goalId, krId) {
+  const g = goals.find(x => x.id === goalId)
+  if (!g) return
+  normalizeGoalInPlace(g)
+  const kr = g.keyResults.find(k => k.id === krId)
+  if (!kr) return
+  kr.done = !kr.done
+  if (kr.done) kr.progress = 100
+  else if (kr.progress >= 100) kr.progress = 0
+  g.updated = new Date().toISOString()
+  save('goals', goals)
+  renderGoals()
+}
+
 function openCreateGoalModal() {
   const ownerSelect  = document.getElementById('modalGoalOwner')
   const projectSelect= document.getElementById('modalGoalProject')
@@ -4967,15 +5501,17 @@ function openCreateGoalModal() {
   document.getElementById('modalGoalId').value    = ''
   document.getElementById('modalGoalTitle').value = ''
   document.getElementById('modalGoalDesc').value  = ''
-  document.getElementById('modalGoalKRs').value   = ''
   document.getElementById('modalGoalStatus').value= 'on_track'
   document.getElementById('modalGoalDue').value   = ''
+  renderGoalKRRows(null)
+  renderGoalMilestoneRows(null)
   document.getElementById('createGoalModal').classList.add('active')
 }
 
 function openEditGoalModal(id) {
   const g = goals.find(x => x.id === id)
   if (!g) return
+  normalizeGoalInPlace(g)
   const ownerSelect  = document.getElementById('modalGoalOwner')
   const projectSelect= document.getElementById('modalGoalProject')
   if (ownerSelect) {
@@ -4999,7 +5535,8 @@ function openEditGoalModal(id) {
   let due = g.dueDate || ''
   if (due && typeof due === 'string' && !due.includes('T')) due = due + 'T09:00'
   document.getElementById('modalGoalDue').value     = due
-  document.getElementById('modalGoalKRs').value     = (g.keyResults || []).join('\n')
+  renderGoalKRRows(g)
+  renderGoalMilestoneRows(g)
   document.getElementById('createGoalModal').classList.add('active')
 }
 
@@ -5016,7 +5553,8 @@ function saveGoal() {
   const status = document.getElementById('modalGoalStatus').value
   const due    = document.getElementById('modalGoalDue').value
   const projId = document.getElementById('modalGoalProject').value
-  const krsRaw = document.getElementById('modalGoalKRs').value.split('\n').map(l => l.trim()).filter(Boolean)
+  const krs = collectGoalKRsFromModal()
+  const milestones = collectGoalMilestonesFromModal()
 
   if (id) {
     // Update existing goal
@@ -5028,8 +5566,10 @@ function saveGoal() {
     goal.status      = status
     goal.dueDate     = due || null
     goal.projectId   = projId || null
-    goal.keyResults  = krsRaw
+    goal.keyResults  = krs
+    goal.milestones  = milestones
     goal.updated     = new Date().toISOString()
+    normalizeGoalInPlace(goal)
     save('goals', goals)
     closeCreateGoalModal()
     renderGoals()
@@ -5046,10 +5586,12 @@ function saveGoal() {
       status,
       dueDate: due || null,
       projectId: projId || null,
-      keyResults: krsRaw,
+      keyResults: krs,
+      milestones,
       updates: [],
       created: new Date().toISOString()
     }
+    normalizeGoalInPlace(goal)
     goals.push(goal)
     save('goals', goals)
     closeCreateGoalModal()
@@ -5062,6 +5604,7 @@ function saveGoal() {
 }
 
 function renderGoals() {
+  migrateGoalsIfNeeded()
   const search = (document.getElementById('goalSearch')?.value || '').toLowerCase()
   const statusFilter = document.getElementById('goalStatusFilter')?.value || ''
   const ownerFilter  = document.getElementById('goalOwnerFilter')?.value || ''
@@ -5086,7 +5629,11 @@ function renderGoals() {
   }
 
   let filtered = goals.slice().filter(g => {
-    if (search && !(g.title.toLowerCase().includes(search) || (g.description||'').toLowerCase().includes(search))) return false
+    normalizeGoalInPlace(g)
+    const krTitles = (g.keyResults || []).map(kr => (typeof kr === 'string' ? kr : (kr.title || ''))).join(' ')
+    const msTitles = (g.milestones || []).map(m => (typeof m === 'string' ? m : (m.title || ''))).join(' ')
+    const blob = [g.title, g.description || '', krTitles, msTitles].join(' ').toLowerCase()
+    if (search && !blob.includes(search)) return false
     if (statusFilter && g.status !== statusFilter) return false
     if (ownerFilter && g.ownerId !== ownerFilter) return false
     if (myOnly && g.ownerId !== currentUser.id) return false
@@ -5122,6 +5669,7 @@ function renderGoals() {
 }
 
 function buildGoalCard(g) {
+  normalizeGoalInPlace(g)
   const ownerLabel = (g.ownerId === currentUser.id)
     ? (currentUser.fullName || currentUser.username || 'Me')
     : (team.find(m => m.id === g.ownerId)?.email || 'Unassigned')
@@ -5152,35 +5700,86 @@ function buildGoalCard(g) {
     ? `<span style=\"font-size:11px;color:#9CA3AF;\">Due ${new Date(g.dueDate).toLocaleDateString()}</span>`
     : '<span style=\"font-size:11px;color:#4B5563;\">No target date</span>'
 
-  const krsHtml = (g.keyResults || []).slice(0, 3).map(kr => `<li>${escapeHtml(kr)}</li>`).join('')
-
   const updates = Array.isArray(g.updates) ? g.updates.slice().sort((a,b) => new Date(b.createdAt||b.created_at||b.created) - new Date(a.createdAt||a.created_at||a.created)) : []
   const recentUpdates = updates.slice(0, 3)
 
-  // Derive progress from linked project's tasks, if any
-  let progressHtml = '<span style=\"font-size:11px;color:#4B5563;\">No linked tasks</span>'
+  const gp = computeGoalProgress(g)
+  const goalProgressHtml = gp != null
+    ? `<div style=\"margin-bottom:12px;\">
+        <div style=\"display:flex;justify-content:space-between;font-size:11px;color:#9CA3AF;margin-bottom:4px;\">
+          <span style=\"font-weight:600;color:#c4b5fd;\">Objective progress</span><span>${gp}%</span>
+        </div>
+        <div style=\"height:10px;border-radius:999px;background:#111827;overflow:hidden;box-shadow:inset 0 1px 2px rgba(0,0,0,0.4);\">
+          <div style=\"width:${gp}%;height:100%;background:linear-gradient(90deg,#4f46e5,#a855f7,#ec4899);transition:width .35s ease;\"></div>
+        </div>
+      </div>`
+    : ''
+
+  let projectTasksHtml = ''
   if (project) {
     const projectTasks = tasks.filter(t => t.projectId === project.id)
     if (projectTasks.length) {
       const done = projectTasks.filter(t => t.status === 'done' || t.status === 'completed').length
       const pct  = Math.round((done / projectTasks.length) * 100)
-      progressHtml = `
-        <div style=\"font-size:11px;margin-bottom:4px;\">${done}/${projectTasks.length} project tasks done (${pct}%)</div>
-        <div style=\"width:140px;height:6px;border-radius:999px;background:#111827;overflow:hidden;\">
-          <div style=\"width:${pct}%;height:100%;background:#4f46e5;\"></div>
+      projectTasksHtml = `
+        <div style=\"font-size:11px;color:#6B7280;margin-bottom:4px;\">Linked project · ${escapeHtml(project.name)}</div>
+        <div style=\"font-size:11px;margin-bottom:4px;\">${done}/${projectTasks.length} tasks done (${pct}%)</div>
+        <div style=\"width:100%;max-width:200px;height:6px;border-radius:999px;background:#111827;overflow:hidden;margin-left:auto;\">
+          <div style=\"width:${pct}%;height:100%;background:#6366f1;\"></div>
         </div>
       `
+    } else {
+      projectTasksHtml = `<div style=\"font-size:11px;color:#4B5563;\">Linked project: ${escapeHtml(project.name)} · no tasks yet</div>`
     }
   }
 
+  const milestoneBlock = (g.milestones && g.milestones.length)
+    ? `<div class=\"goal-card-path\">
+        ${g.milestones.length > 1 ? '<div class=\"goal-card-path-line\" aria-hidden=\"true\"></div>' : ''}
+        <div style=\"font-size:11px;color:#94a3b8;margin-bottom:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.06em;\">Your path</div>
+        ${g.milestones.map(m => {
+          const due = m.dueDate && !isNaN(new Date(m.dueDate).getTime())
+            ? new Date(m.dueDate).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+            : ''
+          const btnClass = m.done ? 'goal-card-step-btn done' : 'goal-card-step-btn'
+          const mark = m.done ? '✓' : ''
+          return `<div class=\"goal-card-step\">
+            <button type=\"button\" class=\"${btnClass}\" onclick=\"toggleGoalMilestone(${JSON.stringify(g.id)}, ${JSON.stringify(m.id)})\" title=\"${m.done ? 'Mark not done' : 'Mark step done'}\">${mark}</button>
+            <div style=\"flex:1;min-width:0;\">
+              <div style=\"font-size:13px;color:${m.done ? '#64748b' : '#E5E7EB'};text-decoration:${m.done ? 'line-through' : 'none'};\">${escapeHtml(m.title)}</div>
+              ${due ? `<div style=\"font-size:10px;color:#475569;\">${escapeHtml(due)}</div>` : ''}
+            </div>
+          </div>`
+        }).join('')}
+      </div>`
+    : ''
+
+  const krBlock = (g.keyResults && g.keyResults.length)
+    ? `<div style=\"margin-top:12px;\">
+        <div style=\"font-size:11px;color:#94a3b8;margin-bottom:8px;font-weight:600;text-transform:uppercase;letter-spacing:0.06em;\">Key results</div>
+        ${g.keyResults.map(kr => {
+          const pct = kr.done ? 100 : (Number(kr.progress) || 0)
+          return `<div style=\"margin-bottom:12px;padding:10px;border-radius:10px;background:rgba(15,23,42,0.6);border:1px solid #1e293b;\">
+            <div style=\"display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:6px;\">
+              <span style=\"font-size:12px;color:#E5E7EB;line-height:1.35;\">${escapeHtml(kr.title)}</span>
+              <label style=\"font-size:11px;color:#9CA3AF;display:flex;align-items:center;gap:6px;white-space:nowrap;\">
+                <input type=\"checkbox\" ${kr.done ? 'checked' : ''} onchange=\"toggleGoalKRDone(${JSON.stringify(g.id)}, ${JSON.stringify(kr.id)})\"> <span>${pct}%</span>
+              </label>
+            </div>
+            <input type=\"range\" class=\"goal-kr-slider\" min=\"0\" max=\"100\" value=\"${pct}\" ${kr.done ? 'disabled' : ''} oninput=\"setGoalKRProgress(${JSON.stringify(g.id)}, ${JSON.stringify(kr.id)}, this.value)\">
+            ${(kr.target || kr.current) ? `<div style=\"font-size:10px;color:#64748b;margin-top:6px;\">${kr.target ? `Target: ${escapeHtml(kr.target)}` : ''}${kr.target && kr.current ? ' · ' : ''}${kr.current ? `Now: ${escapeHtml(kr.current)}` : ''}</div>` : ''}
+          </div>`
+        }).join('')}
+      </div>`
+    : ''
+
   return `
-    <div class=\"card\" style=\"margin-bottom:10px;\">
+    <div class=\"card\" style=\"margin-bottom:14px;border:1px solid #1e293b;background:linear-gradient(165deg, rgba(15,23,42,0.9) 0%, rgba(2,6,23,0.95) 100%);\">
       <div style=\"display:flex;align-items:flex-start;gap:10px;margin-bottom:8px;\">
         <div style=\"flex:1;min-width:0;\">
-          <h3 style=\"font-size:15px;margin-bottom:4px;\">${escapeHtml(g.title)}</h3>
+          <h3 style=\"font-size:16px;margin-bottom:4px;background:linear-gradient(90deg,#e2e8f0,#c4b5fd);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;\">${escapeHtml(g.title)}</h3>
           <div style=\"font-size:12px;color:#9CA3AF;margin-bottom:4px;\">Owner: ${escapeHtml(ownerLabel)}</div>
-          ${g.description ? `<p style=\"font-size:13px;color:#9CA3AF;margin-bottom:4px;\">${escapeHtml(g.description)}</p>` : ''}
-          ${project ? `<div style=\"font-size:12px;color:#9CA3AF;\">Linked project: ${escapeHtml(project.name)}</div>` : ''}
+          ${g.description ? `<p style=\"font-size:13px;color:#9CA3AF;margin-bottom:4px;line-height:1.45;\">${escapeHtml(g.description)}</p>` : ''}
         </div>
         <div style=\"display:flex;flex-direction:column;align-items:flex-end;gap:6px;\">
           <span style=\"font-size:11px;padding:3px 10px;border-radius:999px;background:${statusColor};color:${statusTextColor};white-space:nowrap;\">${escapeHtml(statusLabel)}</span>
@@ -5190,25 +5789,28 @@ function buildGoalCard(g) {
           </div>
         </div>
       </div>
-      <div style=\"display:flex;justify-content:space-between;align-items:flex-start;font-size:12px;color:#9CA3AF;gap:16px;\">
-        <div>
-          ${(g.keyResults && g.keyResults.length) ? `<div style=\"font-size:11px;margin-bottom:2px;\">Key results:</div><ul style=\"padding-left:18px;margin:0;\">${krsHtml}</ul>` : '<span style=\"font-size:11px;\">No key results added</span>'}
+      ${goalProgressHtml}
+      ${milestoneBlock}
+      ${krBlock}
+      ${(!g.keyResults || !g.keyResults.length) && (!g.milestones || !g.milestones.length) ? `<p style=\"font-size:12px;color:#64748b;margin:8px 0;\">Add <strong>key results</strong> and <strong>planning steps</strong> in Edit to unlock progress tracking and your path.</p>` : ''}
+      <div style=\"display:flex;justify-content:space-between;align-items:flex-start;font-size:12px;color:#9CA3AF;gap:16px;margin-top:12px;padding-top:12px;border-top:1px solid #1e293b;\">
+        <div style=\"flex:1;min-width:0;\">
           ${recentUpdates.length ? `
-            <div style=\"font-size:11px;margin-top:8px;\">
-              <div style=\"margin-bottom:2px;\">Recent updates:</div>
-              <ul style=\"padding-left:16px;margin:0;display:flex;flex-direction:column;gap:2px;\">
+            <div style=\"font-size:11px;margin-bottom:6px;\">
+              <div style=\"margin-bottom:4px;color:#6B7280;\">Recent updates</div>
+              <ul style=\"padding-left:16px;margin:0;display:flex;flex-direction:column;gap:4px;\">
                 ${recentUpdates.map(u => {
                   const d = u.createdAt || u.created_at || u.created
                   const label = d ? new Date(d).toLocaleDateString(undefined,{ month:'short', day:'numeric' }) : ''
-                  return `<li>${label ? `<span style=\"color:#6B7280;\">${label} • </span>` : ''}${escapeHtml(u.text || '')}</li>`
+                  return `<li>${label ? `<span style=\"color:#6B7280;\">${label} · </span>` : ''}${escapeHtml(u.text || '')}</li>`
                 }).join('')}
               </ul>
             </div>
           ` : ''}
-          <button class=\"btn-xs btn-secondary\" style=\"margin-top:6px;\" onclick=\"openGoalUpdateModal('${g.id}')\">+ Add update</button>
+          <button class=\"btn-xs btn-secondary\" style=\"margin-top:4px;\" onclick=\"openGoalUpdateModal('${g.id}')\">+ Add update</button>
         </div>
-        <div style=\"text-align:right;display:flex;flex-direction:column;align-items:flex-end;gap:4px;\">
-          ${progressHtml}
+        <div style=\"text-align:right;display:flex;flex-direction:column;align-items:flex-end;gap:8px;min-width:120px;\">
+          ${projectTasksHtml || (project ? '' : '<span style=\"font-size:11px;color:#4B5563;\">No project link</span>')}
           ${dueHtml}
         </div>
       </div>
@@ -5240,7 +5842,7 @@ function reallyDeleteGoal(id) {
 }
 
 function renderTeam() {
-  let activeHtml  = buildCurrentUserCard()
+  let activeHtml  = buildCurrentUserCard() + buildWorkspaceOwnerPeerCard()
   let pendingHtml = ''
 
   const roleFilter   = document.getElementById('teamRoleFilter')?.value || ''
@@ -5263,9 +5865,18 @@ function renderTeam() {
     return (roleRank[a.role] ?? 99) - (roleRank[b.role] ?? 99) || aName.localeCompare(bName)
   })
 
+  const ownerPeerId =
+    workspaceOwnerSummary && workspaceOwnerSummary.id && workspaceOwnerSummary.id !== currentUser?.id
+      ? workspaceOwnerSummary.id
+      : ''
+
   sortedTeam.forEach(m => {
     const isAccepted = m.status === 'accepted'
     const isPending  = m.status === 'pending'
+
+    if (isAccepted && currentUser && m.id === currentUser.id) return
+    if (isPending && isTeamPendingSuperseded(m)) return
+    if (ownerPeerId && m.id === ownerPeerId) return
 
     if (statusFilter === 'accepted' && !isAccepted) return
     if (statusFilter === 'pending' && !isPending) return
@@ -5340,15 +5951,16 @@ function renderTeam() {
     }
   })
 
-  if (team.length === 0) {
+  if (team.length === 0 && !(workspaceOwnerSummary && currentUser && workspaceOwnerSummary.id !== currentUser.id)) {
     activeHtml += `<div class="team-empty-inline" style="grid-column:1/-1;"><div class="empty-state compact" style="padding:20px 12px;border:none;background:transparent;"><div class="empty-state-icon">👥</div><h3>No teammates yet</h3><p style="max-width:360px;margin-left:auto;margin-right:auto;">Invite by email or share an invite code so people appear here.</p><button type="button" class="btn-primary btn-sm" onclick="openInviteTeamModal()">Invite by email</button></div></div>`
   }
   document.getElementById('teamList').innerHTML    = activeHtml
   document.getElementById('inviteList').innerHTML  = pendingHtml || '<div class="team-empty-inline" style="border:none;">No pending invitations</div>'
 
-  let pending = team.filter(m => m.status === 'pending').length
-  let admins  = team.filter(m => m.role === 'admin' && m.status === 'accepted').length + (currentUser.role === 'admin' ? 1 : 0)
-  if (document.getElementById('teamStatTotal')) document.getElementById('teamStatTotal').textContent = team.filter(m=>m.status==='accepted').length + 1
+  let pending = team.filter(m => m.status === 'pending' && !isTeamPendingSuperseded(m)).length
+  const acceptedExclSelf = team.filter(m => m.status === 'accepted' && (!currentUser || m.id !== currentUser.id))
+  let admins  = acceptedExclSelf.filter(m => m.role === 'admin').length + (currentUser.role === 'admin' ? 1 : 0)
+  if (document.getElementById('teamStatTotal')) document.getElementById('teamStatTotal').textContent = String(workspacePeopleHeadcount())
   if (document.getElementById('teamStatPending')) document.getElementById('teamStatPending').textContent = pending
   if (document.getElementById('teamStatAdmins')) document.getElementById('teamStatAdmins').textContent = admins
   renderTeamWorkloadBoard()
@@ -5371,9 +5983,17 @@ function renderTeamWorkloadBoard() {
   const container = document.getElementById('teamWorkloadGrid')
   if (!container) return
 
+  const oid = workspaceOwnerSummary && workspaceOwnerSummary.id
+  const ownerPeer =
+    oid && oid !== currentUser?.id && !team.some(m => m && m.id === oid)
+      ? [{ id: oid, label: workspaceOwnerSummary.fullName || workspaceOwnerSummary.username || 'Owner', isYou: false, isOwner: true }]
+      : []
   const members = [
     { id: currentUser?.id, label: currentUser?.fullName || currentUser?.username || 'You', isYou: true },
-    ...team.filter(m => m.status === 'accepted').map(m => ({ id: m.id, label: (m.email || 'Member').split('@')[0], isYou: false }))
+    ...ownerPeer,
+    ...team
+      .filter(m => m.status === 'accepted' && m.id !== currentUser?.id && (!oid || m.id !== oid))
+      .map(m => ({ id: m.id, label: (m.email || 'Member').split('@')[0], isYou: false }))
   ]
 
   const maxOpen = Math.max(1, ...members.map(m => tasks.filter(t => t.assignee === m.id && t.status !== 'done' && t.status !== 'completed').length))
@@ -5388,7 +6008,7 @@ function renderTeamWorkloadBoard() {
     const widthPct = Math.round((openCount / maxOpen) * 100)
     return `
       <div class="team-workload-card">
-        <div class="team-workload-name">${escapeHtml(m.label)} ${m.isYou ? '<span style="font-size:10px;color:#a78bfa;">(You)</span>' : ''}</div>
+        <div class="team-workload-name">${escapeHtml(m.label)} ${m.isYou ? '<span style="font-size:10px;color:#a78bfa;">(You)</span>' : ''}${m.isOwner ? '<span style="font-size:10px;color:#a78bfa;"> · Owner</span>' : ''}</div>
         <div class="team-workload-meta">${openCount} open task${openCount === 1 ? '' : 's'} · ${doneCount} completed</div>
         <div class="team-workload-bar"><div class="team-workload-fill" style="width:${widthPct}%;"></div></div>
         <div style="margin-top:9px;"><button type="button" class="btn-xs btn-secondary" onclick="assignTaskToMember('${m.id}')">+ Assign task</button></div>
@@ -5445,6 +6065,42 @@ function buildCurrentUserCard() {
           </div>
           <div class="member-stats"><div><span class="member-stat-val">${taskCount}</span>tasks assigned to you</div><div style="font-size:11px;color:${online ? '#86efac' : '#9CA3AF'};align-self:flex-end;">${escapeHtml(presenceLabel)}</div></div>
           <button type="button" class="btn-sm btn-secondary" onclick="switchPage('settings',null)">Edit profile</button>
+        </div>
+      </div>
+    </div>
+  `
+}
+
+/** Renders the workspace owner for teammates — owner is not stored in team[] (only invitees are). */
+function buildWorkspaceOwnerPeerCard() {
+  if (!workspaceOwnerSummary || !currentUser) return ''
+  if (workspaceOwnerSummary.id === currentUser.id) return ''
+  const o = workspaceOwnerSummary
+  const emailSafe = (o.email || '').trim()
+  const display = o.fullName || o.username || 'Workspace owner'
+  const initial = (display || '?').charAt(0).toUpperCase()
+  const online = isUserOnline(o.id)
+  const presenceLabel = getLastSeenLabel(o.id)
+  const taskCount = tasks.filter(t => t.assignee === o.id).length
+  const role = o.role || 'owner'
+  return `
+    <div class="member-card member-card--owner-peer">
+      <div class="member-card-inner">
+        <div class="member-avatar">
+          <div class="member-online-dot" style="background:${online ? '#22c55e' : '#6B7280'};"></div>
+          ${initial}
+        </div>
+        <div class="member-card-body">
+          <h4>${escapeHtml(display)} <span style="font-size:10px;font-weight:600;color:#a78bfa;text-transform:uppercase;">Workspace owner</span></h4>
+          ${emailSafe ? `<span class="member-email">${escapeHtml(emailSafe)}</span>` : ''}
+          <div class="member-meta">
+            <span class="role-badge ${escapeHtml(role)}">${escapeHtml(role)}</span>
+          </div>
+          <div class="member-stats">
+            <div><span class="member-stat-val">${taskCount}</span>tasks assigned</div>
+            <div style="font-size:11px;color:${online ? '#86efac' : '#9CA3AF'};align-self:flex-end;">${escapeHtml(presenceLabel)}</div>
+          </div>
+          <button type="button" class="btn-sm btn-secondary" onclick="assignTaskToMember('${String(o.id).replace(/'/g, "\\'")}')">Assign task</button>
         </div>
       </div>
     </div>
@@ -5647,11 +6303,14 @@ function renderActivityFeed() {
 /* ===================================================
    AUDIT LOG
 =================================================== */
-function addAuditLog(type, text, iconType) {
+function addAuditLog(type, text, iconType, meta) {
+  const m = meta && typeof meta === 'object' ? meta : {}
   auditLogs.unshift({
     id: genId(), type, text, iconType: iconType || 'other',
     user: currentUser ? currentUser.username : 'system',
-    timestamp: new Date().toISOString()
+    timestamp: new Date().toISOString(),
+    projectId: m.projectId || null,
+    taskId: m.taskId || null
   })
   if (auditLogs.length > 500) auditLogs.pop()
   save('audit', auditLogs)
@@ -5841,7 +6500,25 @@ function deletePageById(pageId, ev) {
     showToast('Keep at least one page', 'warning')
     return
   }
-  if (!confirm('Delete this page? This cannot be undone.')) return
+  const p = pages.find(x => x.id === pageId)
+  const title = (p && p.title && String(p.title).trim()) ? String(p.title).trim() : 'Untitled'
+  openConfirmModal({
+    type: 'delete_page',
+    id: pageId,
+    title: 'Delete page',
+    message: `Delete “${title}”? This cannot be undone.`,
+    level: 'danger'
+  })
+}
+
+function deleteCurrentPage() {
+  if (!currentPageId) return
+  deletePageById(currentPageId, null)
+}
+
+function reallyDeletePage(pageId) {
+  ensurePageInitialized()
+  if (pages.length <= 1) return
   pages = pages.filter(p => p.id !== pageId)
   save('pages', pages)
   if (currentPageId === pageId) {
@@ -5872,7 +6549,10 @@ function renderPagesList() {
         <div class="pages-row-title">${escapeHtml(p.title || 'Untitled')}</div>
         <div class="pages-row-meta">${getPageWordCount(p)} words · ${new Date(p.updated || p.created).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</div>
       </div>
-      <button type="button" class="pages-row-del" onclick="deletePageById('${p.id}', event)" title="Delete page" aria-label="Delete page">✕</button>
+      <button type="button" class="pages-row-del-btn" onclick="deletePageById('${p.id}', event)" title="Delete this page" aria-label="Delete this page">
+        <span class="pages-row-del-icon" aria-hidden="true">🗑</span>
+        <span class="pages-row-del-label">Delete</span>
+      </button>
     </div>
   `).join('')
 }
@@ -6509,6 +7189,92 @@ function makeChart(id, config) {
   }
 }
 
+function cloneChartConfigForZoom(chartId) {
+  if (typeof Chart === 'undefined') return null
+  var el = document.getElementById(chartId)
+  if (!el) return null
+  var ch = Chart.getChart(el)
+  if (!ch) return null
+  try {
+    return {
+      type: ch.config.type,
+      data: JSON.parse(JSON.stringify(ch.data)),
+      options: JSON.parse(JSON.stringify(ch.options))
+    }
+  } catch (e) {
+    return null
+  }
+}
+
+function bumpChartConfigForZoomView(cfg) {
+  if (!cfg || !cfg.options) return cfg
+  var o = cfg.options
+  o.plugins = o.plugins || {}
+  o.plugins.legend = o.plugins.legend || {}
+  o.plugins.legend.labels = o.plugins.legend.labels || {}
+  o.plugins.legend.labels.font = o.plugins.legend.labels.font || {}
+  var fs = o.plugins.legend.labels.font.size || 11
+  o.plugins.legend.labels.font.size = Math.round(fs * 1.2)
+  if (o.scales && typeof o.scales === 'object') {
+    ;['x', 'y', 'y1', 'r'].forEach(function (k) {
+      var sc = o.scales[k]
+      if (!sc || !sc.ticks) return
+      sc.ticks = sc.ticks || {}
+      sc.ticks.font = sc.ticks.font || {}
+      var ts = sc.ticks.font.size || 11
+      sc.ticks.font.size = Math.round(ts * 1.15)
+    })
+  }
+  return cfg
+}
+
+function openChartZoomModal(chartId, title) {
+  if (typeof Chart === 'undefined') return
+  var cfg = cloneChartConfigForZoom(chartId)
+  if (!cfg) {
+    showToast('Chart is not ready yet', 'warning')
+    return
+  }
+  cfg = bumpChartConfigForZoomView(cfg)
+  var modal = document.getElementById('chartZoomModal')
+  var titleEl = document.getElementById('chartZoomTitle')
+  if (titleEl) titleEl.textContent = title || 'Chart'
+  destroyChart('chartZoomCanvas')
+  if (modal) modal.classList.add('active')
+  try {
+    document.body.style.overflow = 'hidden'
+  } catch (e) {}
+  setTimeout(function () {
+    makeChart('chartZoomCanvas', cfg)
+  }, 10)
+}
+
+function closeChartZoomModal() {
+  var modal = document.getElementById('chartZoomModal')
+  if (modal) modal.classList.remove('active')
+  destroyChart('chartZoomCanvas')
+  try {
+    document.body.style.overflow = ''
+  } catch (e) {}
+}
+
+function setupChartZoom() {
+  if (window.__alcoChartZoomBound) return
+  window.__alcoChartZoomBound = true
+  document.addEventListener('click', function (e) {
+    var container = e.target.closest('.chart-container.chart-zoomable')
+    if (!container) return
+    var canvas = container.querySelector('canvas')
+    if (!canvas || !canvas.id || canvas.id === 'chartZoomCanvas') return
+    e.preventDefault()
+    e.stopPropagation()
+    var card = container.closest('.card')
+    var h3 = card && card.querySelector('h3')
+    var t = (h3 && h3.textContent) ? h3.textContent.trim() : 'Chart'
+    openChartZoomModal(canvas.id, t)
+  })
+}
+
 function renderDashboardCharts() {
   if (typeof Chart === 'undefined') {
     ['projectsChart','tasksChart','completionChart','activityChart'].forEach(function (id) {
@@ -7002,6 +7768,9 @@ function confirmAction() {
     case 'delete_goal':
       reallyDeleteGoal(cfg.id)
       break
+    case 'delete_page':
+      reallyDeletePage(cfg.id)
+      break
     case 'remove_member':
       reallyRemoveMember(cfg.id)
       break
@@ -7269,7 +8038,7 @@ Tasks:           ${tasks.length}
 
 Ideas Submitted: ${ideas.length}
 Events:          ${events.length}
-Team Members:    ${team.length + 1}
+Team Members:    ${workspacePeopleHeadcount()}
 Hours Tracked:   ${totalHours}h
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━`
 
