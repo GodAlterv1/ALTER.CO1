@@ -84,6 +84,8 @@ autoAssociateLabelsWithInputs()
 var syncWorkspaceTimeout = null
 var currentNotificationFilter = 'all'
 var workspaceKeyUpdatedAt = {}
+var googleAuthClientId = ''
+var googleAuthInitAttempted = false
 var liveWorkspaceRefreshTimer = null
 var liveWorkspaceRefreshInFlight = false
 var lastLiveWorkspaceRefreshAt = ''
@@ -812,6 +814,120 @@ function switchLoginTab(tab, el) {
   document.getElementById('registerForm').classList.toggle('hidden', tab !== 'register')
 }
 
+function setGoogleLoginButtonState(text) {
+  var wrap = document.getElementById('googleLoginBtn')
+  if (!wrap) return
+  if (text) {
+    wrap.textContent = text
+  }
+}
+
+function loadGoogleAuthConfigAndInit() {
+  if (!ALTER_API_BASE || googleAuthInitAttempted) return
+  googleAuthInitAttempted = true
+  setGoogleLoginButtonState('Loading Google sign-in...')
+  fetch(ALTER_API_BASE + '/api/health')
+    .then(function (r) { return r.json().catch(function () { return {} }) })
+    .then(function (body) {
+      googleAuthClientId = (body && body.googleAuthClientId) ? String(body.googleAuthClientId).trim() : ''
+      if (!googleAuthClientId) {
+        setGoogleLoginButtonState('Google sign-in is unavailable')
+        return
+      }
+      initializeGoogleSignIn()
+    })
+    .catch(function () {
+      setGoogleLoginButtonState('Google sign-in is unavailable')
+    })
+}
+
+function initializeGoogleSignIn() {
+  var wrap = document.getElementById('googleLoginBtn')
+  var registerWrap = document.getElementById('googleRegisterBtn')
+  if (!wrap && !registerWrap) return
+  if (!googleAuthClientId) {
+    setGoogleLoginButtonState('Google sign-in is unavailable')
+    if (registerWrap) registerWrap.textContent = 'Google sign-up is unavailable'
+    return
+  }
+  if (!window.google || !google.accounts || !google.accounts.id) {
+    setGoogleLoginButtonState('Google sign-in failed to load')
+    if (registerWrap) registerWrap.textContent = 'Google sign-up failed to load'
+    return
+  }
+  try {
+    google.accounts.id.initialize({
+      client_id: googleAuthClientId,
+      callback: function (response) {
+        if (!response || !response.credential) {
+          showLoginMessage('Google sign-in was cancelled. Please try again.', 'error')
+          return
+        }
+        loginWithGoogleCredential(response.credential)
+      }
+    })
+    if (wrap) {
+      wrap.textContent = ''
+      google.accounts.id.renderButton(wrap, {
+        theme: 'outline',
+        size: 'large',
+        width: 280,
+        text: 'continue_with',
+        shape: 'rect'
+      })
+    }
+    if (registerWrap) {
+      registerWrap.textContent = ''
+      google.accounts.id.renderButton(registerWrap, {
+        theme: 'outline',
+        size: 'large',
+        width: 280,
+        text: 'signup_with',
+        shape: 'rect'
+      })
+    }
+  } catch (e) {
+    console.error('Google sign-in init failed', e)
+    setGoogleLoginButtonState('Google sign-in failed to load')
+    if (registerWrap) registerWrap.textContent = 'Google sign-up failed to load'
+  }
+}
+
+function loginWithGoogleCredential(credential) {
+  if (!ALTER_API_BASE) {
+    showLoginMessage('Google sign-in requires the backend server.', 'error')
+    return
+  }
+  showLoginMessage('Signing you in with Google...', 'info')
+  fetch(ALTER_API_BASE + '/api/auth/google', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ credential: credential })
+  })
+    .then(function (r) { return r.json().then(function (body) { return { ok: r.ok, body: body } }) })
+    .then(function (res) {
+      if (!res.ok) {
+        showLoginMessage((res.body && res.body.error) || 'Google sign-in failed', 'error')
+        return { skip: true }
+      }
+      setAuthToken(res.body.token)
+      save('session', res.body.user)
+      currentUser = res.body.user
+      return loadWorkspaceFromBackend().then(function (data) {
+        return { skip: false, data: data }
+      })
+    })
+    .then(function (result) {
+      if (!result || result.skip) return
+      if (result.data) applyWorkspaceToState(result.data)
+      addAuditLog('login', currentUser.username + ' signed in with Google', 'login')
+      showApp()
+    })
+    .catch(function () {
+      showLoginMessage('Network error. Could not complete Google sign-in.', 'error')
+    })
+}
+
 function register() {
   var u  = document.getElementById('regUsername').value.trim()
   var e  = document.getElementById('regEmail').value.trim()
@@ -1027,6 +1143,7 @@ function showAuthScreen(tab) {
   var tabs = document.querySelectorAll('.login-tab')
   if (tab === 'register' && tabs[1]) switchLoginTab('register', tabs[1])
   else if (tabs[0]) switchLoginTab('login', tabs[0])
+  loadGoogleAuthConfigAndInit()
 }
 
 function showApp() {

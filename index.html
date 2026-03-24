@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <!-- Chart.js UMD + large inline app need script-src unsafe-inline / unsafe-eval; server also sends CSP -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline'; img-src 'self' data: https: blob:; font-src 'self' data: https:; connect-src 'self' https: http: ws: wss:; base-uri 'self'; form-action 'self'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net https://accounts.google.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: https: blob:; font-src 'self' data: https:; connect-src 'self' https: http: ws: wss:; frame-src 'self' https://accounts.google.com; base-uri 'self'; form-action 'self'">
 <title>ALTER.CO - Advanced SaaS Platform</title>
 <meta name="description" content="ALTER.CO — one workspace for projects, tasks, time tracking, ideas, and team collaboration.">
 <meta name="theme-color" content="#0B0F18">
@@ -14,6 +14,7 @@
 <link rel="manifest" href="/site.webmanifest">
 <!-- Pinned Chart.js version to avoid strict CSP 'unsafe-eval' issues -->
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.5.1/dist/chart.umd.min.js"></script>
+<script src="https://accounts.google.com/gsi/client" async defer></script>
 <style>
 * { margin: 0; padding: 0; box-sizing: border-box; }
 
@@ -3444,12 +3445,16 @@ kbd {
       <button class="btn-primary-login" onclick="login()">Sign In</button>
       <div class="login-divider">or continue with</div>
       <div class="social-login">
+        <div id="googleLoginBtn" class="social-btn" style="display:flex;justify-content:center;align-items:center;min-height:44px;"></div>
         <button class="social-btn" onclick="demoLogin()">🚀 Demo Account</button>
         <button class="social-btn" onclick="showToast('SSO coming soon','info')">🔐 SSO / SAML</button>
       </div>
     </div>
 
     <div id="registerForm" class="hidden">
+      <p style="font-size:13px;color:#9CA3AF;margin-bottom:16px;line-height:1.45;">
+        Sign up instantly with your Google account — no password needed. We’ll create your workspace on first sign-in.
+      </p>
       <div class="form-group">
         <input id="regUsername" placeholder="Username (min 4 chars)" type="text">
       </div>
@@ -3466,6 +3471,10 @@ kbd {
         <input id="regInviteCode" placeholder="Workspace invite code (optional)" type="text" autocomplete="off" style="text-transform:uppercase;font-family:monospace;letter-spacing:0.06em;" oninput="this.value=this.value.toUpperCase()">
       </div>
       <button class="btn-primary-login" onclick="register()">Create Account</button>
+      <div class="login-divider">or sign up with</div>
+      <div class="social-login">
+        <div id="googleRegisterBtn" class="social-btn" style="display:flex;justify-content:center;align-items:center;min-height:44px;"></div>
+      </div>
     </div>
 
     <div id="loginMessage" class="login-message hidden"></div>

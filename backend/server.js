@@ -31,6 +31,7 @@ const WORKSPACE_DIR = path.join(DATA_DIR, 'workspace')
 
 /** Google Calendar OAuth (optional). Set all three in .env to enable connect + sync. */
 const GOOGLE_CLIENT_ID = (process.env.GOOGLE_CLIENT_ID || '').trim()
+const GOOGLE_AUTH_CLIENT_ID = (process.env.GOOGLE_AUTH_CLIENT_ID || GOOGLE_CLIENT_ID).trim()
 const GOOGLE_CLIENT_SECRET = (process.env.GOOGLE_CLIENT_SECRET || '').trim()
 const GOOGLE_CLIENT_REDIRECT_URI = (process.env.GOOGLE_CLIENT_REDIRECT_URI || '').trim()
 const GOOGLE_CALENDAR_SCOPES = (
@@ -245,11 +246,12 @@ function verifyGoogleCalendarOnStartup() {
 // Hardening: custom CSP — Chart.js UMD may use eval(); inline script is the whole app
 const SPA_CONTENT_SECURITY_POLICY = [
   "default-src 'self'",
-  "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net",
+  "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net https://accounts.google.com",
   "style-src 'self' 'unsafe-inline'",
   "img-src 'self' data: https: blob:",
   "font-src 'self' data: https:",
   "connect-src 'self' https: http: ws: wss:",
+  "frame-src 'self' https://accounts.google.com",
   "frame-ancestors 'self'",
   "base-uri 'self'",
   "form-action 'self'"
@@ -741,6 +743,23 @@ function genId() {
   return Date.now().toString(36) + Math.random().toString(36).substr(2, 5)
 }
 
+function normalizeUsernameBase(input) {
+  const raw = String(input || '').trim().toLowerCase()
+  const cleaned = raw.replace(/[^a-z0-9._-]+/g, '_').replace(/^[_\-.]+|[_\-.]+$/g, '')
+  return cleaned || 'user'
+}
+
+function nextAvailableUsername(users, desired) {
+  const taken = new Set((users || []).map(u => String(u.username || '').toLowerCase()))
+  const base = normalizeUsernameBase(desired)
+  if (!taken.has(base)) return base
+  for (let i = 1; i <= 9999; i += 1) {
+    const candidate = `${base}_${i}`
+    if (!taken.has(candidate)) return candidate
+  }
+  return `${base}_${Date.now().toString(36)}`
+}
+
 // Auth middleware — role always loaded from users.json (source of truth), not only from JWT
 function authMiddleware(req, res, next) {
   const header = req.headers.authorization
@@ -842,12 +861,106 @@ app.post('/api/auth/login', authBurstLimiter, (req, res) => {
 
   const users = readUsers()
   const row = users.find(u => u.username === username)
-  if (!row || !comparePassword(password, row.password_hash)) {
+  if (!row) {
+    return res.status(401).json({ error: 'Invalid username or password' })
+  }
+  if (!row.password_hash) {
+    return res.status(400).json({ error: 'This account uses Google sign-in. Continue with Google.' })
+  }
+  if (!comparePassword(password, row.password_hash)) {
     return res.status(401).json({ error: 'Invalid username or password' })
   }
 
   const token = jwt.sign({ userId: row.id, username: row.username }, JWT_SECRET, { expiresIn: '90d' })
   res.json({ token, user: userToClient(row) })
+})
+
+app.post('/api/auth/google', authBurstLimiter, async (req, res) => {
+  const idToken = String((req.body && req.body.credential) || '').trim()
+  if (!idToken) {
+    return res.status(400).json({ error: 'Missing Google credential' })
+  }
+  if (!GOOGLE_AUTH_CLIENT_ID) {
+    return res.status(503).json({ error: 'Google sign-in is not configured on this server' })
+  }
+
+  try {
+    const verifyUrl = 'https://oauth2.googleapis.com/tokeninfo?id_token=' + encodeURIComponent(idToken)
+    const verifyRes = await fetch(verifyUrl)
+    const verifyBody = await verifyRes.json().catch(() => ({}))
+    if (!verifyRes.ok) {
+      return res.status(401).json({ error: 'Invalid Google credential' })
+    }
+    const aud = String(verifyBody.aud || '')
+    if (aud !== GOOGLE_AUTH_CLIENT_ID) {
+      return res.status(401).json({ error: 'Google token audience mismatch' })
+    }
+    if (String(verifyBody.email_verified || '').toLowerCase() !== 'true') {
+      return res.status(400).json({ error: 'Google account email is not verified' })
+    }
+
+    const email = String(verifyBody.email || '').trim().toLowerCase()
+    if (!email) {
+      return res.status(400).json({ error: 'Google account did not provide an email address' })
+    }
+
+    const users = readUsers()
+    const googleSub = String(verifyBody.sub || '').trim()
+    let row = users.find(u => String(u.google_sub || '') === googleSub) || null
+    if (!row) {
+      row = users.find(u => String(u.email || '').toLowerCase() === email) || null
+    }
+
+    const nowIso = new Date().toISOString()
+    if (!row) {
+      const id = genId()
+      const emailName = email.split('@')[0] || 'user'
+      const username = nextAvailableUsername(users, emailName)
+      row = {
+        id,
+        username,
+        email,
+        password_hash: '',
+        full_name: String(verifyBody.name || '').trim(),
+        bio: '',
+        timezone: 'UTC',
+        role: 'member',
+        plan: 'free',
+        created_at: nowIso,
+        google_sub: googleSub,
+        auth_provider: 'google',
+        avatar_url: String(verifyBody.picture || '').trim()
+      }
+      users.push(row)
+      writeUsers(users)
+      writeWorkspace(id, emptyWorkspace())
+    } else {
+      let dirty = false
+      if (!row.google_sub && googleSub) {
+        row.google_sub = googleSub
+        dirty = true
+      }
+      if (!row.auth_provider) {
+        row.auth_provider = 'google'
+        dirty = true
+      }
+      if (!row.full_name && verifyBody.name) {
+        row.full_name = String(verifyBody.name).trim()
+        dirty = true
+      }
+      if (!row.avatar_url && verifyBody.picture) {
+        row.avatar_url = String(verifyBody.picture).trim()
+        dirty = true
+      }
+      if (dirty) writeUsers(users)
+    }
+
+    const token = jwt.sign({ userId: row.id, username: row.username }, JWT_SECRET, { expiresIn: '90d' })
+    return res.json({ token, user: userToClient(row) })
+  } catch (e) {
+    console.error('Google auth failed', e)
+    return res.status(500).json({ error: 'Google sign-in failed' })
+  }
 })
 
 // Login/register are POST-only; a GET (e.g. opening the URL in a tab) would otherwise show "Cannot GET"
@@ -1432,7 +1545,9 @@ app.get('/api/health', (req, res) => {
       : isSmtpConfigured()
         ? 'smtp'
         : 'none',
-    googleCalendarOAuthConfigured: isGoogleCalendarOAuthConfigured()
+    googleCalendarOAuthConfigured: isGoogleCalendarOAuthConfigured(),
+    googleAuthConfigured: Boolean(GOOGLE_AUTH_CLIENT_ID),
+    googleAuthClientId: GOOGLE_AUTH_CLIENT_ID || ''
   })
 })
 
