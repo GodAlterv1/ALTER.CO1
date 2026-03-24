@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <!-- Chart.js UMD + large inline app need script-src unsafe-inline / unsafe-eval; server also sends CSP -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net https://accounts.google.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: https: blob:; font-src 'self' data: https:; connect-src 'self' https: http: ws: wss:; frame-src 'self' https://accounts.google.com; base-uri 'self'; form-action 'self'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net https://accounts.google.com https://www.gstatic.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: https: blob:; font-src 'self' data: https:; connect-src 'self' https: http: ws: wss:; frame-src 'self' https://accounts.google.com https://www.gstatic.com; base-uri 'self'; form-action 'self'">
 <title>ALTER.CO - Advanced SaaS Platform</title>
 <meta name="description" content="ALTER.CO — one workspace for projects, tasks, time tracking, ideas, and team collaboration.">
 <meta name="theme-color" content="#0B0F18">
@@ -242,6 +242,29 @@ input[type="time"]::-webkit-calendar-picker-indicator {
 }
 
 .social-btn:hover { border-color: #4f46e5; color: white; background: #0d1117; transform: none; box-shadow: none; }
+
+/* Google Identity button — keep compact to match .social-btn row height */
+.google-signin-slot {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 40px;
+  padding: 0;
+  background: transparent;
+  border: none;
+  width: 100%;
+}
+.google-signin-slot > div {
+  display: flex !important;
+  justify-content: center;
+}
+.google-signin-slot--text {
+  font-size: 12px;
+  color: #9CA3AF;
+  text-align: center;
+  padding: 8px 4px;
+  line-height: 1.3;
+}
 
 .login-message {
   margin-top: 15px;
@@ -3445,7 +3468,7 @@ kbd {
       <button class="btn-primary-login" onclick="login()">Sign In</button>
       <div class="login-divider">or continue with</div>
       <div class="social-login">
-        <div id="googleLoginBtn" class="social-btn" style="display:flex;justify-content:center;align-items:center;min-height:44px;"></div>
+        <div id="googleLoginBtn" class="google-signin-slot" aria-label="Sign in with Google"></div>
         <button class="social-btn" onclick="demoLogin()">🚀 Demo Account</button>
         <button class="social-btn" onclick="showToast('SSO coming soon','info')">🔐 SSO / SAML</button>
       </div>
@@ -3473,7 +3496,7 @@ kbd {
       <button class="btn-primary-login" onclick="register()">Create Account</button>
       <div class="login-divider">or sign up with</div>
       <div class="social-login">
-        <div id="googleRegisterBtn" class="social-btn" style="display:flex;justify-content:center;align-items:center;min-height:44px;"></div>
+        <div id="googleRegisterBtn" class="google-signin-slot" aria-label="Sign up with Google"></div>
       </div>
     </div>
 

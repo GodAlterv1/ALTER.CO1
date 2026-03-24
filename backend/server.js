@@ -246,12 +246,12 @@ function verifyGoogleCalendarOnStartup() {
 // Hardening: custom CSP — Chart.js UMD may use eval(); inline script is the whole app
 const SPA_CONTENT_SECURITY_POLICY = [
   "default-src 'self'",
-  "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net https://accounts.google.com",
+  "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net https://accounts.google.com https://www.gstatic.com",
   "style-src 'self' 'unsafe-inline'",
   "img-src 'self' data: https: blob:",
   "font-src 'self' data: https:",
   "connect-src 'self' https: http: ws: wss:",
-  "frame-src 'self' https://accounts.google.com",
+  "frame-src 'self' https://accounts.google.com https://www.gstatic.com",
   "frame-ancestors 'self'",
   "base-uri 'self'",
   "form-action 'self'"
@@ -265,7 +265,9 @@ app.use((req, res, next) => {
 app.use(
   helmet({
     contentSecurityPolicy: false,
-    crossOriginEmbedderPolicy: false
+    crossOriginEmbedderPolicy: false,
+    // Default COOP can break Google Identity Services popups / gsi/transform postMessage back to the app.
+    crossOriginOpenerPolicy: false
   })
 )
 app.use(compression())

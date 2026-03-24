@@ -818,6 +818,16 @@ function setGoogleLoginButtonState(text) {
   var wrap = document.getElementById('googleLoginBtn')
   if (!wrap) return
   if (text) {
+    wrap.className = 'google-signin-slot google-signin-slot--text'
+    wrap.textContent = text
+  }
+}
+
+function setGoogleRegisterButtonState(text) {
+  var wrap = document.getElementById('googleRegisterBtn')
+  if (!wrap) return
+  if (text) {
+    wrap.className = 'google-signin-slot google-signin-slot--text'
     wrap.textContent = text
   }
 }
@@ -826,18 +836,21 @@ function loadGoogleAuthConfigAndInit() {
   if (!ALTER_API_BASE || googleAuthInitAttempted) return
   googleAuthInitAttempted = true
   setGoogleLoginButtonState('Loading Google sign-in...')
+  setGoogleRegisterButtonState('Loading Google sign-up...')
   fetch(ALTER_API_BASE + '/api/health')
     .then(function (r) { return r.json().catch(function () { return {} }) })
     .then(function (body) {
       googleAuthClientId = (body && body.googleAuthClientId) ? String(body.googleAuthClientId).trim() : ''
       if (!googleAuthClientId) {
         setGoogleLoginButtonState('Google sign-in is unavailable')
+        setGoogleRegisterButtonState('Google sign-up is unavailable')
         return
       }
       initializeGoogleSignIn()
     })
     .catch(function () {
       setGoogleLoginButtonState('Google sign-in is unavailable')
+      setGoogleRegisterButtonState('Google sign-up is unavailable')
     })
 }
 
@@ -847,17 +860,24 @@ function initializeGoogleSignIn() {
   if (!wrap && !registerWrap) return
   if (!googleAuthClientId) {
     setGoogleLoginButtonState('Google sign-in is unavailable')
-    if (registerWrap) registerWrap.textContent = 'Google sign-up is unavailable'
+    setGoogleRegisterButtonState('Google sign-up is unavailable')
     return
   }
   if (!window.google || !google.accounts || !google.accounts.id) {
     setGoogleLoginButtonState('Google sign-in failed to load')
-    if (registerWrap) registerWrap.textContent = 'Google sign-up failed to load'
+    setGoogleRegisterButtonState('Google sign-up failed to load')
     return
   }
   try {
+    // use_fedcm_for_prompt: false avoids Chrome FedCM / gsi/transform flows hanging on a blank page
+    // when third‑party cookies are restricted or COOP blocks the handoff back to this origin.
+    try {
+      if (typeof google.accounts.id.cancel === 'function') google.accounts.id.cancel()
+    } catch (eCancel) {}
     google.accounts.id.initialize({
       client_id: googleAuthClientId,
+      auto_select: false,
+      use_fedcm_for_prompt: false,
       callback: function (response) {
         if (!response || !response.credential) {
           showLoginMessage('Google sign-in was cancelled. Please try again.', 'error')
@@ -868,28 +888,32 @@ function initializeGoogleSignIn() {
     })
     if (wrap) {
       wrap.textContent = ''
+      wrap.className = 'google-signin-slot'
       google.accounts.id.renderButton(wrap, {
         theme: 'outline',
-        size: 'large',
-        width: 280,
+        size: 'small',
+        width: 200,
         text: 'continue_with',
-        shape: 'rect'
+        shape: 'rect',
+        logo_alignment: 'left'
       })
     }
     if (registerWrap) {
       registerWrap.textContent = ''
+      registerWrap.className = 'google-signin-slot'
       google.accounts.id.renderButton(registerWrap, {
         theme: 'outline',
-        size: 'large',
-        width: 280,
+        size: 'small',
+        width: 200,
         text: 'signup_with',
-        shape: 'rect'
+        shape: 'rect',
+        logo_alignment: 'left'
       })
     }
   } catch (e) {
     console.error('Google sign-in init failed', e)
     setGoogleLoginButtonState('Google sign-in failed to load')
-    if (registerWrap) registerWrap.textContent = 'Google sign-up failed to load'
+    setGoogleRegisterButtonState('Google sign-up failed to load')
   }
 }
 
