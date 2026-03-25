@@ -13,6 +13,14 @@ const crypto = require('crypto')
 const fs = require('fs')
 const cookieParser = require('cookie-parser')
 const sanitizeHtml = require('sanitize-html')
+// Stripe billing (optional; enabled when STRIPE_SECRET_KEY is set)
+let stripe = null
+try {
+  // eslint-disable-next-line import/no-extraneous-dependencies
+  stripe = require('stripe')
+} catch (e) {
+  stripe = null
+}
 // Nodemailer is only required if SMTP email integration is enabled.
 // This keeps the backend running even if dependencies aren't installed yet.
 let nodemailer = null
@@ -33,6 +41,32 @@ const JWT_EXPIRES_IN = String(process.env.JWT_EXPIRES_IN || '90d').trim()
 const PASSWORD_MIN_LENGTH = Number(process.env.PASSWORD_MIN_LENGTH || 10)
 const AUTH_COOKIE_NAME = process.env.AUTH_COOKIE_NAME || 'alco_token'
 const CSRF_COOKIE_NAME = process.env.CSRF_COOKIE_NAME || 'alco_csrf'
+
+// ----- Stripe config (subscriptions / seats) -----
+const STRIPE_SECRET_KEY = (process.env.STRIPE_SECRET_KEY || '').trim()
+const STRIPE_WEBHOOK_SECRET = (process.env.STRIPE_WEBHOOK_SECRET || '').trim()
+const STRIPE_PRICE_ID_PRO_MONTHLY = (process.env.STRIPE_PRICE_ID_PRO_MONTHLY || '').trim()
+const STRIPE_PRICE_ID_PRO_YEARLY = (process.env.STRIPE_PRICE_ID_PRO_YEARLY || '').trim()
+const PUBLIC_BASE_URL = (process.env.PUBLIC_BASE_URL || '').trim()
+
+function isStripeConfigured() {
+  return Boolean(stripe && STRIPE_SECRET_KEY)
+}
+
+function getStripeClient() {
+  if (!isStripeConfigured()) return null
+  return stripe(STRIPE_SECRET_KEY, { apiVersion: '2024-06-20' })
+}
+
+function getPublicBaseUrl(req) {
+  if (PUBLIC_BASE_URL) return PUBLIC_BASE_URL
+  const origin = (req.headers.origin || '').trim()
+  if (origin) return origin
+  const proto = (req.headers['x-forwarded-proto'] || req.protocol || 'http').split(',')[0].trim()
+  const host = (req.headers['x-forwarded-host'] || req.headers.host || '').split(',')[0].trim()
+  if (!host) return ''
+  return `${proto}://${host}`
+}
 
 if (NODE_ENV === 'production') {
   if (!process.env.JWT_SECRET || JWT_SECRET === 'alter-co-dev-secret-change-in-production' || JWT_SECRET.length < 32) {
@@ -348,6 +382,32 @@ function buildCorsOriginChecker() {
 }
 
 app.use(cors({ origin: buildCorsOriginChecker(), credentials: true }))
+// Stripe webhooks must receive the raw request body for signature verification.
+// Register BEFORE express.json() so it doesn't consume the body.
+app.post('/api/billing/webhook', express.raw({ type: 'application/json' }), (req, res) => {
+  const client = getStripeClient()
+  if (!client) return res.status(503).json({ error: 'Stripe not configured' })
+  if (!STRIPE_WEBHOOK_SECRET) return res.status(503).json({ error: 'Stripe webhook secret not configured' })
+
+  const sig = req.headers['stripe-signature']
+  let event
+  try {
+    event = client.webhooks.constructEvent(req.body, sig, STRIPE_WEBHOOK_SECRET)
+  } catch (err) {
+    console.warn('[Stripe] webhook signature verification failed:', err && err.message)
+    return res.status(400).send('Invalid signature')
+  }
+
+  try {
+    handleStripeWebhookEvent(event).then(() => res.json({ received: true })).catch(e => {
+      console.error('[Stripe] webhook handler error:', e && e.message ? e.message : e)
+      res.status(500).json({ error: 'Webhook handler failed' })
+    })
+  } catch (e2) {
+    console.error('[Stripe] webhook handler crash:', e2)
+    res.status(500).json({ error: 'Webhook handler crashed' })
+  }
+})
 // Reduce payload DoS risk (workspace/doc blobs can still be large; keep reasonable)
 app.use(express.json({ limit: process.env.JSON_LIMIT || '2mb' }))
 app.use(cookieParser())
@@ -495,6 +555,7 @@ const WORKSPACE_LIMITS = {
 function assertWorkspaceKeyWithinLimits(key, value) {
   if (!key) return { ok: true }
   if (key === 'userSettings') return { ok: true }
+  if (key === 'billing') return { ok: true }
   if (!Array.isArray(value)) return { ok: true }
   const lim = WORKSPACE_LIMITS[key]
   if (!lim) return { ok: true }
@@ -627,6 +688,39 @@ function isAcceptedTeamMember(teamArr, memberUserId) {
   return teamArr.some(m => m && m.id === memberUserId && m.status === 'accepted')
 }
 
+function getAcceptedTeamUserIds(ownerWs, ownerId) {
+  const ids = new Set()
+  if (ownerId) ids.add(ownerId)
+  const teamArr = ownerWs && Array.isArray(ownerWs.team) ? ownerWs.team : []
+  for (const m of teamArr) {
+    if (m && m.status === 'accepted' && m.id) ids.add(m.id)
+  }
+  return Array.from(ids)
+}
+
+function getSeatCountForWorkspace(ownerWs, ownerId) {
+  return getAcceptedTeamUserIds(ownerWs, ownerId).length || 1
+}
+
+function findWorkspaceOwnerByStripeCustomerId(customerId) {
+  if (!customerId) return null
+  if (!fs.existsSync(WORKSPACE_DIR)) return null
+  let files
+  try {
+    files = fs.readdirSync(WORKSPACE_DIR)
+  } catch (e) {
+    return null
+  }
+  for (const f of files) {
+    if (!f.endsWith('.json')) continue
+    const ownerId = f.slice(0, -5)
+    const ws = readWorkspace(ownerId)
+    const b = ws && ws.billing && typeof ws.billing === 'object' ? ws.billing : null
+    if (b && b.stripeCustomerId && b.stripeCustomerId === customerId) return ownerId
+  }
+  return null
+}
+
 /**
  * Workspace JSON file to load/save for this account.
  * Team members use the owner's file so tasks, projects, and goals are shared.
@@ -682,6 +776,91 @@ function userToClient(row) {
     bio: row.bio || '',
     timezone: row.timezone || 'UTC',
     created: row.created_at
+  }
+}
+
+async function handleStripeWebhookEvent(event) {
+  const client = getStripeClient()
+  if (!client) return
+
+  const type = event && event.type ? String(event.type) : ''
+  const obj = event && event.data && event.data.object ? event.data.object : {}
+
+  // Identify workspace owner
+  let ownerId = null
+  if (obj && obj.metadata && obj.metadata.ownerId) ownerId = String(obj.metadata.ownerId)
+
+  // Fallback: resolve by Stripe customer id stored on workspace
+  const customerId = obj && (obj.customer || (obj.customer_details && obj.customer_details.customer)) ? String(obj.customer || (obj.customer_details && obj.customer_details.customer)) : ''
+  if (!ownerId && customerId) ownerId = findWorkspaceOwnerByStripeCustomerId(customerId)
+  if (!ownerId) return
+
+  const ws = readWorkspace(ownerId) || emptyWorkspace()
+  if (!ws.billing || typeof ws.billing !== 'object' || Array.isArray(ws.billing)) ws.billing = {}
+
+  function setWorkspaceBilling(fields) {
+    ws.billing = { ...ws.billing, ...fields, updatedAt: new Date().toISOString() }
+    touchWorkspaceKeyMeta(ws, 'billing')
+    writeWorkspace(ownerId, ws)
+  }
+
+  function setTeamPlans(plan) {
+    const users = readUsers()
+    const allowedIds = new Set(getAcceptedTeamUserIds(ws, ownerId))
+    let changed = false
+    for (const u of users) {
+      if (!u || !u.id) continue
+      if (!allowedIds.has(u.id)) continue
+      if ((u.plan || 'free') !== plan) {
+        u.plan = plan
+        changed = true
+      }
+    }
+    if (changed) writeUsers(users)
+  }
+
+  if (type === 'checkout.session.completed') {
+    // Checkout completed; subscription info may be attached
+    const subId = obj && obj.subscription ? String(obj.subscription) : ''
+    const custId = obj && obj.customer ? String(obj.customer) : ''
+    if (custId) ws.billing.stripeCustomerId = custId
+    if (subId) ws.billing.stripeSubscriptionId = subId
+    setWorkspaceBilling({ stripeCustomerId: ws.billing.stripeCustomerId, stripeSubscriptionId: ws.billing.stripeSubscriptionId })
+    return
+  }
+
+  if (type === 'customer.subscription.created' || type === 'customer.subscription.updated' || type === 'customer.subscription.deleted') {
+    const status = obj && obj.status ? String(obj.status) : ''
+    const subId = obj && obj.id ? String(obj.id) : ''
+    const custId = obj && obj.customer ? String(obj.customer) : ''
+    const periodEnd = obj && obj.current_period_end ? Number(obj.current_period_end) : 0
+    const currentPeriodEnd = periodEnd ? new Date(periodEnd * 1000).toISOString() : ''
+    const seats = obj && obj.items && obj.items.data && obj.items.data[0] && obj.items.data[0].quantity ? Number(obj.items.data[0].quantity) : undefined
+
+    setWorkspaceBilling({
+      stripeCustomerId: custId || ws.billing.stripeCustomerId,
+      stripeSubscriptionId: subId || ws.billing.stripeSubscriptionId,
+      subscriptionStatus: status,
+      currentPeriodEnd,
+      seats: seats != null ? seats : ws.billing.seats
+    })
+
+    const isActive = status === 'active' || status === 'trialing'
+    setTeamPlans(isActive ? 'pro' : 'free')
+    return
+  }
+
+  if (type === 'invoice.payment_failed') {
+    setWorkspaceBilling({ subscriptionStatus: 'past_due' })
+    setTeamPlans('free')
+    return
+  }
+
+  if (type === 'invoice.paid') {
+    // Keep active if subscription is active; subscription.updated will also fire
+    setWorkspaceBilling({ subscriptionStatus: ws.billing.subscriptionStatus || 'active' })
+    // Do not force plan here if subscription is canceled; rely on subscription.updated/deleted.
+    return
   }
 }
 
@@ -937,7 +1116,7 @@ function verifyEmailOnStartup() {
 const WORKSPACE_KEYS = [
   'projects', 'tasks', 'ideas', 'events', 'goals', 'timeEntries', 'team',
   'notifications', 'activity', 'auditLogs', 'invoices', 'apiKeys', 'userSettings',
-  'pages'
+  'pages', 'billing'
 ]
 
 const WORKSPACE_META_KEY = '_keyUpdatedAt'
@@ -945,7 +1124,7 @@ const WORKSPACE_META_KEY = '_keyUpdatedAt'
 function emptyWorkspace() {
   const out = {}
   for (const k of WORKSPACE_KEYS) {
-    out[k] = k === 'userSettings' ? {} : []
+    out[k] = (k === 'userSettings' || k === 'billing') ? {} : []
   }
   out[WORKSPACE_META_KEY] = {}
   return out
@@ -1350,6 +1529,111 @@ app.put('/api/me/profile', authMiddleware, (req, res) => {
 
   writeUsers(users)
   res.json(userToClient(row))
+})
+
+// ----- Billing (Stripe) -----
+app.post('/api/billing/checkout-session', authMiddleware, requireWriter, async (req, res) => {
+  const client = getStripeClient()
+  if (!client) return res.status(503).json({ error: 'Stripe not configured' })
+
+  const { billingPeriod } = req.body || {}
+  const period = String(billingPeriod || 'monthly').toLowerCase()
+  const priceId = period === 'yearly' ? STRIPE_PRICE_ID_PRO_YEARLY : STRIPE_PRICE_ID_PRO_MONTHLY
+  if (!priceId) return res.status(503).json({ error: 'Stripe price is not configured' })
+
+  const ownerId = resolveWorkspaceFileUserId(req.userId)
+  if (ownerId !== req.userId) {
+    return res.status(403).json({ error: 'Only the workspace owner can manage billing' })
+  }
+
+  const users = readUsers()
+  const ownerRow = users.find(u => u.id === ownerId)
+  if (!ownerRow) return res.status(404).json({ error: 'User not found' })
+
+  const ws = readWorkspace(ownerId) || emptyWorkspace()
+  if (!ws.billing || typeof ws.billing !== 'object' || Array.isArray(ws.billing)) ws.billing = {}
+
+  // Ensure customer
+  if (!ws.billing.stripeCustomerId) {
+    const customer = await client.customers.create({
+      email: ownerRow.email || undefined,
+      name: ownerRow.full_name || ownerRow.username || undefined,
+      metadata: { ownerId }
+    })
+    ws.billing.stripeCustomerId = customer.id
+    ws.billing.updatedAt = new Date().toISOString()
+    touchWorkspaceKeyMeta(ws, 'billing')
+    writeWorkspace(ownerId, ws)
+  }
+
+  const seats = getSeatCountForWorkspace(ws, ownerId)
+  const baseUrl = getPublicBaseUrl(req) || ''
+  const successUrl = (baseUrl ? baseUrl : '') + '/?billing=success'
+  const cancelUrl = (baseUrl ? baseUrl : '') + '/?billing=cancel'
+
+  const session = await client.checkout.sessions.create({
+    mode: 'subscription',
+    customer: ws.billing.stripeCustomerId,
+    allow_promotion_codes: true,
+    line_items: [{ price: priceId, quantity: seats }],
+    subscription_data: {
+      metadata: { ownerId, seats: String(seats), period }
+    },
+    metadata: { ownerId, seats: String(seats), period },
+    success_url: successUrl,
+    cancel_url: cancelUrl
+  })
+
+  res.json({ url: session.url })
+})
+
+app.post('/api/billing/portal-session', authMiddleware, requireWriter, async (req, res) => {
+  const client = getStripeClient()
+  if (!client) return res.status(503).json({ error: 'Stripe not configured' })
+
+  const ownerId = resolveWorkspaceFileUserId(req.userId)
+  if (ownerId !== req.userId) {
+    return res.status(403).json({ error: 'Only the workspace owner can manage billing' })
+  }
+
+  const ws = readWorkspace(ownerId) || emptyWorkspace()
+  const b = ws.billing && typeof ws.billing === 'object' ? ws.billing : {}
+  if (!b.stripeCustomerId) return res.status(400).json({ error: 'No Stripe customer on file. Upgrade first.' })
+
+  const baseUrl = getPublicBaseUrl(req) || ''
+  const returnUrl = (baseUrl ? baseUrl : '') + '/?billing=portal'
+  const portal = await client.billingPortal.sessions.create({
+    customer: b.stripeCustomerId,
+    return_url: returnUrl
+  })
+  res.json({ url: portal.url })
+})
+
+app.post('/api/billing/sync-seats', authMiddleware, requireWriter, async (req, res) => {
+  const client = getStripeClient()
+  if (!client) return res.status(503).json({ error: 'Stripe not configured' })
+
+  const ownerId = resolveWorkspaceFileUserId(req.userId)
+  if (ownerId !== req.userId) {
+    return res.status(403).json({ error: 'Only the workspace owner can manage billing' })
+  }
+
+  const ws = readWorkspace(ownerId) || emptyWorkspace()
+  if (!ws.billing || typeof ws.billing !== 'object' || Array.isArray(ws.billing)) ws.billing = {}
+  const subId = ws.billing.stripeSubscriptionId
+  if (!subId) return res.status(400).json({ error: 'No active subscription to sync seats for' })
+
+  const seats = getSeatCountForWorkspace(ws, ownerId)
+  const sub = await client.subscriptions.retrieve(subId)
+  const item = sub && sub.items && sub.items.data && sub.items.data[0]
+  if (!item) return res.status(400).json({ error: 'Subscription has no items' })
+
+  await client.subscriptionItems.update(item.id, { quantity: seats })
+  ws.billing.seats = seats
+  ws.billing.updatedAt = new Date().toISOString()
+  touchWorkspaceKeyMeta(ws, 'billing')
+  writeWorkspace(ownerId, ws)
+  res.json({ ok: true, seats })
 })
 
 app.put('/api/me/plan', authMiddleware, (req, res) => {

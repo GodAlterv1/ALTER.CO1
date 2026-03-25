@@ -5399,7 +5399,11 @@ kbd {
           </div>
           <div class="billing-row">
             <span class="billing-row-label">Status</span>
-            <span class="billing-row-value"><span style="color:#22c55e;">● Active</span></span>
+            <span class="billing-row-value" id="billingStatus"><span style="color:#9CA3AF;">● Unknown</span></span>
+          </div>
+          <div class="billing-row">
+            <span class="billing-row-label">Seats</span>
+            <span class="billing-row-value" id="billingSeats">—</span>
           </div>
           <div class="billing-row">
             <span class="billing-row-label">Next Billing Date</span>
@@ -5412,6 +5416,10 @@ kbd {
           <div class="billing-row">
             <span class="billing-row-label">Payment Method</span>
             <span class="billing-row-value" id="billingPayment">None</span>
+          </div>
+          <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:14px;">
+            <button class="btn-secondary" onclick="openBillingPortal()">Manage billing</button>
+            <button class="btn-secondary" onclick="syncBillingSeats()">Sync seats</button>
           </div>
         </div>
 

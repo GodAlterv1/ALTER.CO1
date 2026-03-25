@@ -33,6 +33,7 @@ let timeEntries   = loadStored('time', [])
 let auditLogs     = loadStored('audit', [])
 let apiKeys       = loadStored('apikeys', [])
 let invoices      = loadStored('invoices', [])
+let billing       = loadStored('billing', {})
 let userSettings  = loadStored('usersettings', {})
 let pages         = loadStored('pages', [])
 // Ensure calendar state exists before any boot logic runs
@@ -318,6 +319,7 @@ function applyWorkspaceToState(data) {
   if (Array.isArray(data.activity)) activity = data.activity
   if (Array.isArray(data.auditLogs)) auditLogs = data.auditLogs
   if (Array.isArray(data.invoices)) invoices = data.invoices
+  if (data.billing && typeof data.billing === 'object' && !Array.isArray(data.billing)) billing = data.billing
   if (Array.isArray(data.apiKeys)) apiKeys = data.apiKeys
   if (Array.isArray(data.pages)) pages = data.pages
   if (data.userSettings && typeof data.userSettings === 'object') userSettings = data.userSettings
@@ -346,6 +348,7 @@ function syncWorkspaceToBackend() {
     activity: activity,
     auditLogs: auditLogs,
     invoices: invoices,
+    billing: billing,
     apiKeys: apiKeys,
     userSettings: userSettings,
     pages: pages
@@ -7778,9 +7781,26 @@ function renderBilling() {
   let currentPlan = currentUser.plan ? currentUser.plan : 'free'
   let planInfo    = PLANS.find(p => p.id === currentPlan)
 
+  // Workspace billing (Stripe-backed if configured)
+  const b = (billing && typeof billing === 'object') ? billing : {}
+  const status = String(b.subscriptionStatus || (currentPlan === 'free' ? 'inactive' : 'active'))
+  const seats = Number(b.seats || 0) || (1 + (Array.isArray(team) ? team.filter(m => m && m.status === 'accepted').length : 0))
+
   // Top summary card values
   let billingPlanNameEl = document.getElementById('billingPlanName')
   if (billingPlanNameEl) billingPlanNameEl.textContent = planInfo?.name || 'Free'
+
+  let billingStatusEl = document.getElementById('billingStatus')
+  if (billingStatusEl) {
+    const dot = (status === 'active' || status === 'trialing')
+      ? '<span style="color:#22c55e;">● Active</span>'
+      : (status === 'past_due' ? '<span style="color:#f59e0b;">● Past due</span>'
+        : (status === 'canceled' ? '<span style="color:#ef4444;">● Canceled</span>' : '<span style="color:#9CA3AF;">● Inactive</span>'))
+    billingStatusEl.innerHTML = dot
+  }
+
+  let billingSeatsEl = document.getElementById('billingSeats')
+  if (billingSeatsEl) billingSeatsEl.textContent = String(seats || '—')
 
   let billingAmountEl = document.getElementById('billingAmount')
   if (billingAmountEl) {
@@ -7799,9 +7819,14 @@ function renderBilling() {
     if (currentPlan === 'free') {
       billingNextEl.textContent = '—'
     } else {
-      let next = new Date()
-      next.setMonth(next.getMonth() + 1)
-      billingNextEl.textContent = next.toLocaleDateString()
+      if (b.currentPeriodEnd) {
+        const d = new Date(b.currentPeriodEnd)
+        billingNextEl.textContent = isNaN(d.getTime()) ? '—' : d.toLocaleDateString()
+      } else {
+        let next = new Date()
+        next.setMonth(next.getMonth() + 1)
+        billingNextEl.textContent = next.toLocaleDateString()
+      }
     }
   }
 
@@ -7877,26 +7902,31 @@ function upgradePlan(planId) {
   let plan = PLANS.find(p => p.id === planId)
   if (!plan) return
   if (ALTER_API_BASE && getAuthToken()) {
-    fetch(ALTER_API_BASE + '/api/me/plan', {
-      method: 'PUT',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer ' + getAuthToken()
-      },
-      body: JSON.stringify({ plan: planId, billingPeriod })
-    })
-    .then(r => r.json().then(body => ({ ok: r.ok, body })))
-    .then(res => {
-      if (!res.ok) return showToast(res.body.error || 'Failed to update plan', 'error')
-      currentUser.plan = planId
-      save('session', currentUser)
-      var badge = document.getElementById('sidebarPlanBadge')
-      if (badge) badge.textContent = planId.toUpperCase()
-      renderBilling()
-      addAuditLog('update', `Upgraded plan to ${plan.name}`, 'update')
-      showToast(`Plan updated to ${plan.name}!`, 'success')
-    })
-    .catch(() => showToast('Network error while updating plan', 'error'))
+    // Stripe-backed upgrade flow (paid plans)
+    if (plan.price > 0) {
+      fetch(ALTER_API_BASE + '/api/billing/checkout-session', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer ' + getAuthToken()
+        },
+        body: JSON.stringify({ billingPeriod })
+      })
+        .then(r => r.json().then(body => ({ ok: r.ok, body })))
+        .then(res => {
+          if (!res.ok) return showToast(res.body.error || 'Failed to start checkout', 'error')
+          if (res.body && res.body.url) {
+            window.location.href = res.body.url
+            return
+          }
+          showToast('Checkout session missing URL', 'error')
+        })
+        .catch(() => showToast('Network error while starting checkout', 'error'))
+      return
+    }
+
+    // Downgrades/cancellation should happen via billing portal.
+    showToast('Use “Manage billing” to cancel/downgrade.', 'info')
     return
   }
 
@@ -7921,6 +7951,42 @@ function upgradePlan(planId) {
     renderBilling()
     showToast(`Downgraded to ${plan.name}`, 'info')
   }
+}
+
+function openBillingPortal() {
+  if (!currentUser) return showToast('Sign in first', 'error')
+  if (!(ALTER_API_BASE && getAuthToken())) return showToast('Billing portal requires backend mode', 'info')
+  fetch(ALTER_API_BASE + '/api/billing/portal-session', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + getAuthToken() },
+    body: JSON.stringify({})
+  })
+    .then(r => r.json().then(body => ({ ok: r.ok, body })))
+    .then(res => {
+      if (!res.ok) return showToast(res.body.error || 'Failed to open billing portal', 'error')
+      if (res.body && res.body.url) window.location.href = res.body.url
+    })
+    .catch(() => showToast('Network error while opening portal', 'error'))
+}
+
+function syncBillingSeats() {
+  if (!currentUser) return showToast('Sign in first', 'error')
+  if (!(ALTER_API_BASE && getAuthToken())) return showToast('Seat sync requires backend mode', 'info')
+  fetch(ALTER_API_BASE + '/api/billing/sync-seats', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + getAuthToken() },
+    body: JSON.stringify({})
+  })
+    .then(r => r.json().then(body => ({ ok: r.ok, body })))
+    .then(res => {
+      if (!res.ok) return showToast(res.body.error || 'Failed to sync seats', 'error')
+      if (!billing || typeof billing !== 'object') billing = {}
+      billing.seats = res.body.seats
+      save('billing', billing)
+      renderBilling()
+      showToast('Seats synced', 'success')
+    })
+    .catch(() => showToast('Network error while syncing seats', 'error'))
 }
 
 /* ===================================================
