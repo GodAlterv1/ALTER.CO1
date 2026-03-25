@@ -16,21 +16,9 @@
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.5.1/dist/chart.umd.min.js"></script>
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 <script>
-// Apply theme before first paint to avoid light/dark mixing flashes.
+// Dark mode only (avoid any theme mixing).
 (function () {
-  try {
-    var raw = localStorage.getItem('alco_usersettings') || ''
-    var pref = 'system'
-    if (raw) {
-      var j = JSON.parse(raw)
-      if (j && typeof j === 'object' && j.theme) pref = String(j.theme)
-    }
-    pref = String(pref || 'system').toLowerCase()
-    var t = (pref === 'light' || pref === 'dark') ? pref : (
-      (window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches) ? 'light' : 'dark'
-    )
-    document.documentElement.setAttribute('data-theme', t)
-  } catch (e) {}
+  try { document.documentElement.setAttribute('data-theme', 'dark') } catch (e) {}
 })()
 </script>
 <style>
@@ -64,35 +52,6 @@
   --font: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
   --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
 }
-
-html[data-theme="light"] {
-  --bg: #f8fafc;
-  --bg2: #ffffff;
-  --surface: #ffffff;
-  --surface2: #ffffff;
-  --surfaceElev: rgba(255, 255, 255, 0.9);
-  --border: #e5e7eb;
-  --border2: #d1d5db;
-  --text: #0f172a;
-  --muted: #475569;
-  --muted2: #64748b;
-  --shadowSm: 0 1px 0 rgba(15, 23, 42, 0.06);
-  --shadowMd: 0 18px 50px rgba(15, 23, 42, 0.12);
-  --focus: 0 0 0 3px rgba(79, 70, 229, 0.16);
-}
-
-/* Light theme overrides for legacy hard-coded dark UI */
-html[data-theme="light"] .sidebar,
-html[data-theme="light"] .topbar,
-html[data-theme="light"] .notifications-panel {
-  background: var(--surface2) !important;
-  border-color: var(--border) !important;
-}
-html[data-theme="light"] .nav-item:hover { background: color-mix(in srgb, var(--accent) 8%, transparent) !important; color: var(--text) !important; }
-html[data-theme="light"] .sidebar-user:hover { background: color-mix(in srgb, var(--accent) 8%, transparent) !important; }
-html[data-theme="light"] .topbar-search { background: var(--surface2) !important; border-color: var(--border) !important; color: var(--muted) !important; }
-html[data-theme="light"] .topbar-breadcrumb { color: var(--muted2) !important; }
-html[data-theme="light"] .topbar-breadcrumb span { color: var(--text) !important; }
 
 body {
   font-family: var(--font);
@@ -5536,15 +5495,6 @@ kbd {
               <option value="CET">Central European Time (CET)</option>
               <option value="IST">India Standard Time (IST)</option>
             </select>
-          </div>
-          <div class="form-group">
-            <label>Appearance</label>
-            <div style="display:flex;gap:8px;flex-wrap:wrap;">
-              <button type="button" class="btn-secondary btn-sm" onclick="setThemePreference('system')">System</button>
-              <button type="button" class="btn-secondary btn-sm" onclick="setThemePreference('dark')">Dark</button>
-              <button type="button" class="btn-secondary btn-sm" onclick="setThemePreference('light')">Light</button>
-            </div>
-            <p style="font-size:12px;color:var(--muted2);margin-top:8px;line-height:1.45;">System follows your device theme. You can override it anytime.</p>
           </div>
           <button onclick="saveProfileSettings()">Save Profile</button>
         </div>
