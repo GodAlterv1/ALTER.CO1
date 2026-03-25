@@ -38,6 +38,40 @@ let pages         = loadStored('pages', [])
 // Ensure calendar state exists before any boot logic runs
 var currentDate  = new Date()
 
+function resolveThemeFromPreference(pref) {
+  const p = String(pref || '').toLowerCase()
+  if (p === 'light' || p === 'dark') return p
+  // system default
+  try {
+    return (window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches) ? 'light' : 'dark'
+  } catch (e) {
+    return 'dark'
+  }
+}
+
+function applyTheme(theme) {
+  try {
+    const t = String(theme || 'dark')
+    document.documentElement.setAttribute('data-theme', t)
+    // update meta theme-color for mobile address bar
+    const meta = document.querySelector('meta[name="theme-color"]')
+    if (meta) meta.setAttribute('content', t === 'light' ? '#f8fafc' : '#0B0F18')
+  } catch (e) {}
+}
+
+function applyThemeFromSettings() {
+  const pref = userSettings && userSettings.theme ? userSettings.theme : 'system'
+  applyTheme(resolveThemeFromPreference(pref))
+}
+
+function setThemePreference(pref) {
+  if (!userSettings || typeof userSettings !== 'object') userSettings = {}
+  userSettings.theme = String(pref || 'system')
+  save('usersettings', userSettings)
+  applyThemeFromSettings()
+  showToast('Theme updated', 'success')
+}
+
 ;(function () {
   var meta = document.getElementById('alterApiBaseMeta')
   var fromMeta = meta && meta.getAttribute('content') && meta.getAttribute('content').trim()
@@ -80,6 +114,7 @@ function autoAssociateLabelsWithInputs() {
 
 // Run after the script loads (script tag is near the end of <body>).
 autoAssociateLabelsWithInputs()
+applyThemeFromSettings()
 
 var syncWorkspaceTimeout = null
 var currentNotificationFilter = 'all'
@@ -843,6 +878,16 @@ function greeting() {
    BOOT
 =================================================== */
 ;(function boot() {
+  // Keep theme synced when system preference changes
+  try {
+    if (window.matchMedia) {
+      const mq = window.matchMedia('(prefers-color-scheme: light)')
+      mq.addEventListener && mq.addEventListener('change', function () {
+        if (userSettings && userSettings.theme === 'system') applyThemeFromSettings()
+      })
+    }
+  } catch (e0) {}
+
   if (ALTER_API_BASE && getAuthToken()) {
     fetch(ALTER_API_BASE + '/api/me', {
       headers: { Authorization: 'Bearer ' + getAuthToken() }
