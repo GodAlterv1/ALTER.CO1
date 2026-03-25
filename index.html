@@ -3118,6 +3118,7 @@ kbd {
 
 /* ===== PAGES / DOCS ===== */
 .pages-hub { max-width: min(1680px, 100%); margin: 0 auto; }
+.docs-shell { --docs-zoom: 1; }
 .docs-shell {
   display: grid;
   grid-template-columns: minmax(260px, 300px) minmax(0, 1fr);
@@ -3327,8 +3328,9 @@ kbd {
   background: rgba(15, 23, 42, 0.85);
   border: 1px solid #1F2937;
   position: sticky;
-  top: 0;
+  top: 74px;
   z-index: 6;
+  backdrop-filter: blur(8px);
 }
 .pages-toolbar-label {
   font-size: 10px;
@@ -3356,6 +3358,90 @@ kbd {
 .block-row { border: 1px solid transparent; padding: 8px 12px; border-radius: 10px; margin-left: -12px; margin-right: -12px; }
 .block-row:hover { border-color: #1F2937; background: rgba(17, 24, 39, 0.35); }
 .block-row.active { border-color: rgba(79, 70, 229, 0.45); background: rgba(79, 70, 229, 0.06); }
+
+/* Word-like page canvas (dark UI, paper-style editing surface) */
+.docs-page-stage {
+  display: flex;
+  justify-content: center;
+  padding: 18px 0 30px;
+}
+.docs-page-canvas {
+  transform: scale(var(--docs-zoom));
+  transform-origin: top center;
+  width: min(900px, 100%);
+  background: #0b1220;
+  border: 1px solid rgba(148, 163, 184, 0.12);
+  box-shadow: 0 18px 60px rgba(0,0,0,0.55);
+  border-radius: 16px;
+  padding: 22px 24px 48px;
+}
+.docs-page-ruler {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid #1F2937;
+  background: rgba(2, 6, 23, 0.75);
+  border-radius: 12px;
+  margin-bottom: 12px;
+}
+.docs-zoom-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  border: 1px solid #1F2937;
+  background: #0f172a;
+  color: #9CA3AF;
+  font-size: 11px;
+  font-weight: 600;
+}
+.docs-zoom-chip button {
+  padding: 4px 8px;
+  font-size: 11px;
+  border-radius: 999px;
+}
+.docs-zoom-chip button:hover { transform: none; box-shadow: none; }
+.docs-page-canvas .docs-title-field {
+  font-size: 30px;
+  line-height: 1.2;
+  letter-spacing: -0.02em;
+}
+.docs-page-canvas .block-row { margin-left: 0; margin-right: 0; }
+.docs-page-canvas .block-row:hover { background: rgba(15,23,42,0.35); }
+
+/* Templates + Intake modals */
+.template-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+}
+.template-card {
+  border: 1px solid #1F2937;
+  background: rgba(15, 23, 42, 0.55);
+  border-radius: 12px;
+  padding: 12px 12px;
+  cursor: pointer;
+  transition: border-color 0.15s, transform 0.15s, background 0.15s;
+}
+.template-card:hover {
+  border-color: rgba(79, 70, 229, 0.5);
+  background: rgba(79, 70, 229, 0.08);
+  transform: translateY(-1px);
+}
+.template-card h4 {
+  margin: 0 0 6px 0;
+  font-size: 13px;
+  color: #E5E7EB;
+}
+.template-card p {
+  margin: 0;
+  font-size: 12px;
+  color: #9CA3AF;
+  line-height: 1.45;
+}
 .block-text { outline: none; color: #E5E7EB; font-size: 15px; line-height: 1.65; }
 .block-text[contenteditable="true"]:empty:before { content: attr(data-placeholder); color: #6B7280; }
 .block-heading { font-size: 1.75rem; font-weight: 800; color: #F9FAFB; letter-spacing: -0.02em; line-height: 1.25; }
@@ -3876,6 +3962,7 @@ kbd {
           </div>
           <div class="header-actions">
             <button onclick="refreshDashboard()" class="btn-secondary">↻ Refresh</button>
+            <button onclick="openIntakeModal()" class="btn-secondary">📝 Intake</button>
             <button onclick="openCreateProjectModal()">+ New Project</button>
           </div>
         </div>
@@ -4684,6 +4771,7 @@ kbd {
             <div class="docs-sidebar-actions">
               <button type="button" class="btn-primary" onclick="createNewPage()">+ New page</button>
               <div class="docs-sidebar-secondary">
+                <button type="button" class="btn-secondary btn-sm" onclick="openDocsTemplatesModal()" title="Create a page from a template">Templates</button>
                 <button type="button" class="btn-secondary btn-sm" onclick="duplicateCurrentPage()" title="Duplicate current page">Duplicate</button>
                 <button type="button" class="btn-secondary btn-sm" onclick="exportCurrentPageAsText()" title="Copy plain text">Copy text</button>
                 <button type="button" class="btn-sm btn-danger docs-delete-page-btn" onclick="deleteCurrentPage()" title="Delete the page you’re editing">Delete page</button>
@@ -4713,26 +4801,41 @@ kbd {
 
                 <div class="docs-editor-layout-inner">
                   <div class="docs-blocks-column">
-                    <div class="pages-toolbar">
-                      <span class="pages-toolbar-label">Insert &amp; format</span>
-                      <button type="button" onclick="setBlockTypeFromToolbar('paragraph')">Paragraph</button>
-                      <button type="button" onclick="setBlockTypeFromToolbar('heading')">H1</button>
-                      <button type="button" onclick="setBlockTypeFromToolbar('heading2')">H2</button>
-                      <button type="button" onclick="setBlockTypeFromToolbar('heading3')">H3</button>
-                      <span class="toolbar-separator"></span>
-                      <button type="button" onclick="setBlockTypeFromToolbar('quote')">Quote</button>
-                      <button type="button" onclick="setBlockTypeFromToolbar('callout')">Callout</button>
-                      <button type="button" onclick="setBlockTypeFromToolbar('code')">Code</button>
-                      <span class="toolbar-separator"></span>
-                      <button type="button" onclick="applyInlineFormat('bold')"><strong>B</strong></button>
-                      <button type="button" onclick="applyInlineFormat('italic')"><em>I</em></button>
-                      <button type="button" onclick="applyInlineFormat('underline')"><span style="text-decoration:underline;">U</span></button>
-                      <span class="toolbar-separator"></span>
-                      <button type="button" onclick="insertBlockFromToolbar('checklist')">Checklist</button>
-                      <button type="button" onclick="insertBlockFromToolbar('divider')">Divider</button>
-                    </div>
+                    <div class="docs-page-stage">
+                      <div class="docs-page-canvas">
+                        <div class="docs-page-ruler">
+                          <div style="font-size:11px;color:#6B7280;">Layout: page · margins · outline</div>
+                          <div class="docs-zoom-chip">
+                            Zoom
+                            <button type="button" class="btn-xs btn-secondary" onclick="setDocsZoom(0.9)">90%</button>
+                            <button type="button" class="btn-xs btn-secondary" onclick="setDocsZoom(1)">100%</button>
+                            <button type="button" class="btn-xs btn-secondary" onclick="setDocsZoom(1.1)">110%</button>
+                            <button type="button" class="btn-xs btn-secondary" onclick="setDocsZoom(1.25)">125%</button>
+                          </div>
+                        </div>
 
-                    <div id="blocksContainer" class="blocks-container"></div>
+                        <div class="pages-toolbar">
+                          <span class="pages-toolbar-label">Insert &amp; format</span>
+                          <button type="button" onclick="setBlockTypeFromToolbar('paragraph')">Paragraph</button>
+                          <button type="button" onclick="setBlockTypeFromToolbar('heading')">H1</button>
+                          <button type="button" onclick="setBlockTypeFromToolbar('heading2')">H2</button>
+                          <button type="button" onclick="setBlockTypeFromToolbar('heading3')">H3</button>
+                          <span class="toolbar-separator"></span>
+                          <button type="button" onclick="setBlockTypeFromToolbar('quote')">Quote</button>
+                          <button type="button" onclick="setBlockTypeFromToolbar('callout')">Callout</button>
+                          <button type="button" onclick="setBlockTypeFromToolbar('code')">Code</button>
+                          <span class="toolbar-separator"></span>
+                          <button type="button" onclick="applyInlineFormat('bold')"><strong>B</strong></button>
+                          <button type="button" onclick="applyInlineFormat('italic')"><em>I</em></button>
+                          <button type="button" onclick="applyInlineFormat('underline')"><span style="text-decoration:underline;">U</span></button>
+                          <span class="toolbar-separator"></span>
+                          <button type="button" onclick="insertBlockFromToolbar('checklist')">Checklist</button>
+                          <button type="button" onclick="insertBlockFromToolbar('divider')">Divider</button>
+                        </div>
+
+                        <div id="blocksContainer" class="blocks-container"></div>
+                      </div>
+                    </div>
 
                     <div class="docs-hint">
                       <strong>Writing tips.</strong> Headings H1–H3 build a table of contents on the right. Use <strong>Callout</strong> for notes and warnings, <strong>Code</strong> for snippets. Empty line + <kbd>/</kbd> opens the quick block menu. Team members see the same docs when they use your shared workspace.
@@ -5631,6 +5734,82 @@ kbd {
     <div style="display:flex;gap:10px;margin-top:20px;justify-content:flex-end;">
       <button class="btn-secondary" onclick="closeGoalUpdateModal()">Cancel</button>
       <button onclick="saveGoalUpdate()">Add update</button>
+    </div>
+  </div>
+</div>
+
+<!-- Docs Templates Modal -->
+<div id="docsTemplatesModal" class="modal" onclick="handleModalBackdrop(event)">
+  <div class="modal-box" onclick="event.stopPropagation()" style="max-width:760px;">
+    <div class="modal-header">
+      <h2>📄 Templates</h2>
+      <button type="button" class="btn-xs btn-secondary" onclick="closeDocsTemplatesModal()">✕</button>
+    </div>
+    <p style="font-size:13px;color:#9CA3AF;margin:-8px 0 14px;line-height:1.45;">Start faster with templates inspired by Notion (wiki), monday.com (process), and Trello (simple checklists).</p>
+    <div id="docsTemplatesGrid" class="template-grid"></div>
+    <div style="margin-top:14px;display:flex;justify-content:flex-end;gap:8px;">
+      <button type="button" class="btn-secondary" onclick="closeDocsTemplatesModal()">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- Intake Form Modal -->
+<div id="intakeModal" class="modal" onclick="handleModalBackdrop(event)">
+  <div class="modal-content" onclick="event.stopPropagation()" style="max-width:560px;">
+    <div class="modal-header">
+      <h2>📝 Intake (Request → Task)</h2>
+      <button class="modal-close" onclick="closeIntakeModal()">✕</button>
+    </div>
+    <div class="form-group">
+      <label>Title *</label>
+      <input id="intakeTitle" placeholder="e.g. Customer asked for invoice PDF export" type="text">
+    </div>
+    <div class="form-group">
+      <label>Details</label>
+      <textarea id="intakeDesc" placeholder="Context, acceptance criteria, links..."></textarea>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>Project</label>
+        <select id="intakeProject"><option value="">No project</option></select>
+      </div>
+      <div class="form-group">
+        <label>Assignee</label>
+        <select id="intakeAssignee"></select>
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>Priority</label>
+        <select id="intakePriority">
+          <option value="low">Low</option>
+          <option value="medium" selected>Medium</option>
+          <option value="high">High</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Due date & time</label>
+        <input id="intakeDue" type="datetime-local">
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>Estimate (hours)</label>
+        <input id="intakeEstimate" type="number" min="0" step="0.25" placeholder="e.g. 2.5">
+      </div>
+      <div class="form-group">
+        <label>Status</label>
+        <select id="intakeStatus">
+          <option value="todo">To Do</option>
+          <option value="in-progress">In Progress</option>
+          <option value="review">Review</option>
+          <option value="done">Done</option>
+        </select>
+      </div>
+    </div>
+    <div style="display:flex;gap:10px;margin-top:20px;justify-content:flex-end;">
+      <button type="button" class="btn-secondary" onclick="closeIntakeModal()">Cancel</button>
+      <button type="button" onclick="saveIntakeTask()">Create task</button>
     </div>
   </div>
 </div>

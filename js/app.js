@@ -373,6 +373,8 @@ let billingPeriod = 'monthly' // 'monthly' or 'yearly'
 let currentPageId = null
 let blockInsertIndex = null
 let blockInsertMenuVisible = false
+let docsZoom = 1
+let docsTemplatesBuilt = false
 
 // Timer state (session = started but not finished with Stop)
 let timerRunning   = false
@@ -6964,6 +6966,12 @@ function renderPagesEditor() {
   const page = pages.find(x => x.id === currentPageId)
   if (!page) return
 
+  // Apply editor zoom (Word-like page scale)
+  try {
+    const shell = document.querySelector('.docs-shell')
+    if (shell) shell.style.setProperty('--docs-zoom', String(docsZoom || 1))
+  } catch (e) {}
+
   const titleInput = document.getElementById('pageTitleInput')
   if (titleInput) {
     titleInput.value = page.title || ''
@@ -6976,6 +6984,183 @@ function renderPagesEditor() {
   }
 
   renderBlocksForCurrentPage()
+}
+
+function setDocsZoom(z) {
+  const v = Number(z)
+  if (!v || v < 0.75 || v > 1.6) return
+  docsZoom = v
+  try {
+    const shell = document.querySelector('.docs-shell')
+    if (shell) shell.style.setProperty('--docs-zoom', String(docsZoom))
+  } catch (e) {}
+}
+
+function getDocTemplates() {
+  return [
+    {
+      id: 'spec',
+      title: 'Product spec',
+      desc: 'Problem → goals → scope → milestones. Great for serious ops (monday-style).',
+      blocks: [
+        { type: 'heading', text: 'Product spec' },
+        { type: 'paragraph', text: 'Owner: <strong>' + escapeHtml(currentUser?.fullName || currentUser?.username || '—') + '</strong><br>Last updated: ' + escapeHtml(new Date().toLocaleDateString()) },
+        { type: 'heading2', text: 'Problem' },
+        { type: 'paragraph', text: '' },
+        { type: 'heading2', text: 'Goals / success metrics' },
+        { type: 'checklist', checked: false, text: 'Define measurable outcomes' },
+        { type: 'checklist', checked: false, text: 'Define launch criteria' },
+        { type: 'heading2', text: 'Scope' },
+        { type: 'paragraph', text: '<strong>In:</strong><br><br><strong>Out:</strong>' },
+        { type: 'heading2', text: 'Milestones' },
+        { type: 'checklist', checked: false, text: 'Milestone 1' },
+        { type: 'checklist', checked: false, text: 'Milestone 2' },
+        { type: 'heading2', text: 'Risks / notes' },
+        { type: 'callout', text: '' }
+      ]
+    },
+    {
+      id: 'meeting',
+      title: 'Meeting notes',
+      desc: 'Agenda, notes, decisions, action items (Notion wiki vibe).',
+      blocks: [
+        { type: 'heading', text: 'Meeting notes' },
+        { type: 'paragraph', text: 'Date: <strong>' + escapeHtml(new Date().toLocaleDateString()) + '</strong><br>Attendees:' },
+        { type: 'heading2', text: 'Agenda' },
+        { type: 'checklist', checked: false, text: '' },
+        { type: 'heading2', text: 'Notes' },
+        { type: 'paragraph', text: '' },
+        { type: 'heading2', text: 'Decisions' },
+        { type: 'quote', text: '' },
+        { type: 'heading2', text: 'Action items' },
+        { type: 'checklist', checked: false, text: '' }
+      ]
+    },
+    {
+      id: 'sop',
+      title: 'SOP / Runbook',
+      desc: 'Step-by-step process with checks (operations system).',
+      blocks: [
+        { type: 'heading', text: 'SOP / Runbook' },
+        { type: 'paragraph', text: 'Purpose:' },
+        { type: 'heading2', text: 'When to use this' },
+        { type: 'paragraph', text: '' },
+        { type: 'heading2', text: 'Steps' },
+        { type: 'checklist', checked: false, text: 'Step 1' },
+        { type: 'checklist', checked: false, text: 'Step 2' },
+        { type: 'checklist', checked: false, text: 'Step 3' },
+        { type: 'heading2', text: 'Rollback / recovery' },
+        { type: 'callout', text: '' },
+        { type: 'heading2', text: 'Commands / snippets' },
+        { type: 'code', text: '' }
+      ]
+    }
+  ]
+}
+
+function openDocsTemplatesModal() {
+  const modal = document.getElementById('docsTemplatesModal')
+  const grid = document.getElementById('docsTemplatesGrid')
+  if (!modal || !grid) return
+  const templates = getDocTemplates()
+  grid.innerHTML = templates.map(t => `
+    <div class="template-card" role="button" tabindex="0"
+         onclick="createNewPageFromTemplate('${escapeHtml(t.id)}')"
+         onkeydown="if(event.key==='Enter'){createNewPageFromTemplate('${escapeHtml(t.id)}')}">
+      <h4>${escapeHtml(t.title)}</h4>
+      <p>${escapeHtml(t.desc)}</p>
+    </div>
+  `).join('')
+  modal.classList.add('active')
+  docsTemplatesBuilt = true
+}
+
+function closeDocsTemplatesModal() {
+  const modal = document.getElementById('docsTemplatesModal')
+  if (modal) modal.classList.remove('active')
+}
+
+function createNewPageFromTemplate(templateId) {
+  ensurePageInitialized()
+  const t = getDocTemplates().find(x => x.id === templateId)
+  if (!t) return
+  const nowIso = new Date().toISOString()
+  const newPage = {
+    id: genId(),
+    title: t.title,
+    created: nowIso,
+    updated: nowIso,
+    blocks: (t.blocks || []).map(b => Object.assign({ id: genId() }, b))
+  }
+  pages.unshift(newPage)
+  save('pages', pages)
+  currentPageId = newPage.id
+  closeDocsTemplatesModal()
+  renderPagesEditor()
+  showToast('Template created', 'success')
+}
+
+function openIntakeModal() {
+  if (!ensureCurrentUser()) {
+    showToast('Please sign in to create a task', 'error')
+    return
+  }
+  populateProjectSelect('intakeProject')
+  fillAssigneeSelect(document.getElementById('intakeAssignee'), currentUser.id)
+  const t = document.getElementById('intakeTitle')
+  const d = document.getElementById('intakeDesc')
+  const due = document.getElementById('intakeDue')
+  const est = document.getElementById('intakeEstimate')
+  const pr = document.getElementById('intakePriority')
+  const st = document.getElementById('intakeStatus')
+  if (t) t.value = ''
+  if (d) d.value = ''
+  if (due) due.value = ''
+  if (est) est.value = ''
+  if (pr) pr.value = 'medium'
+  if (st) st.value = 'todo'
+  document.getElementById('intakeModal')?.classList.add('active')
+}
+
+function closeIntakeModal() {
+  document.getElementById('intakeModal')?.classList.remove('active')
+}
+
+function saveIntakeTask() {
+  if (!ensureCurrentUser()) return
+  const title = document.getElementById('intakeTitle')?.value?.trim() || ''
+  if (!title) return showToast('Title is required', 'error')
+  const desc = document.getElementById('intakeDesc')?.value?.trim() || ''
+  const projId = document.getElementById('intakeProject')?.value || ''
+  const assignee = document.getElementById('intakeAssignee')?.value || currentUser.id
+  const priority = document.getElementById('intakePriority')?.value || 'medium'
+  const status = document.getElementById('intakeStatus')?.value || 'todo'
+  const dueDate = document.getElementById('intakeDue')?.value || ''
+  const estimate = parseFloat(document.getElementById('intakeEstimate')?.value) || 0
+
+  const nowIso = new Date().toISOString()
+  const task = {
+    id: genId(),
+    title,
+    description: desc,
+    projectId: projId,
+    priority,
+    status,
+    dueDate: dueDate || null,
+    assignee,
+    estimatedHours: estimate,
+    created: nowIso
+  }
+  tasks.push(task)
+  save('tasks', tasks)
+  renderTasks()
+  renderDashboardCharts()
+  updateStats()
+  addActivity(`Intake created task: ${title}`)
+  addNotification(`Task "${title}" created from intake`, 'task')
+  addAuditLog('create', `Created task "${title}" from intake`, 'create', { projectId: projId || null, taskId: task.id })
+  closeIntakeModal()
+  showToast('Task created from intake', 'success')
 }
 
 /* ===================================================
