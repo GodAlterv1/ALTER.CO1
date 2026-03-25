@@ -2082,6 +2082,7 @@ function updateStats() {
 
   renderDashboardPulseAndOnboarding()
   renderDashboardSuggestions()
+  renderDashboardWorkload()
 
   // Today for you (dashboard)
   const myTodayEl = document.getElementById('dashboardMyToday')
@@ -2774,9 +2775,13 @@ function openCreateTaskModal() {
   }
   populateProjectSelect('modalTaskProject')
   fillAssigneeSelect(document.getElementById('modalTaskAssignee'), preferredTaskAssigneeId || currentUser.id)
+  populateGoalSelect('modalTaskGoal', '')
+  populateGoalKrSelect('', 'modalTaskGoalKR', '')
   preferredTaskAssigneeId = ''
   document.getElementById('modalTaskStatus').value    = 'todo'
   document.getElementById('modalTaskInitStatus').value= 'todo'
+  document.getElementById('modalTaskRecurrence').value = ''
+  document.getElementById('modalTaskRepeatOnDone').checked = true
   document.getElementById('createTaskModal').classList.add('active')
 }
 
@@ -2792,6 +2797,10 @@ function closeCreateTaskModal() {
   document.getElementById('modalTaskDue').value      = ''
   document.getElementById('modalTaskPriority').value = 'medium'
   document.getElementById('modalTaskStatus').value   = 'todo'
+  document.getElementById('modalTaskRecurrence').value = ''
+  document.getElementById('modalTaskRepeatOnDone').checked = true
+  const g = document.getElementById('modalTaskGoal'); if (g) g.value = ''
+  const kr = document.getElementById('modalTaskGoalKR'); if (kr) kr.value = ''
 }
 
 function saveTask() {
@@ -2806,6 +2815,10 @@ function saveTask() {
   let status   = document.getElementById('modalTaskStatus').value
   let dueDate  = document.getElementById('modalTaskDue').value
   let estimate = parseFloat(document.getElementById('modalTaskEstimate').value) || 0
+  const recurrence = document.getElementById('modalTaskRecurrence')?.value || ''
+  const repeatOnDone = !!document.getElementById('modalTaskRepeatOnDone')?.checked
+  const goalId = document.getElementById('modalTaskGoal')?.value || ''
+  const goalKrId = document.getElementById('modalTaskGoalKR')?.value || ''
   const assignTo = (document.getElementById('modalTaskAssignee') && document.getElementById('modalTaskAssignee').value) || currentUser.id
 
   if (!title) return showToast('Please enter a task title', 'error')
@@ -2813,7 +2826,11 @@ function saveTask() {
   let task = {
     id: genId(), title, description: desc, projectId: projId,
     priority, status, dueDate, assignee: assignTo,
-    estimatedHours: estimate, created: new Date().toISOString()
+    estimatedHours: estimate,
+    recurrence: recurrence ? { freq: recurrence, createNextOnDone: repeatOnDone } : null,
+    goalId: goalId || null,
+    goalKrId: goalKrId || null,
+    created: new Date().toISOString()
   }
 
   tasks.push(task)
@@ -2828,6 +2845,7 @@ function saveTask() {
   addAuditLog('create', `Created task "${title}"`, 'create', { projectId: projId || null, taskId: task.id })
   showToast('Task created!', 'success')
   updateStats()
+  if (task.status === 'done') runTaskStatusAutomations(task, 'todo', 'done', 'create')
 }
 
 function buildTaskCard(t) {
@@ -3078,6 +3096,15 @@ function openTaskDetail(id) {
   if (due && typeof due === 'string' && !due.includes('T')) due = due + 'T09:00'
   document.getElementById('taskDetailDue').value = due
 
+  // Recurrence + Goal linking
+  const recSel = document.getElementById('taskDetailRecurrence')
+  const recChk = document.getElementById('taskDetailRepeatOnDone')
+  const freq = task.recurrence && task.recurrence.freq ? task.recurrence.freq : ''
+  if (recSel) recSel.value = freq
+  if (recChk) recChk.checked = task.recurrence ? task.recurrence.createNextOnDone !== false : true
+  populateGoalSelect('taskDetailGoal', task.goalId || '')
+  populateGoalKrSelect(task.goalId || '', 'taskDetailGoalKR', task.goalKrId || '')
+
   // Time summary for this task
   let trackedSecs = timeEntries.filter(e => e.taskId === id).reduce((s, e) => s + (e.duration||0), 0)
   document.getElementById('taskDetailTimeSummary').textContent =
@@ -3176,6 +3203,7 @@ function saveTaskDetail() {
   if (!task) return
 
   let oldAssignee = task.assignee || ''
+  let oldStatus = task.status || ''
 
   let title = document.getElementById('taskDetailTitleInput').value.trim()
   if (!title) return showToast('Task title is required', 'error')
@@ -3186,6 +3214,11 @@ function saveTaskDetail() {
   task.priority    = document.getElementById('taskDetailPriority').value
   task.assignee    = document.getElementById('taskDetailAssignee').value
   task.dueDate     = document.getElementById('taskDetailDue').value || null
+  const recFreq = document.getElementById('taskDetailRecurrence')?.value || ''
+  const recOnDone = !!document.getElementById('taskDetailRepeatOnDone')?.checked
+  task.recurrence = recFreq ? { freq: recFreq, createNextOnDone: recOnDone } : null
+  task.goalId = document.getElementById('taskDetailGoal')?.value || null
+  task.goalKrId = document.getElementById('taskDetailGoalKR')?.value || null
   task.updated     = new Date().toISOString()
 
   // Optional new update/comment
@@ -3207,6 +3240,7 @@ function saveTaskDetail() {
   renderDashboardCharts()
   updateStats()
   addAuditLog('update', `Updated task "${task.title}" from side panel`, 'update', { projectId: task.projectId || null, taskId: task.id })
+  if (oldStatus !== task.status) runTaskStatusAutomations(task, oldStatus, task.status, 'detail')
 
   // Email notification: task assigned to someone (respect notification prefs and backend availability)
   try {
@@ -3350,6 +3384,7 @@ function drop(e) {
   addActivity(`Moved "${task.title}" → ${newStatus.replace('-',' ')}`)
   addAuditLog('update', `Moved task "${task.title}" from ${oldStatus} to ${newStatus}`, 'update', { projectId: task.projectId || null, taskId: task.id })
   showToast(`Moved to ${newStatus.replace('-',' ')}`, 'info')
+  runTaskStatusAutomations(task, oldStatus, newStatus, 'drag')
 }
 
 // Basic touch support for moving tasks on mobile
@@ -3394,6 +3429,7 @@ function handleTaskTouchEnd(e) {
   addActivity(`Moved "${task.title}" → ${newStatus.replace('-',' ')}`)
   addAuditLog('update', `Moved task "${task.title}" from ${oldStatus} to ${newStatus}`, 'update', { projectId: task.projectId || null, taskId: task.id })
   showToast(`Moved to ${newStatus.replace('-',' ')}`, 'info')
+  runTaskStatusAutomations(task, oldStatus, newStatus, 'touch')
   draggedTaskId = null
 }
 
@@ -6547,6 +6583,15 @@ function exportCurrentPageAsText() {
   }
 }
 
+function printCurrentDoc() {
+  // Users can "Save as PDF" from the system print dialog.
+  try {
+    window.print()
+  } catch (e) {
+    showToast('Print is not available in this browser', 'error')
+  }
+}
+
 function deletePageById(pageId, ev) {
   if (ev) ev.stopPropagation()
   ensurePageInitialized()
@@ -6686,9 +6731,14 @@ function renderBlocksForCurrentPage() {
   if (!page.blocks.length) page.blocks.push({ id: genId(), type: 'paragraph', text: '' })
 
   container.innerHTML = page.blocks.map((b, i) => {
+    const bid = b.id || ''
+    const linkBtn = bid
+      ? `<button type="button" class="btn-xs btn-secondary" style="opacity:0;position:absolute;right:6px;top:6px;padding:2px 6px;font-size:10px;" onclick="event.stopPropagation();copyDocBlockLink(${JSON.stringify(bid)})" title="Copy link">Link</button>`
+      : ''
     if (b.type === 'divider') {
       return `
-        <div class="block-row" data-block-index="${i}" data-block-type="divider" onclick="setTimeout(()=>{},0)">
+        <div class="block-row" data-block-id="${escapeHtml(bid)}" data-block-index="${i}" data-block-type="divider" onclick="setTimeout(()=>{},0)" style="position:relative;">
+          ${linkBtn}
           <div class="block-divider"></div>
         </div>
       `
@@ -6696,7 +6746,8 @@ function renderBlocksForCurrentPage() {
 
     if (b.type === 'checklist') {
       return `
-        <div class="block-row" data-block-index="${i}" data-block-type="checklist">
+        <div class="block-row" data-block-id="${escapeHtml(bid)}" data-block-index="${i}" data-block-type="checklist" style="position:relative;">
+          ${linkBtn}
           <div class="block-checklist">
             <input type="checkbox" ${b.checked ? 'checked' : ''} class="check-input" aria-label="Checklist item checkbox" />
             <div class="check-text block-text"
@@ -6713,7 +6764,8 @@ function renderBlocksForCurrentPage() {
 
     if (b.type === 'heading') {
       return `
-        <div class="block-row" data-block-index="${i}" data-block-type="heading">
+        <div class="block-row" data-block-id="${escapeHtml(bid)}" data-block-index="${i}" data-block-type="heading" style="position:relative;">
+          ${linkBtn}
           <div class="block-text block-heading"
                contenteditable="true"
                data-block-index="${i}"
@@ -6727,7 +6779,8 @@ function renderBlocksForCurrentPage() {
 
     if (b.type === 'heading2') {
       return `
-        <div class="block-row" data-block-index="${i}" data-block-type="heading2">
+        <div class="block-row" data-block-id="${escapeHtml(bid)}" data-block-index="${i}" data-block-type="heading2" style="position:relative;">
+          ${linkBtn}
           <div class="block-text block-h2"
                contenteditable="true"
                data-block-index="${i}"
@@ -6741,7 +6794,8 @@ function renderBlocksForCurrentPage() {
 
     if (b.type === 'heading3') {
       return `
-        <div class="block-row" data-block-index="${i}" data-block-type="heading3">
+        <div class="block-row" data-block-id="${escapeHtml(bid)}" data-block-index="${i}" data-block-type="heading3" style="position:relative;">
+          ${linkBtn}
           <div class="block-text block-h3"
                contenteditable="true"
                data-block-index="${i}"
@@ -6755,7 +6809,8 @@ function renderBlocksForCurrentPage() {
 
     if (b.type === 'quote') {
       return `
-        <div class="block-row" data-block-index="${i}" data-block-type="quote">
+        <div class="block-row" data-block-id="${escapeHtml(bid)}" data-block-index="${i}" data-block-type="quote" style="position:relative;">
+          ${linkBtn}
           <div class="block-text block-quote"
                contenteditable="true"
                data-block-index="${i}"
@@ -6769,7 +6824,8 @@ function renderBlocksForCurrentPage() {
 
     if (b.type === 'code') {
       return `
-        <div class="block-row" data-block-index="${i}" data-block-type="code">
+        <div class="block-row" data-block-id="${escapeHtml(bid)}" data-block-index="${i}" data-block-type="code" style="position:relative;">
+          ${linkBtn}
           <pre class="block-code-wrap"
                contenteditable="true"
                data-block-index="${i}"
@@ -6781,7 +6837,8 @@ function renderBlocksForCurrentPage() {
 
     if (b.type === 'callout') {
       return `
-        <div class="block-row" data-block-index="${i}" data-block-type="callout">
+        <div class="block-row" data-block-id="${escapeHtml(bid)}" data-block-index="${i}" data-block-type="callout" style="position:relative;">
+          ${linkBtn}
           <div class="block-callout">
             <span class="block-callout-icon" aria-hidden="true">💡</span>
             <div class="block-text block-callout-body"
@@ -6798,7 +6855,8 @@ function renderBlocksForCurrentPage() {
 
     // paragraph default
     return `
-      <div class="block-row" data-block-index="${i}" data-block-type="paragraph">
+      <div class="block-row" data-block-id="${escapeHtml(bid)}" data-block-index="${i}" data-block-type="paragraph" style="position:relative;">
+        ${linkBtn}
         <div class="block-text"
              contenteditable="true"
              data-block-index="${i}"
@@ -7036,6 +7094,37 @@ function renderPagesEditor() {
   }
 
   renderBlocksForCurrentPage()
+
+  // If URL hash points to a block in this doc, scroll to it.
+  try {
+    const h = String(window.location.hash || '')
+    if (h.startsWith('#doc=')) {
+      const params = new URLSearchParams(h.slice(1))
+      const docId = params.get('doc') || ''
+      const blockId = params.get('block') || ''
+      if (docId && docId === currentPageId && blockId) {
+        setTimeout(function () {
+          const row = document.querySelector(`.block-row[data-block-id="${CSS.escape(blockId)}"]`)
+          if (row) row.scrollIntoView({ block: 'center', behavior: 'smooth' })
+        }, 0)
+      }
+    }
+  } catch (e) {}
+}
+
+function copyDocBlockLink(blockId) {
+  if (!currentPageId || !blockId) return
+  const qs = new URLSearchParams({ doc: currentPageId, block: blockId })
+  const url = window.location.origin + window.location.pathname + '#' + qs.toString()
+  try {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(url).then(function () { showToast('Link copied', 'success') }).catch(function () { window.prompt('Copy link:', url) })
+    } else {
+      window.prompt('Copy link:', url)
+    }
+  } catch (e) {
+    window.prompt('Copy link:', url)
+  }
 }
 
 function setDocsZoom(z) {
@@ -7577,6 +7666,152 @@ function renderDashboardCharts() {
       }]
     }
   })
+}
+
+function populateGoalSelect(selectId, selectedId) {
+  const sel = document.getElementById(selectId)
+  if (!sel) return
+  const want = selectedId || ''
+  sel.innerHTML = '<option value="">None</option>' + goals.map(g => `<option value="${escapeHtml(g.id)}">${escapeHtml(g.title || 'Goal')}</option>`).join('')
+  sel.value = [...sel.options].some(o => o.value === want) ? want : ''
+  sel.onchange = function () {
+    populateGoalKrSelect(sel.value || '', selectId === 'modalTaskGoal' ? 'modalTaskGoalKR' : 'taskDetailGoalKR', '')
+  }
+}
+
+function populateGoalKrSelect(goalId, selectId, selectedKrId) {
+  const sel = document.getElementById(selectId)
+  if (!sel) return
+  const g = goals.find(x => x.id === goalId) || null
+  const krs = g && Array.isArray(g.keyResults) ? g.keyResults : []
+  sel.innerHTML = '<option value="">None</option>' + krs.map(kr => {
+    const id = (typeof kr === 'string') ? '' : (kr.id || '')
+    const title = (typeof kr === 'string') ? kr : (kr.title || '')
+    return `<option value="${escapeHtml(id)}">${escapeHtml(title || 'Key result')}</option>`
+  }).join('')
+  const want = selectedKrId || ''
+  sel.value = [...sel.options].some(o => o.value === want) ? want : ''
+}
+
+function getNextRecurringDueDate(prevDue, freq) {
+  const base = prevDue ? new Date(prevDue) : new Date()
+  if (isNaN(base.getTime())) return null
+  const d = new Date(base.getTime())
+  if (freq === 'daily') d.setDate(d.getDate() + 1)
+  else if (freq === 'weekly') d.setDate(d.getDate() + 7)
+  else if (freq === 'monthly') d.setMonth(d.getMonth() + 1)
+  else return null
+  return toLocalDateTimeInputValue(d)
+}
+
+function maybeCreateNextRecurringTask(task) {
+  if (!task || !task.recurrence || !task.recurrence.freq) return null
+  if (task.recurrence.createNextOnDone === false) return null
+  const nextDue = getNextRecurringDueDate(task.dueDate, task.recurrence.freq)
+  const nowIso = new Date().toISOString()
+  const next = {
+    id: genId(),
+    title: task.title,
+    description: task.description || '',
+    projectId: task.projectId || '',
+    priority: task.priority || 'medium',
+    status: 'todo',
+    dueDate: nextDue || null,
+    assignee: task.assignee || (currentUser ? currentUser.id : ''),
+    estimatedHours: task.estimatedHours || 0,
+    recurrence: { ...task.recurrence },
+    goalId: task.goalId || null,
+    goalKrId: task.goalKrId || null,
+    created: nowIso
+  }
+  tasks.push(next)
+  save('tasks', tasks)
+  addAuditLog('create', `Created next recurring task "${next.title}"`, 'create', { projectId: next.projectId || null, taskId: next.id })
+  addNotification(`Next recurring task created: "${next.title}"`, 'task')
+  return next
+}
+
+function autoProgressGoalKRFromLinkedTasks(goalId, krId) {
+  if (!goalId || !krId) return
+  const g = goals.find(x => x.id === goalId)
+  if (!g) return
+  normalizeGoalInPlace(g)
+  const kr = (g.keyResults || []).find(k => k && typeof k === 'object' && k.id === krId)
+  if (!kr) return
+  const linked = tasks.filter(t => t.goalId === goalId && t.goalKrId === krId)
+  if (!linked.length) return
+  const done = linked.filter(t => t.status === 'done').length
+  const pct = Math.round((done / linked.length) * 100)
+  kr.progress = pct
+  kr.done = pct >= 100
+  g.updated = new Date().toISOString()
+  save('goals', goals)
+}
+
+function runTaskStatusAutomations(task, oldStatus, newStatus, source) {
+  if (!task) return
+  // Core rule: when moved to done
+  if (newStatus === 'done' && oldStatus !== 'done') {
+    // Notify project owner (if any)
+    const proj = task.projectId ? projects.find(p => p.id === task.projectId) : null
+    if (proj && proj.owner && currentUser && proj.owner !== currentUser.id) {
+      addNotification(`Task done: "${task.title}"`, 'task', { linkType: 'task', linkId: task.id })
+    }
+    // Create next recurring task if configured
+    maybeCreateNextRecurringTask(task)
+    // Auto-progress linked OKR KR if configured
+    if (!userSettings || userSettings.autoProgressKRs !== false) {
+      autoProgressGoalKRFromLinkedTasks(task.goalId, task.goalKrId)
+    }
+  }
+}
+
+function renderDashboardWorkload() {
+  const el = document.getElementById('dashboardWorkload')
+  if (!el) return
+  const active = tasks.filter(t => t.status !== 'done')
+  const now = new Date()
+  const overdue = active.filter(t => t.dueDate && new Date(t.dueDate) < now)
+
+  const byAssignee = {}
+  active.forEach(t => {
+    const id = t.assignee || 'unassigned'
+    byAssignee[id] = (byAssignee[id] || 0) + 1
+  })
+  const assigneeRows = Object.keys(byAssignee).sort((a, b) => byAssignee[b] - byAssignee[a]).slice(0, 6).map(id => {
+    const label =
+      id === 'unassigned' ? 'Unassigned' :
+      (currentUser && id === currentUser.id ? 'You' : ((team.find(m => m.id === id)?.email || id).split('@')[0]))
+    return `<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid #1F2937;"><span>${escapeHtml(label)}</span><strong>${byAssignee[id]}</strong></div>`
+  }).join('')
+
+  const projRows = projects.slice(0, 8).map(p => {
+    const projTasks = tasks.filter(t => t.projectId === p.id)
+    const est = projTasks.reduce((s, t) => s + (t.estimatedHours || 0), 0)
+    const secs = timeEntries.filter(e => e.projectId === p.id).reduce((s, e) => s + (e.duration || 0), 0)
+    const hrs = secs / 3600
+    const drift = est > 0 ? Math.round((hrs / est) * 100) : null
+    return `<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid #1F2937;">
+      <span style="min-width:0;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(p.name)}</span>
+      <span style="flex-shrink:0;color:#9CA3AF;">${est > 0 ? `${hrs.toFixed(1)}h / ${est.toFixed(1)}h (${drift}%)` : `${hrs.toFixed(1)}h logged`}</span>
+    </div>`
+  }).join('')
+
+  el.innerHTML = `
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
+      <div>
+        <div style="font-size:11px;color:#6B7280;margin-bottom:6px;text-transform:uppercase;letter-spacing:0.08em;">Active tasks by assignee</div>
+        ${assigneeRows || '<div style="color:#6B7280;">No active tasks.</div>'}
+      </div>
+      <div>
+        <div style="font-size:11px;color:#6B7280;margin-bottom:6px;text-transform:uppercase;letter-spacing:0.08em;">Overdue</div>
+        <div style="font-size:28px;font-weight:800;color:${overdue.length ? '#ef4444' : '#22c55e'};margin-bottom:6px;">${overdue.length}</div>
+        <div style="font-size:11px;color:#6B7280;margin-bottom:10px;">Tasks past due date</div>
+        <div style="font-size:11px;color:#6B7280;margin-bottom:6px;text-transform:uppercase;letter-spacing:0.08em;">Time vs estimate (projects)</div>
+        ${projRows || '<div style="color:#6B7280;">No projects.</div>'}
+      </div>
+    </div>
+  `
 }
 
 function renderAnalyticsCharts() {

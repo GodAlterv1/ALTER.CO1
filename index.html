@@ -3358,6 +3358,7 @@ kbd {
 .block-row { border: 1px solid transparent; padding: 8px 12px; border-radius: 10px; margin-left: -12px; margin-right: -12px; }
 .block-row:hover { border-color: #1F2937; background: rgba(17, 24, 39, 0.35); }
 .block-row.active { border-color: rgba(79, 70, 229, 0.45); background: rgba(79, 70, 229, 0.06); }
+.block-row:hover button { opacity: 1 !important; }
 
 /* Word-like page canvas (dark UI, paper-style editing surface) */
 .docs-page-stage {
@@ -3441,6 +3442,23 @@ kbd {
   font-size: 12px;
   color: #9CA3AF;
   line-height: 1.45;
+}
+
+/* Print/PDF (Word-like) */
+@media print {
+  body { background: #fff !important; color: #111827 !important; }
+  .sidebar, .topbar, .notifications-panel, .modal, .toast-container, #commandPalette, #shortcutsOverlay { display: none !important; }
+  .layout, .workspace { overflow: visible !important; }
+  .page { display: block !important; }
+  .pages-hub { max-width: none !important; }
+  .docs-shell { border: none !important; border-radius: 0 !important; }
+  .docs-sidebar { display: none !important; }
+  .docs-toc { display: none !important; }
+  .docs-hint { display: none !important; }
+  .docs-page-stage { padding: 0 !important; }
+  .docs-page-canvas { box-shadow: none !important; border: none !important; transform: none !important; padding: 0 !important; background: transparent !important; }
+  .pages-toolbar, .docs-page-ruler { display: none !important; }
+  .block-text, .docs-title-field { color: #111827 !important; -webkit-text-fill-color: #111827 !important; }
 }
 .block-text { outline: none; color: #E5E7EB; font-size: 15px; line-height: 1.65; }
 .block-text[contenteditable="true"]:empty:before { content: attr(data-placeholder); color: #6B7280; }
@@ -4046,6 +4064,14 @@ kbd {
           </div>
         </div>
 
+        <div class="dashboard-grid" style="margin-top:0;">
+          <div class="card">
+            <h3>Workload</h3>
+            <p style="font-size:12px;color:#6B7280;margin:-6px 0 12px;line-height:1.45;">Who is overloaded, what’s overdue, and where time is drifting from estimates.</p>
+            <div id="dashboardWorkload" style="font-size:13px;color:#9CA3AF;"></div>
+          </div>
+        </div>
+
         <div style="display:grid;grid-template-columns:2fr 1fr;gap:20px;margin-top:0;">
           <div class="card">
             <h3>Recent Activity</h3>
@@ -4436,6 +4462,33 @@ kbd {
               <input id="taskDetailDue" type="datetime-local">
             </div>
           </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label>Recurring</label>
+              <select id="taskDetailRecurrence">
+                <option value="">No repeat</option>
+                <option value="daily">Daily</option>
+                <option value="weekly">Weekly</option>
+                <option value="monthly">Monthly</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label style="display:flex;align-items:center;gap:8px;">
+                <input type="checkbox" id="taskDetailRepeatOnDone" checked>
+                Create next when done
+              </label>
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label>Goal</label>
+              <select id="taskDetailGoal"><option value="">None</option></select>
+            </div>
+            <div class="form-group">
+              <label>Key result</label>
+              <select id="taskDetailGoalKR"><option value="">None</option></select>
+            </div>
+          </div>
           <div class="form-group">
             <div style="font-size:12px;color:#9CA3AF;margin-bottom:4px;">All properties</div>
             <div id="taskDetailProperties"></div>
@@ -4774,6 +4827,7 @@ kbd {
                 <button type="button" class="btn-secondary btn-sm" onclick="openDocsTemplatesModal()" title="Create a page from a template">Templates</button>
                 <button type="button" class="btn-secondary btn-sm" onclick="duplicateCurrentPage()" title="Duplicate current page">Duplicate</button>
                 <button type="button" class="btn-secondary btn-sm" onclick="exportCurrentPageAsText()" title="Copy plain text">Copy text</button>
+                <button type="button" class="btn-secondary btn-sm" onclick="printCurrentDoc()" title="Print or save PDF">Print / PDF</button>
                 <button type="button" class="btn-sm btn-danger docs-delete-page-btn" onclick="deleteCurrentPage()" title="Delete the page you’re editing">Delete page</button>
               </div>
             </div>
@@ -5482,6 +5536,33 @@ kbd {
       <label>Estimated Hours</label>
       <input id="modalTaskEstimate" type="number" min="0" step="0.5" placeholder="e.g. 4">
     </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>Recurring</label>
+        <select id="modalTaskRecurrence">
+          <option value="">No repeat</option>
+          <option value="daily">Daily</option>
+          <option value="weekly">Weekly</option>
+          <option value="monthly">Monthly</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label style="display:flex;align-items:center;gap:8px;">
+          <input type="checkbox" id="modalTaskRepeatOnDone" checked>
+          Create next when done
+        </label>
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>Link to goal (optional)</label>
+        <select id="modalTaskGoal"><option value="">None</option></select>
+      </div>
+      <div class="form-group">
+        <label>Key result (optional)</label>
+        <select id="modalTaskGoalKR"><option value="">None</option></select>
+      </div>
+    </div>
     <div class="form-group">
       <label>Assigned to</label>
       <select id="modalTaskAssignee"></select>
@@ -5672,15 +5753,15 @@ kbd {
       </div>
     </div>
     <div class="form-group">
-      <label>Key results (measurable outcomes)</label>
+      <label id="modalGoalKRsLabel">Key results (measurable outcomes)</label>
       <p style="font-size:12px;color:#6B7280;margin:0 0 8px;">Add targets and track % until each outcome is done.</p>
-      <div id="modalGoalKRsList" class="goal-modal-kr-list"></div>
+      <div id="modalGoalKRsList" class="goal-modal-kr-list" role="group" aria-labelledby="modalGoalKRsLabel"></div>
       <button type="button" class="btn-xs btn-secondary" style="margin-top:8px;" onclick="addGoalKRRow()">+ Add key result</button>
     </div>
     <div class="form-group">
-      <label>Planning steps / milestones</label>
+      <label id="modalGoalMilestonesLabel">Planning steps / milestones</label>
       <p style="font-size:12px;color:#6B7280;margin:0 0 8px;">Break the goal into ordered steps — your path from here to done.</p>
-      <div id="modalGoalMilestonesList" class="goal-modal-ms-list"></div>
+      <div id="modalGoalMilestonesList" class="goal-modal-ms-list" role="group" aria-labelledby="modalGoalMilestonesLabel"></div>
       <button type="button" class="btn-xs btn-secondary" style="margin-top:8px;" onclick="addGoalMilestoneRow()">+ Add step</button>
     </div>
     <div style="display:flex;gap:10px;margin-top:20px;">
