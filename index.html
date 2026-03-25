@@ -15,6 +15,24 @@
 <!-- Pinned Chart.js version to avoid strict CSP 'unsafe-eval' issues -->
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.5.1/dist/chart.umd.min.js"></script>
 <script src="https://accounts.google.com/gsi/client" async defer></script>
+<script>
+// Apply theme before first paint to avoid light/dark mixing flashes.
+(function () {
+  try {
+    var raw = localStorage.getItem('alco_usersettings') || ''
+    var pref = 'system'
+    if (raw) {
+      var j = JSON.parse(raw)
+      if (j && typeof j === 'object' && j.theme) pref = String(j.theme)
+    }
+    pref = String(pref || 'system').toLowerCase()
+    var t = (pref === 'light' || pref === 'dark') ? pref : (
+      (window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches) ? 'light' : 'dark'
+    )
+    document.documentElement.setAttribute('data-theme', t)
+  } catch (e) {}
+})()
+</script>
 <style>
 * { margin: 0; padding: 0; box-sizing: border-box; }
 
@@ -62,6 +80,19 @@ html[data-theme="light"] {
   --shadowMd: 0 18px 50px rgba(15, 23, 42, 0.12);
   --focus: 0 0 0 3px rgba(79, 70, 229, 0.16);
 }
+
+/* Light theme overrides for legacy hard-coded dark UI */
+html[data-theme="light"] .sidebar,
+html[data-theme="light"] .topbar,
+html[data-theme="light"] .notifications-panel {
+  background: var(--surface2) !important;
+  border-color: var(--border) !important;
+}
+html[data-theme="light"] .nav-item:hover { background: color-mix(in srgb, var(--accent) 8%, transparent) !important; color: var(--text) !important; }
+html[data-theme="light"] .sidebar-user:hover { background: color-mix(in srgb, var(--accent) 8%, transparent) !important; }
+html[data-theme="light"] .topbar-search { background: var(--surface2) !important; border-color: var(--border) !important; color: var(--muted) !important; }
+html[data-theme="light"] .topbar-breadcrumb { color: var(--muted2) !important; }
+html[data-theme="light"] .topbar-breadcrumb span { color: var(--text) !important; }
 
 body {
   font-family: var(--font);
@@ -3687,8 +3718,8 @@ kbd {
   min-height: 100vh;
   display: flex;
   flex-direction: column;
-  background: radial-gradient(ellipse 120% 80% at 50% -20%, rgba(79,70,229,0.25), transparent 50%), #0B0F18;
-  color: #E5E7EB;
+  background: radial-gradient(ellipse 120% 80% at 50% -20%, color-mix(in srgb, var(--accent) 28%, transparent), transparent 55%), var(--bg);
+  color: var(--text);
   overflow-x: hidden;
 }
 .landing-nav {
@@ -3703,7 +3734,7 @@ kbd {
 .landing-brand {
   font-size: 22px;
   font-weight: 800;
-  background: linear-gradient(135deg, #4f46e5, #7c3aed);
+  background: linear-gradient(135deg, var(--accent), var(--accent2));
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
@@ -3712,21 +3743,21 @@ kbd {
 .landing-btn-ghost {
   padding: 10px 18px;
   border-radius: 10px;
-  border: 1px solid #374151;
+  border: 1px solid var(--border2);
   background: transparent;
-  color: #E5E7EB;
+  color: var(--text);
   font-size: 14px;
   font-weight: 600;
   cursor: pointer;
   font-family: inherit;
   transition: border-color 0.18s, background 0.18s, transform 0.18s;
 }
-.landing-btn-ghost:hover { border-color: #6B7280; background: rgba(255,255,255,0.04); transform: translateY(-1px); }
+.landing-btn-ghost:hover { border-color: var(--muted2); background: color-mix(in srgb, var(--text) 6%, transparent); transform: translateY(-1px); }
 .landing-btn-primary {
   padding: 10px 22px;
   border-radius: 10px;
   border: none;
-  background: linear-gradient(135deg, #4f46e5, #7c3aed);
+  background: linear-gradient(135deg, var(--accent), var(--accent2));
   color: white;
   font-size: 14px;
   font-weight: 600;
@@ -3753,14 +3784,88 @@ kbd {
   max-width: 900px;
   margin: 0 auto;
 }
+.landing-hero-inner {
+  width: 100%;
+  display: grid;
+  grid-template-columns: 1.1fr 0.9fr;
+  gap: 26px;
+  align-items: center;
+  text-align: left;
+  max-width: 1100px;
+}
+.landing-hero-copy { padding: 6px 0; }
+.landing-hero-visual {
+  background: linear-gradient(180deg, color-mix(in srgb, var(--surface2) 78%, transparent), color-mix(in srgb, var(--surface) 72%, transparent));
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  box-shadow: var(--shadowMd);
+  padding: 18px 18px 16px;
+  text-align: left;
+}
+.landing-mock-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+.landing-mock-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: color-mix(in srgb, var(--surface) 75%, transparent);
+  font-size: 12px;
+  color: var(--muted);
+  font-weight: 600;
+}
+.landing-mock-stat {
+  font-size: 12px;
+  color: var(--muted2);
+}
+.landing-mock-card {
+  border: 1px solid var(--border);
+  background: color-mix(in srgb, var(--bg2) 68%, var(--surface2) 32%);
+  border-radius: 14px;
+  padding: 12px;
+  margin-bottom: 10px;
+}
+.landing-mock-card h4 {
+  margin: 0 0 6px 0;
+  font-size: 13px;
+  color: var(--text);
+  font-weight: 750;
+  letter-spacing: -0.01em;
+}
+.landing-mock-card p {
+  margin: 0;
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.45;
+}
+.landing-mock-row { display: flex; gap: 10px; margin-top: 10px; }
+.landing-mock-pill {
+  flex: 1;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  padding: 8px 10px;
+  font-size: 12px;
+  color: var(--muted);
+  background: color-mix(in srgb, var(--surface) 70%, transparent);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 .landing-badge {
   display: inline-block;
   font-size: 12px;
   font-weight: 600;
   letter-spacing: 0.06em;
   text-transform: uppercase;
-  color: #a5b4fc;
-  border: 1px solid rgba(99,102,241,0.4);
+  color: color-mix(in srgb, var(--accent) 45%, #a5b4fc 55%);
+  border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent);
   padding: 6px 14px;
   border-radius: 999px;
   margin-bottom: 24px;
@@ -3770,11 +3875,11 @@ kbd {
   font-weight: 800;
   line-height: 1.15;
   margin-bottom: 20px;
-  color: #F9FAFB;
+  color: var(--text);
 }
 .landing-hero .landing-lead {
   font-size: clamp(1rem, 2.2vw, 1.2rem);
-  color: #9CA3AF;
+  color: var(--muted);
   max-width: 640px;
   margin-bottom: 30px;
   line-height: 1.65;
@@ -3785,8 +3890,26 @@ kbd {
 .landing-trust-line {
   margin: 0 0 42px;
   font-size: 14px;
-  color: #C7D2FE;
+  color: color-mix(in srgb, var(--accent) 20%, var(--text) 80%);
   opacity: 0.95;
+}
+.landing-proof {
+  width: 100%;
+  max-width: 1100px;
+  margin: 14px auto 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  justify-content: center;
+}
+.landing-proof span {
+  font-size: 12px;
+  color: var(--muted2);
+  border: 1px solid var(--border);
+  background: color-mix(in srgb, var(--surface) 65%, transparent);
+  border-radius: 999px;
+  padding: 8px 12px;
 }
 .landing-features {
   display: grid;
@@ -3797,47 +3920,117 @@ kbd {
   text-align: left;
 }
 .landing-feature-card {
-  background: linear-gradient(145deg, #111827, #0f172a);
-  border: 1px solid #1F2937;
+  background: linear-gradient(180deg, color-mix(in srgb, var(--surface2) 86%, transparent), color-mix(in srgb, var(--surface) 70%, transparent));
+  border: 1px solid var(--border);
   border-radius: 16px;
   padding: 24px;
   transition: border-color 0.2s, box-shadow 0.2s, transform 0.2s;
 }
-.landing-feature-card:hover { border-color: #374151; box-shadow: 0 8px 32px rgba(0,0,0,0.35); transform: translateY(-3px); }
+.landing-feature-card:hover { border-color: color-mix(in srgb, var(--border2) 70%, var(--accent) 30%); box-shadow: 0 8px 32px rgba(0,0,0,0.25); transform: translateY(-3px); }
 .landing-feature-card .icon { font-size: 28px; margin-bottom: 12px; display: block; }
-.landing-feature-card h3 { font-size: 17px; font-weight: 700; margin-bottom: 8px; color: #F3F4F6; }
-.landing-feature-card p { font-size: 14px; color: #9CA3AF; line-height: 1.55; }
+.landing-feature-card h3 { font-size: 17px; font-weight: 750; margin-bottom: 8px; color: var(--text); letter-spacing: -0.01em; }
+.landing-feature-card p { font-size: 14px; color: var(--muted); line-height: 1.55; }
+.landing-section {
+  width: 100%;
+  max-width: 1100px;
+  margin: 46px auto 0;
+  padding: 0 4px;
+  text-align: left;
+}
+.landing-section-title {
+  font-size: 13px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--muted2);
+  font-weight: 800;
+  margin-bottom: 12px;
+}
+.landing-section h2 {
+  font-size: clamp(1.35rem, 2.4vw, 1.9rem);
+  letter-spacing: -0.02em;
+  line-height: 1.18;
+  margin: 0 0 10px 0;
+  color: var(--text);
+}
+.landing-section p {
+  margin: 0 0 14px 0;
+  color: var(--muted);
+  line-height: 1.65;
+  max-width: 820px;
+}
+.landing-testimonials {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 14px;
+  margin-top: 14px;
+}
+.landing-quote {
+  border: 1px solid var(--border);
+  background: color-mix(in srgb, var(--surface2) 80%, transparent);
+  border-radius: 16px;
+  padding: 18px 18px 16px;
+}
+.landing-quote p { margin: 0 0 12px 0; color: var(--text); font-size: 14px; line-height: 1.55; }
+.landing-quote .who { display:flex; gap:10px; align-items:center; }
+.landing-quote .avatar {
+  width: 34px; height: 34px; border-radius: 50%;
+  background: linear-gradient(135deg, var(--accent), var(--accent2));
+  color: white; display:flex; align-items:center; justify-content:center;
+  font-weight: 900; font-size: 13px;
+}
+.landing-quote .meta { min-width:0; }
+.landing-quote .name { font-weight: 800; font-size: 13px; color: var(--text); }
+.landing-quote .role { font-size: 12px; color: var(--muted2); }
+.landing-pricing {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 14px;
+  margin-top: 14px;
+}
+.landing-price-card {
+  border: 1px solid var(--border);
+  background: color-mix(in srgb, var(--surface2) 84%, transparent);
+  border-radius: 18px;
+  padding: 18px;
+}
+.landing-price-card.popular { border-color: color-mix(in srgb, var(--accent) 45%, var(--border) 55%); box-shadow: 0 18px 50px rgba(79,70,229,0.18); }
+.landing-price-card h3 { margin: 0 0 6px 0; font-size: 15px; color: var(--text); }
+.landing-price { font-size: 26px; font-weight: 900; letter-spacing: -0.02em; margin: 6px 0 8px; color: var(--text); }
+.landing-price span { font-size: 12px; color: var(--muted2); font-weight: 700; }
+.landing-price-card ul { list-style: none; padding: 0; margin: 12px 0 0 0; display:flex; flex-direction:column; gap:8px; }
+.landing-price-card li { font-size: 13px; color: var(--muted); display:flex; gap:8px; align-items:flex-start; }
+.landing-price-card li strong { color: var(--text); }
 .landing-contact {
   margin-top: 3rem;
   padding: 2rem 1rem 0;
   max-width: 480px;
   margin-left: auto;
   margin-right: auto;
-  border-top: 1px solid #1F2937;
+  border-top: 1px solid var(--border);
 }
-.landing-contact h3 { text-align: center; margin-bottom: 1rem; font-size: 1.1rem; color: #E5E7EB; font-weight: 600; }
+.landing-contact h3 { text-align: center; margin-bottom: 1rem; font-size: 1.1rem; color: var(--text); font-weight: 750; }
 .landing-contact-form { display: flex; flex-direction: column; gap: 12px; }
 .landing-contact-form input,
 .landing-contact-form textarea {
   width: 100%;
   padding: 12px 14px;
-  background: #020617;
-  border: 1px solid #1F2937;
-  color: #E5E7EB;
-  border-radius: 8px;
+  background: color-mix(in srgb, var(--bg2) 75%, var(--surface2) 25%);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: var(--radiusSm);
   font-size: 14px;
   font-family: inherit;
 }
 .landing-contact-form textarea { resize: vertical; min-height: 100px; }
 .landing-contact-form input:focus,
-.landing-contact-form textarea:focus { outline: none; border-color: #4f46e5; }
+.landing-contact-form textarea:focus { outline: none; border-color: var(--accent); box-shadow: var(--focus); }
 .landing-contact-status { font-size: 0.85rem; color: #9CA3AF; text-align: center; min-height: 1.2em; margin-top: 4px; }
 .landing-footer {
   padding: 28px;
   text-align: center;
   font-size: 13px;
-  color: #6B7280;
-  border-top: 1px solid #1F2937;
+  color: var(--muted2);
+  border-top: 1px solid var(--border);
 }
 @media (max-width: 640px) {
   .landing-nav { flex-direction: column; gap: 16px; }
@@ -3849,6 +4042,8 @@ kbd {
   .landing-hero-secondary-cta { width: 100%; }
   .landing-cta-row { width: 100%; gap: 10px; }
   .landing-trust-line { margin-bottom: 30px; }
+  .landing-hero-inner { grid-template-columns: 1fr; text-align: center; }
+  .landing-hero-copy { text-align: center; }
 }
 
 </style>
@@ -3866,29 +4061,142 @@ kbd {
     </div>
   </header>
   <main class="landing-hero">
-    <span class="landing-badge">Built for fast-moving teams · Workspace · Tasks · Time · Ideas</span>
-    <h1>Help your team deliver more work with less chaos</h1>
-    <p class="landing-lead">ALTER.CO gives your team one shared place to plan projects, run tasks, track time, and capture ideas so everyone stays aligned and deadlines stop slipping.</p>
-    <div class="landing-cta-row">
-      <button type="button" class="landing-btn-primary landing-hero-main-cta" onclick="showAuthScreen('register')">Start free workspace</button>
-      <button type="button" class="landing-btn-ghost landing-hero-secondary-cta" onclick="showAuthScreen('login')">I already have an account</button>
+    <div class="landing-hero-inner">
+      <div class="landing-hero-copy">
+        <span class="landing-badge">Projects · Tasks · Docs · Time · Goals</span>
+        <h1>Run your team’s work in one calm workspace.</h1>
+        <p class="landing-lead">ALTER.CO combines Notion-style docs, Trello-speed tasks, and monday-style clarity into a single workflow your team actually enjoys using.</p>
+        <div class="landing-cta-row" style="justify-content:flex-start;">
+          <button type="button" class="landing-btn-primary landing-hero-main-cta" onclick="showAuthScreen('register')">Start free workspace</button>
+          <button type="button" class="landing-btn-ghost landing-hero-secondary-cta" onclick="showAuthScreen('login')">Sign in</button>
+        </div>
+        <p class="landing-trust-line">No credit card · Setup in minutes · Your data stays yours</p>
+        <div class="landing-proof" aria-label="Product highlights">
+          <span>Docs + backlinks</span>
+          <span>Automations</span>
+          <span>Recurring work</span>
+          <span>Audit trail</span>
+          <span>Workload insights</span>
+        </div>
+      </div>
+
+      <div class="landing-hero-visual" aria-label="Product preview">
+        <div class="landing-mock-top">
+          <span class="landing-mock-chip">Dashboard · Today</span>
+          <span class="landing-mock-stat">Overdue: <strong style="color:var(--danger);">2</strong> · Focus: <strong style="color:var(--text);">4</strong></span>
+        </div>
+        <div class="landing-mock-card">
+          <h4>Ship “Team Workspace v2”</h4>
+          <p>Docs spec → tasks → recurring follow-ups → audit trail.</p>
+          <div class="landing-mock-row">
+            <div class="landing-mock-pill">✅ Sprint planning</div>
+            <div class="landing-mock-pill">📄 Product spec</div>
+          </div>
+        </div>
+        <div class="landing-mock-card">
+          <h4>Automations</h4>
+          <p>When status → Done, notify owner and create next recurring task.</p>
+        </div>
+        <div class="landing-mock-card" style="margin-bottom:0;">
+          <h4>Docs linking</h4>
+          <p>Use <strong>[[wiki links]]</strong> and backlinks to build a knowledge base.</p>
+        </div>
+      </div>
     </div>
-    <p class="landing-trust-line">No credit card required · Setup in minutes · Built for real team workflows</p>
-    <div class="landing-features">
-      <div class="landing-feature-card">
-        <span class="icon">📊</span>
-        <h3>One source of truth</h3>
-        <p>See projects, tasks, and team activity in one dashboard so priorities are clear for everyone.</p>
+
+    <div class="landing-section" style="margin-top:44px;text-align:center;">
+      <div class="landing-section-title" style="text-align:center;">Why teams switch</div>
+      <h2 style="text-align:center;">Everything stays simple — even as you grow.</h2>
+      <p style="margin-left:auto;margin-right:auto;text-align:center;">ALTER.CO keeps the UI calm while giving you the advanced features you need: audit trails, automations, recurring work, goals, and docs that behave like a real knowledge base.</p>
+      <div class="landing-features" style="margin-top:14px;max-width:1100px;text-align:left;">
+        <div class="landing-feature-card">
+          <span class="icon">🧠</span>
+          <h3>Docs that connect</h3>
+          <p>Write specs and SOPs with wiki links and backlinks so knowledge is never lost.</p>
+        </div>
+        <div class="landing-feature-card">
+          <span class="icon">⚡</span>
+          <h3>Automate the boring</h3>
+          <p>Rules like: when Done → notify, assign, set priority, or create follow-up work.</p>
+        </div>
+        <div class="landing-feature-card">
+          <span class="icon">📌</span>
+          <h3>Recurring work, handled</h3>
+          <p>Skip weekends, end after N, and keep next occurrences flowing automatically.</p>
+        </div>
+        <div class="landing-feature-card">
+          <span class="icon">🎯</span>
+          <h3>Goals that move</h3>
+          <p>Link tasks to OKRs and track progress with clear milestones and key results.</p>
+        </div>
       </div>
-      <div class="landing-feature-card">
-        <span class="icon">✅</span>
-        <h3>Plan and execute faster</h3>
-        <p>Use Kanban and calendar views to keep deadlines visible and move work from idea to done quickly.</p>
+    </div>
+
+    <div class="landing-section">
+      <div class="landing-section-title">Testimonials</div>
+      <h2>Feels premium, works fast.</h2>
+      <div class="landing-testimonials">
+        <div class="landing-quote">
+          <p>“We replaced three tools with ALTER.CO. The workflow is obvious, and the Docs linking is addictive.”</p>
+          <div class="who">
+            <div class="avatar">M</div>
+            <div class="meta">
+              <div class="name">Maya</div>
+              <div class="role">Product Ops</div>
+            </div>
+          </div>
+        </div>
+        <div class="landing-quote">
+          <p>“Tasks move like Trello, but the reporting and audit trail feels like a real platform.”</p>
+          <div class="who">
+            <div class="avatar">D</div>
+            <div class="meta">
+              <div class="name">David</div>
+              <div class="role">Engineering Lead</div>
+            </div>
+          </div>
+        </div>
+        <div class="landing-quote">
+          <p>“The UI is calm. New teammates understand it instantly and start shipping.”</p>
+          <div class="who">
+            <div class="avatar">S</div>
+            <div class="meta">
+              <div class="name">Sara</div>
+              <div class="role">Founder</div>
+            </div>
+          </div>
+        </div>
       </div>
-      <div class="landing-feature-card">
-        <span class="icon">⏱</span>
-        <h3>Built to improve output</h3>
-        <p>Track time, capture ideas, and turn the strongest opportunities into focused execution.</p>
+    </div>
+
+    <div class="landing-section">
+      <div class="landing-section-title">Pricing</div>
+      <h2>Start free. Upgrade when you’re ready.</h2>
+      <p>Try the full workflow without friction. When your team needs more capacity and advanced insights, upgrading is one click.</p>
+      <div class="landing-pricing">
+        <div class="landing-price-card">
+          <h3>Free</h3>
+          <div class="landing-price">$0 <span>/ month</span></div>
+          <ul>
+            <li><strong>Docs + wiki links</strong></li>
+            <li>Tasks + board</li>
+            <li>Basic audit log</li>
+            <li>Time tracking</li>
+          </ul>
+        </div>
+        <div class="landing-price-card popular">
+          <h3>Pro</h3>
+          <div class="landing-price">$29 <span>/ workspace / month</span></div>
+          <ul>
+            <li><strong>Automations</strong> + recurring workflows</li>
+            <li><strong>Advanced dashboards</strong> + at-risk signals</li>
+            <li>Team management</li>
+            <li>Priority support</li>
+          </ul>
+          <div style="margin-top:14px;">
+            <button type="button" class="landing-btn-primary" style="width:100%;min-height:46px;" onclick="showAuthScreen('register')">Start Pro trial</button>
+          </div>
+        </div>
       </div>
     </div>
     <section class="landing-contact" id="landingContact" aria-labelledby="contactHeading">
