@@ -103,6 +103,56 @@ function getAuthToken() {
 function setAuthToken(t) { if (t) localStorage.setItem('alco_token', t); else localStorage.removeItem('alco_token') }
 function clearAuthToken() { localStorage.removeItem('alco_token') }
 
+function getCookieValue(name) {
+  try {
+    const m = document.cookie.match(new RegExp('(?:^|; )' + name.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, '\\$&') + '=([^;]*)'))
+    return m ? decodeURIComponent(m[1]) : ''
+  } catch (e) {
+    return ''
+  }
+}
+
+function getCsrfToken() {
+  return getCookieValue('alco_csrf')
+}
+
+// Security: make API calls cookie-friendly (httpOnly auth cookies + CSRF header)
+;(function patchFetchForAlterApi() {
+  if (window.__alcoFetchPatched) return
+  window.__alcoFetchPatched = true
+  const origFetch = window.fetch.bind(window)
+  window.fetch = function (url, opts) {
+    try {
+      const u = String(url || '')
+      const base = String(ALTER_API_BASE || '')
+      const isAlterApi = base && u.startsWith(base)
+      if (!isAlterApi) return origFetch(url, opts)
+
+      const o = opts ? { ...opts } : {}
+      o.credentials = 'include'
+      o.headers = o.headers ? { ...o.headers } : {}
+
+      const method = String(o.method || 'GET').toUpperCase()
+      const csrf = getCsrfToken()
+      if (csrf && method !== 'GET' && method !== 'HEAD' && method !== 'OPTIONS') {
+        if (!o.headers['X-CSRF-Token'] && !o.headers['x-csrf-token']) {
+          o.headers['X-CSRF-Token'] = csrf
+        }
+      }
+
+      // Backward compatibility: keep Bearer header if localStorage token exists.
+      const t = getAuthToken()
+      if (t && !o.headers['Authorization'] && !o.headers['authorization']) {
+        o.headers['Authorization'] = 'Bearer ' + t
+      }
+
+      return origFetch(url, o)
+    } catch (e) {
+      return origFetch(url, opts)
+    }
+  }
+})()
+
 function ensureCurrentUser() {
   if (currentUser && currentUser.id) return currentUser
   try {
@@ -116,10 +166,9 @@ function ensureCurrentUser() {
 }
 
 function loadWorkspaceFromBackend() {
-  var token = getAuthToken()
-  if (!ALTER_API_BASE || !token) return Promise.resolve(null)
+  if (!ALTER_API_BASE) return Promise.resolve(null)
   return fetch(ALTER_API_BASE + '/api/workspace', {
-    headers: { 'Authorization': 'Bearer ' + token }
+    headers: {}
   }).then(function (r) {
     if (r.status === 401) {
       clearAuthToken()
@@ -165,7 +214,7 @@ function scheduleLiveWorkspaceRefresh(delayMs) {
 }
 
 function refreshWorkspaceLive(forceToast) {
-  if (!ALTER_API_BASE || !getAuthToken() || !currentUser) return
+  if (!ALTER_API_BASE || !currentUser) return
   if (liveWorkspaceRefreshInFlight) return
   liveWorkspaceRefreshInFlight = true
   setLiveSyncStatus('Syncing...', '#9CA3AF')
@@ -193,7 +242,7 @@ function refreshWorkspaceLive(forceToast) {
         stopLiveWorkspaceRefreshLoop()
         return
       }
-      if (!getAuthToken() || !currentUser) {
+      if (!currentUser) {
         stopLiveWorkspaceRefreshLoop()
         return
       }
@@ -215,7 +264,7 @@ function refreshWorkspaceLive(forceToast) {
 }
 
 function startLiveWorkspaceRefreshLoop() {
-  if (!ALTER_API_BASE || !getAuthToken() || !currentUser) {
+  if (!ALTER_API_BASE || !currentUser) {
     stopLiveWorkspaceRefreshLoop()
     return
   }
@@ -249,7 +298,7 @@ function applyWorkspaceToState(data) {
     try {
       localStorage.setItem('alco_goals', JSON.stringify(goals))
     } catch (e) {}
-    if (pendingLocalGoals.length && ALTER_API_BASE && getAuthToken()) {
+    if (pendingLocalGoals.length && ALTER_API_BASE) {
       scheduleSyncWorkspace()
     }
   }
@@ -345,7 +394,7 @@ function toWorkspaceStorageKey(localKey) {
 }
 
 function scheduleSyncWorkspace() {
-  if (!ALTER_API_BASE || !getAuthToken()) return
+  if (!ALTER_API_BASE) return
   if (syncWorkspaceTimeout) clearTimeout(syncWorkspaceTimeout)
   syncWorkspaceTimeout = setTimeout(function () {
     syncWorkspaceTimeout = null
@@ -982,7 +1031,8 @@ function loginWithGoogleCredential(credential) {
         showLoginMessage((res.body && res.body.error) || 'Google sign-in failed', 'error')
         return { skip: true }
       }
-      setAuthToken(res.body.token)
+      // Auth is now stored in httpOnly cookies; don't persist tokens in localStorage.
+      clearAuthToken()
       save('session', res.body.user)
       currentUser = res.body.user
       return loadWorkspaceFromBackend().then(function (data) {
@@ -1021,7 +1071,8 @@ function register() {
           showLoginMessage(res.body.error || 'Registration failed', 'error')
           return Promise.reject('register_failed')
         }
-        setAuthToken(res.body.token)
+        // Auth is now stored in httpOnly cookies; don't persist tokens in localStorage.
+        clearAuthToken()
         save('session', res.body.user)
         currentUser = res.body.user
         return loadWorkspaceFromBackend()
@@ -1060,7 +1111,8 @@ function login() {
           showLoginMessage(res.body.error || 'Invalid username or password', 'error')
           return { skip: true }
         }
-        setAuthToken(res.body.token)
+        // Auth is now stored in httpOnly cookies; don't persist tokens in localStorage.
+        clearAuthToken()
         save('session', res.body.user)
         currentUser = res.body.user
         return loadWorkspaceFromBackend().then(function (data) {
@@ -7931,6 +7983,12 @@ function confirmAction() {
   closeConfirmModal()
   switch (cfg.type) {
     case 'logout':
+      // Clear both legacy localStorage token and cookie session (if backend enabled)
+      try {
+        if (ALTER_API_BASE) {
+          fetch(ALTER_API_BASE + '/api/auth/logout', { method: 'POST', headers: { 'Content-Type': 'application/json' } }).catch(function () {})
+        }
+      } catch (e) {}
       clearAuthToken()
       localStorage.removeItem('alco_session')
       Object.keys(charts).forEach(function (k) { try { if (charts[k]) charts[k].destroy() } catch(e){} })

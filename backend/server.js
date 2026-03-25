@@ -11,6 +11,8 @@ const bcrypt = require('bcryptjs')
 const jwt = require('jsonwebtoken')
 const crypto = require('crypto')
 const fs = require('fs')
+const cookieParser = require('cookie-parser')
+const sanitizeHtml = require('sanitize-html')
 // Nodemailer is only required if SMTP email integration is enabled.
 // This keeps the backend running even if dependencies aren't installed yet.
 let nodemailer = null
@@ -23,8 +25,20 @@ try {
 const app = express()
 const startedAt = Date.now()
 app.set('trust proxy', 1)
+app.disable('x-powered-by')
 const PORT = process.env.PORT || 3000
 const JWT_SECRET = process.env.JWT_SECRET || 'alter-co-dev-secret-change-in-production'
+const NODE_ENV = (process.env.NODE_ENV || 'development').trim()
+const JWT_EXPIRES_IN = String(process.env.JWT_EXPIRES_IN || '90d').trim()
+const PASSWORD_MIN_LENGTH = Number(process.env.PASSWORD_MIN_LENGTH || 10)
+const AUTH_COOKIE_NAME = process.env.AUTH_COOKIE_NAME || 'alco_token'
+const CSRF_COOKIE_NAME = process.env.CSRF_COOKIE_NAME || 'alco_csrf'
+
+if (NODE_ENV === 'production') {
+  if (!process.env.JWT_SECRET || JWT_SECRET === 'alter-co-dev-secret-change-in-production' || JWT_SECRET.length < 32) {
+    throw new Error('JWT_SECRET must be set to a strong value in production (>= 32 chars).')
+  }
+}
 const DATA_DIR = path.join(__dirname, 'data')
 const USERS_FILE = path.join(DATA_DIR, 'users.json')
 const WORKSPACE_DIR = path.join(DATA_DIR, 'workspace')
@@ -257,9 +271,50 @@ const SPA_CONTENT_SECURITY_POLICY = [
   "form-action 'self'"
 ].join('; ')
 
+// Report-only CSP (safe tightening path without breaking the SPA yet).
+// Goal: remove unsafe-eval and eventually remove unsafe-inline by migrating inline handlers.
+const SPA_CONTENT_SECURITY_POLICY_REPORT_ONLY = [
+  "default-src 'self'",
+  "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://accounts.google.com https://www.gstatic.com",
+  "style-src 'self' 'unsafe-inline'",
+  "img-src 'self' data: https: blob:",
+  "font-src 'self' data: https:",
+  "connect-src 'self' https: http: ws: wss:",
+  "frame-src 'self' https://accounts.google.com https://www.gstatic.com",
+  "frame-ancestors 'self'",
+  "base-uri 'self'",
+  "form-action 'self'",
+  "report-uri /api/csp-report"
+].join('; ')
+
 app.use((req, res, next) => {
   res.setHeader('Content-Security-Policy', SPA_CONTENT_SECURITY_POLICY)
+  res.setHeader('Content-Security-Policy-Report-Only', SPA_CONTENT_SECURITY_POLICY_REPORT_ONLY)
+  // Extra hardening headers (in addition to Helmet)
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin')
+  res.setHeader(
+    'Permissions-Policy',
+    [
+      'camera=()',
+      'microphone=()',
+      'geolocation=()',
+      'payment=()',
+      'usb=()',
+      'interest-cohort=()'
+    ].join(', ')
+  )
   next()
+})
+
+// CSP report receiver (kept minimal; logs only)
+app.post('/api/csp-report', express.json({ type: ['application/csp-report', 'application/json'] }), (req, res) => {
+  try {
+    const body = req.body || {}
+    // Avoid logging huge payloads
+    const compact = JSON.stringify(body).slice(0, 5000)
+    console.warn('[CSP report]', compact)
+  } catch (e) {}
+  res.status(204).end()
 })
 
 app.use(
@@ -267,12 +322,183 @@ app.use(
     contentSecurityPolicy: false,
     crossOriginEmbedderPolicy: false,
     // Default COOP can break Google Identity Services popups / gsi/transform postMessage back to the app.
-    crossOriginOpenerPolicy: false
+    crossOriginOpenerPolicy: false,
+    // Safe defaults (won't break your current frontend)
+    referrerPolicy: { policy: 'strict-origin-when-cross-origin' },
+    hsts:
+      process.env.NODE_ENV === 'production'
+        ? { maxAge: 15552000, includeSubDomains: true, preload: true }
+        : false
   })
 )
 app.use(compression())
-app.use(cors({ origin: true, credentials: true }))
-app.use(express.json({ limit: '5mb' }))
+
+function buildCorsOriginChecker() {
+  const raw = String(process.env.CORS_ORIGIN || '').trim()
+  if (!raw) return true // dev-friendly default
+  const allowed = raw
+    .split(',')
+    .map(s => s.trim())
+    .filter(Boolean)
+  return function (origin, cb) {
+    if (!origin) return cb(null, true)
+    if (allowed.includes(origin)) return cb(null, true)
+    return cb(new Error('CORS blocked for origin'), false)
+  }
+}
+
+app.use(cors({ origin: buildCorsOriginChecker(), credentials: true }))
+// Reduce payload DoS risk (workspace/doc blobs can still be large; keep reasonable)
+app.use(express.json({ limit: process.env.JSON_LIMIT || '2mb' }))
+app.use(cookieParser())
+
+const apiGeneralLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: Number(process.env.RATE_LIMIT_API_PER_MIN || 300),
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many requests, slow down.' }
+})
+app.use('/api/', apiGeneralLimiter)
+app.use('/api/workspace', workspaceWriteLimiter)
+app.use('/api/workspace/', workspaceWriteLimiter)
+app.use('/api/integrations/', integrationsLimiter)
+
+const workspaceWriteLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: Number(process.env.RATE_LIMIT_WORKSPACE_WRITES_PER_MIN || 60),
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many workspace writes, slow down.' }
+})
+
+const integrationsLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: Number(process.env.RATE_LIMIT_INTEGRATIONS_PER_MIN || 30),
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many integration requests, slow down.' }
+})
+
+function makeCookieOptions() {
+  // Note: 'secure' requires HTTPS; keep false for local dev.
+  return {
+    httpOnly: true,
+    secure: NODE_ENV === 'production',
+    sameSite: 'lax',
+    path: '/'
+  }
+}
+
+function setAuthCookies(res, token) {
+  res.cookie(AUTH_COOKIE_NAME, token, {
+    ...makeCookieOptions(),
+    maxAge: 1000 * 60 * 60 * 24 * 90
+  })
+  // CSRF: double-submit cookie token (readable by JS)
+  const csrf = crypto.randomBytes(24).toString('base64url')
+  res.cookie(CSRF_COOKIE_NAME, csrf, {
+    httpOnly: false,
+    secure: NODE_ENV === 'production',
+    sameSite: 'lax',
+    path: '/',
+    maxAge: 1000 * 60 * 60 * 24 * 90
+  })
+  return csrf
+}
+
+function clearAuthCookies(res) {
+  res.clearCookie(AUTH_COOKIE_NAME, { path: '/' })
+  res.clearCookie(CSRF_COOKIE_NAME, { path: '/' })
+}
+
+function getAuthTokenFromRequest(req) {
+  const header = req.headers.authorization
+  if (header && header.startsWith('Bearer ')) return header.slice(7)
+  if (req.cookies && req.cookies[AUTH_COOKIE_NAME]) return String(req.cookies[AUTH_COOKIE_NAME])
+  return ''
+}
+
+function csrfMiddleware(req, res, next) {
+  const m = (req.method || 'GET').toUpperCase()
+  if (m === 'GET' || m === 'HEAD' || m === 'OPTIONS') return next()
+  // Only enforce CSRF when cookie auth is present (Bearer tokens are not CSRFable)
+  const hasCookieAuth = Boolean(req.cookies && req.cookies[AUTH_COOKIE_NAME])
+  if (!hasCookieAuth) return next()
+  const cookieToken = req.cookies[CSRF_COOKIE_NAME] ? String(req.cookies[CSRF_COOKIE_NAME]) : ''
+  const headerToken = req.headers['x-csrf-token'] ? String(req.headers['x-csrf-token']) : ''
+  if (!cookieToken || !headerToken || cookieToken !== headerToken) {
+    return res.status(403).json({ error: 'csrf_failed', message: 'Missing or invalid CSRF token' })
+  }
+  return next()
+}
+
+app.use('/api/', csrfMiddleware)
+
+function sanitizeRichHtml(input) {
+  const raw = typeof input === 'string' ? input : ''
+  return sanitizeHtml(raw, {
+    allowedTags: [
+      'b', 'strong', 'i', 'em', 'u', 'br',
+      'p', 'div', 'span',
+      'ul', 'ol', 'li',
+      'blockquote',
+      'code', 'pre',
+      'a'
+    ],
+    allowedAttributes: {
+      a: ['href', 'target', 'rel']
+    },
+    allowedSchemes: ['http', 'https', 'mailto'],
+    transformTags: {
+      a: sanitizeHtml.simpleTransform('a', { rel: 'noopener noreferrer', target: '_blank' }, true)
+    }
+  })
+}
+
+function sanitizeWorkspaceKey(key, value) {
+  if (!key) return value
+  if (!Array.isArray(value)) return value
+  if (key !== 'pages') return value
+  // pages[].blocks[].text can contain rich HTML; sanitize to prevent stored XSS
+  return value.map(p => {
+    if (!p || typeof p !== 'object') return p
+    const out = { ...p }
+    if (Array.isArray(out.blocks)) {
+      out.blocks = out.blocks.map(b => {
+        if (!b || typeof b !== 'object') return b
+        if (typeof b.text === 'string') return { ...b, text: sanitizeRichHtml(b.text) }
+        return b
+      })
+    }
+    return out
+  })
+}
+
+const WORKSPACE_LIMITS = {
+  projects: 1000,
+  tasks: 20000,
+  ideas: 5000,
+  events: 10000,
+  goals: 5000,
+  timeEntries: 20000,
+  team: 500,
+  notifications: 20000,
+  activity: 20000,
+  auditLogs: 20000,
+  apiKeys: 200,
+  pages: 5000
+}
+
+function assertWorkspaceKeyWithinLimits(key, value) {
+  if (!key) return { ok: true }
+  if (key === 'userSettings') return { ok: true }
+  if (!Array.isArray(value)) return { ok: true }
+  const lim = WORKSPACE_LIMITS[key]
+  if (!lim) return { ok: true }
+  if (value.length > lim) return { ok: false, error: 'payload_too_large', message: `"${key}" exceeds limit (${value.length} > ${lim})` }
+  return { ok: true }
+}
 
 const authBurstLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
@@ -769,11 +995,8 @@ function nextAvailableUsername(users, desired) {
 
 // Auth middleware — role always loaded from users.json (source of truth), not only from JWT
 function authMiddleware(req, res, next) {
-  const header = req.headers.authorization
-  if (!header || !header.startsWith('Bearer ')) {
-    return res.status(401).json({ error: 'Missing or invalid authorization' })
-  }
-  const token = header.slice(7)
+  const token = getAuthTokenFromRequest(req)
+  if (!token) return res.status(401).json({ error: 'Missing authentication' })
   try {
     const payload = jwt.verify(token, JWT_SECRET)
     const users = readUsers()
@@ -805,8 +1028,8 @@ app.post('/api/auth/register', authBurstLimiter, async (req, res) => {
   if (username.length < 4) {
     return res.status(400).json({ error: 'Username must be at least 4 characters' })
   }
-  if (password.length < 6) {
-    return res.status(400).json({ error: 'Password must be at least 6 characters' })
+  if (String(password).length < PASSWORD_MIN_LENGTH) {
+    return res.status(400).json({ error: `Password must be at least ${PASSWORD_MIN_LENGTH} characters` })
   }
 
   const users = readUsers()
@@ -840,7 +1063,8 @@ app.post('/api/auth/register', authBurstLimiter, async (req, res) => {
     addUserToOwnerTeam(ownerFromCode, id)
   }
 
-  const token = jwt.sign({ userId: id, username }, JWT_SECRET, { expiresIn: '90d' })
+  const token = jwt.sign({ userId: id, username }, JWT_SECRET, { expiresIn: JWT_EXPIRES_IN })
+  setAuthCookies(res, token)
   const user = userToClient(newUser)
 
   // Fire-and-forget welcome email (does not block registration)
@@ -878,7 +1102,8 @@ app.post('/api/auth/login', authBurstLimiter, (req, res) => {
     return res.status(401).json({ error: 'Invalid username or password' })
   }
 
-  const token = jwt.sign({ userId: row.id, username: row.username }, JWT_SECRET, { expiresIn: '90d' })
+  const token = jwt.sign({ userId: row.id, username: row.username }, JWT_SECRET, { expiresIn: JWT_EXPIRES_IN })
+  setAuthCookies(res, token)
   res.json({ token, user: userToClient(row) })
 })
 
@@ -962,12 +1187,31 @@ app.post('/api/auth/google', authBurstLimiter, async (req, res) => {
       if (dirty) writeUsers(users)
     }
 
-    const token = jwt.sign({ userId: row.id, username: row.username }, JWT_SECRET, { expiresIn: '90d' })
+    const token = jwt.sign({ userId: row.id, username: row.username }, JWT_SECRET, { expiresIn: JWT_EXPIRES_IN })
+    setAuthCookies(res, token)
     return res.json({ token, user: userToClient(row) })
   } catch (e) {
     console.error('Google auth failed', e)
     return res.status(500).json({ error: 'Google sign-in failed' })
   }
+})
+
+app.post('/api/auth/logout', (req, res) => {
+  clearAuthCookies(res)
+  res.json({ ok: true })
+})
+
+app.get('/api/auth/csrf', (req, res) => {
+  // Allows frontend to bootstrap CSRF cookie even before auth.
+  const csrf = crypto.randomBytes(24).toString('base64url')
+  res.cookie(CSRF_COOKIE_NAME, csrf, {
+    httpOnly: false,
+    secure: NODE_ENV === 'production',
+    sameSite: 'lax',
+    path: '/',
+    maxAge: 1000 * 60 * 60 * 24 * 7
+  })
+  res.json({ ok: true })
 })
 
 // Login/register are POST-only; a GET (e.g. opening the URL in a tab) would otherwise show "Cannot GET"
@@ -1212,7 +1456,9 @@ app.put('/api/workspace', authMiddleware, (req, res) => {
   ensureWorkspaceMeta(current)
   for (const key of WORKSPACE_KEYS) {
     if (data[key] !== undefined) {
-      current[key] = data[key]
+      const check = assertWorkspaceKeyWithinLimits(key, data[key])
+      if (!check.ok) return res.status(413).json({ error: check.error, message: check.message, key })
+      current[key] = sanitizeWorkspaceKey(key, data[key])
       touchWorkspaceKeyMeta(current, key)
     }
   }
@@ -1241,6 +1487,8 @@ app.patch('/api/workspace/:key', authMiddleware, (req, res) => {
   if (!expectObject && !Array.isArray(value)) {
     return res.status(400).json({ error: `"${key}" must be an array` })
   }
+  const check = assertWorkspaceKeyWithinLimits(key, value)
+  if (!check.ok) return res.status(413).json({ error: check.error, message: check.message, key })
 
   const fileUserId = resolveWorkspaceFileUserId(req.userId)
   const current = readWorkspace(fileUserId) || emptyWorkspace()
@@ -1254,7 +1502,7 @@ app.patch('/api/workspace/:key', authMiddleware, (req, res) => {
       currentUpdatedAt
     })
   }
-  current[key] = value
+  current[key] = sanitizeWorkspaceKey(key, value)
   const updatedAt = touchWorkspaceKeyMeta(current, key)
   writeWorkspace(fileUserId, current)
   res.json({ ok: true, key, updatedAt })
