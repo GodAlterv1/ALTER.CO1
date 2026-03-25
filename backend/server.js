@@ -261,7 +261,7 @@ function verifyGoogleCalendarOnStartup() {
 const SPA_CONTENT_SECURITY_POLICY = [
   "default-src 'self'",
   "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net https://accounts.google.com https://www.gstatic.com",
-  "style-src 'self' 'unsafe-inline'",
+  "style-src 'self' 'unsafe-inline' https://accounts.google.com https://www.gstatic.com",
   "img-src 'self' data: https: blob:",
   "font-src 'self' data: https:",
   "connect-src 'self' https: http: ws: wss:",
@@ -276,7 +276,7 @@ const SPA_CONTENT_SECURITY_POLICY = [
 const SPA_CONTENT_SECURITY_POLICY_REPORT_ONLY = [
   "default-src 'self'",
   "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://accounts.google.com https://www.gstatic.com",
-  "style-src 'self' 'unsafe-inline'",
+  "style-src 'self' 'unsafe-inline' https://accounts.google.com https://www.gstatic.com",
   "img-src 'self' data: https: blob:",
   "font-src 'self' data: https:",
   "connect-src 'self' https: http: ws: wss:",

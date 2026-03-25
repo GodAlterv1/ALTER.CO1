@@ -382,6 +382,7 @@ input[type="time"]::-webkit-calendar-picker-indicator {
   grid-template-columns: 1fr 1fr;
   gap: 10px;
   margin-bottom: 15px;
+  align-items: stretch;
 }
 
 .social-btn {
@@ -405,17 +406,20 @@ input[type="time"]::-webkit-calendar-picker-indicator {
   justify-content: center;
   align-items: center;
   min-height: 40px;
-  padding: 6px;
+  padding: 0;
   background: #020617;
   border: 1px solid #1F2937;
-  border-radius: 12px;
+  border-radius: 8px;
   width: 100%;
+  overflow: hidden;
 }
 .google-signin-slot:hover { border-color: rgba(79,70,229,0.55); background: #0d1117; }
 .google-signin-slot > div {
   display: flex !important;
   justify-content: center;
+  width: 100%;
 }
+.google-signin-slot iframe { border-radius: 999px !important; }
 .google-signin-slot--text {
   font-size: 12px;
   color: #9CA3AF;
@@ -3153,7 +3157,17 @@ kbd {
 .docs-sidebar-actions { padding: 12px 14px; display: flex; flex-direction: column; gap: 8px; }
 .docs-sidebar-actions .btn-primary { width: 100%; justify-content: center; font-size: 13px; padding: 10px 14px; border-radius: 10px; }
 .docs-sidebar-secondary { display: flex; gap: 6px; flex-wrap: wrap; }
-.docs-sidebar-secondary button { flex: 1; min-width: 0; font-size: 11px; padding: 8px 10px; border-radius: 8px; }
+.docs-sidebar-secondary button {
+  flex: 1;
+  min-width: 0;
+  font-size: 11px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  justify-content: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 .docs-search-wrap { position: relative; padding: 0 14px 12px; }
 .docs-search-wrap input {
   width: 100%;

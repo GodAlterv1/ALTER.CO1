@@ -983,13 +983,26 @@ function initializeGoogleSignIn() {
         loginWithGoogleCredential(response.credential)
       }
     })
+
+    function computeGoogleBtnWidth(containerEl) {
+      try {
+        var r = containerEl.getBoundingClientRect()
+        var w = Math.floor(r.width || 0)
+        if (!w || w < 120) w = 260
+        return Math.max(200, Math.min(340, w))
+      } catch (e) {
+        return 260
+      }
+    }
+
     if (wrap) {
       wrap.textContent = ''
       wrap.className = 'google-signin-slot'
+      var w1 = computeGoogleBtnWidth(wrap)
       google.accounts.id.renderButton(wrap, {
-        theme: 'filled_black',
+        theme: 'outline',
         size: 'large',
-        width: 260,
+        width: w1,
         text: 'continue_with',
         shape: 'pill',
         logo_alignment: 'left'
@@ -998,10 +1011,11 @@ function initializeGoogleSignIn() {
     if (registerWrap) {
       registerWrap.textContent = ''
       registerWrap.className = 'google-signin-slot'
+      var w2 = computeGoogleBtnWidth(registerWrap)
       google.accounts.id.renderButton(registerWrap, {
-        theme: 'filled_black',
+        theme: 'outline',
         size: 'large',
-        width: 260,
+        width: w2,
         text: 'signup_with',
         shape: 'pill',
         logo_alignment: 'left'
