@@ -405,11 +405,13 @@ input[type="time"]::-webkit-calendar-picker-indicator {
   justify-content: center;
   align-items: center;
   min-height: 40px;
-  padding: 0;
-  background: transparent;
-  border: none;
+  padding: 6px;
+  background: #020617;
+  border: 1px solid #1F2937;
+  border-radius: 12px;
   width: 100%;
 }
+.google-signin-slot:hover { border-color: rgba(79,70,229,0.55); background: #0d1117; }
 .google-signin-slot > div {
   display: flex !important;
   justify-content: center;
@@ -3350,6 +3352,7 @@ kbd {
   border-radius: 8px;
   cursor: pointer;
   font-family: inherit;
+  white-space: nowrap;
 }
 .pages-toolbar button:hover { background: #1F2937; color: #fff; }
 .toolbar-separator { width: 1px; height: 20px; background: #1F2937; margin: 0 2px; }
@@ -3359,6 +3362,31 @@ kbd {
 .block-row:hover { border-color: #1F2937; background: rgba(17, 24, 39, 0.35); }
 .block-row.active { border-color: rgba(79, 70, 229, 0.45); background: rgba(79, 70, 229, 0.06); }
 .block-row:hover button { opacity: 1 !important; }
+.docs-page-canvas .block-row { padding-right: 56px; }
+
+.doc-link-btn {
+  opacity: 0;
+  position: absolute;
+  right: 10px;
+  top: 10px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(79, 70, 229, 0.35);
+  background: rgba(79, 70, 229, 0.12);
+  color: #c7d2fe;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  line-height: 1;
+  transform: none;
+  box-shadow: none;
+}
+.doc-link-btn:hover {
+  border-color: rgba(79, 70, 229, 0.7);
+  background: rgba(79, 70, 229, 0.18);
+  transform: none;
+  box-shadow: none;
+}
 
 /* Word-like page canvas (dark UI, paper-style editing surface) */
 .docs-page-stage {

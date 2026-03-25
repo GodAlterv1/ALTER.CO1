@@ -987,11 +987,11 @@ function initializeGoogleSignIn() {
       wrap.textContent = ''
       wrap.className = 'google-signin-slot'
       google.accounts.id.renderButton(wrap, {
-        theme: 'outline',
-        size: 'small',
-        width: 200,
+        theme: 'filled_black',
+        size: 'large',
+        width: 260,
         text: 'continue_with',
-        shape: 'rect',
+        shape: 'pill',
         logo_alignment: 'left'
       })
     }
@@ -999,11 +999,11 @@ function initializeGoogleSignIn() {
       registerWrap.textContent = ''
       registerWrap.className = 'google-signin-slot'
       google.accounts.id.renderButton(registerWrap, {
-        theme: 'outline',
-        size: 'small',
-        width: 200,
+        theme: 'filled_black',
+        size: 'large',
+        width: 260,
         text: 'signup_with',
-        shape: 'rect',
+        shape: 'pill',
         logo_alignment: 'left'
       })
     }
@@ -6733,7 +6733,7 @@ function renderBlocksForCurrentPage() {
   container.innerHTML = page.blocks.map((b, i) => {
     const bid = b.id || ''
     const linkBtn = bid
-      ? `<button type="button" class="btn-xs btn-secondary" style="opacity:0;position:absolute;right:6px;top:6px;padding:2px 6px;font-size:10px;" onclick="event.stopPropagation();copyDocBlockLink(${JSON.stringify(bid)})" title="Copy link">Link</button>`
+      ? `<button type="button" class="doc-link-btn" onclick="event.stopPropagation();copyDocBlockLink(${JSON.stringify(bid)})" title="Copy link to this block" aria-label="Copy link to this block">Link</button>`
       : ''
     if (b.type === 'divider') {
       return `
