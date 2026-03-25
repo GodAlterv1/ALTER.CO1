@@ -3994,7 +3994,7 @@ function reallyDeleteIdea(id) {
 function setCalendarToday() {
   const now = new Date()
   currentDate = new Date(now.getFullYear(), now.getMonth(), now.getDate())
-  selectedCalendarDate = currentDate.toISOString().split('T')[0]
+  selectedCalendarDate = toLocalDateOnlyValue(currentDate)
   // Ensure calendar page is visible when jumping to today
   if (document.getElementById('calendar')?.classList.contains('hidden')) {
     switchPage('calendar', null)
@@ -4633,7 +4633,7 @@ function renderCalendar() {
     currentDate = new Date()
   }
   if (!selectedCalendarDate) {
-    selectedCalendarDate = new Date().toISOString().slice(0, 10)
+    selectedCalendarDate = toLocalDateOnlyValue(new Date())
   }
 
   let year     = currentDate.getFullYear()
@@ -4663,7 +4663,7 @@ function renderCalendar() {
       const day   = d.getDate()
       const m     = d.getMonth()
       const y     = d.getFullYear()
-      const cellIso = d.toISOString().split('T')[0]
+      const cellIso = toLocalDateOnlyValue(d)
 
       let dayEvents = allEvents.filter(e => {
         const ev = new Date(e.start)
@@ -4697,7 +4697,7 @@ function renderCalendar() {
 
     for (let day = 1; day <= total; day++) {
       const cellDate = new Date(year, month, day)
-      const cellIso  = cellDate.toISOString().split('T')[0]
+      const cellIso  = toLocalDateOnlyValue(cellDate)
 
       let dayEvents = allEvents.filter(e => {
         const d = new Date(e.start)

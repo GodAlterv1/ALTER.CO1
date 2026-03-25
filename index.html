@@ -701,7 +701,16 @@ input[type="time"]::-webkit-calendar-picker-indicator {
   background-clip: text;
   transition: opacity 0.15s ease;
 }
-.sidebar-logo-btn:hover { opacity: 0.88; }
+.sidebar-logo-btn:hover {
+  opacity: 0.88;
+  /* prevent global button:hover blue background + lift */
+  background: linear-gradient(135deg, #4f46e5, #7c3aed);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  box-shadow: none;
+  transform: none;
+}
 .sidebar-logo-btn:focus-visible {
   outline: 2px solid rgba(79, 70, 229, 0.55);
   outline-offset: 3px;
@@ -835,7 +844,12 @@ input[type="time"]::-webkit-calendar-picker-indicator {
   border-radius: 4px;
   transition: color 0.15s ease, background 0.15s ease;
 }
-.topbar-brand-link:hover { color: #E5E7EB; background: rgba(255,255,255,0.04); }
+.topbar-brand-link:hover {
+  color: #E5E7EB;
+  background: rgba(255,255,255,0.04);
+  box-shadow: none;
+  transform: none;
+}
 .topbar-brand-link:focus-visible {
   outline: 2px solid rgba(79, 70, 229, 0.5);
   outline-offset: 1px;
