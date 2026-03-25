@@ -77,6 +77,12 @@ const DATA_DIR = path.join(__dirname, 'data')
 const USERS_FILE = path.join(DATA_DIR, 'users.json')
 const WORKSPACE_DIR = path.join(DATA_DIR, 'workspace')
 
+let SERVER_VERSION = 'unknown'
+try {
+  const pj = JSON.parse(fs.readFileSync(path.join(__dirname, 'package.json'), 'utf8'))
+  if (pj && pj.version) SERVER_VERSION = String(pj.version)
+} catch (e) {}
+
 /** Google Calendar OAuth (optional). Set all three in .env to enable connect + sync. */
 const GOOGLE_CLIENT_ID = (process.env.GOOGLE_CLIENT_ID || '').trim()
 const GOOGLE_AUTH_CLIENT_ID = (process.env.GOOGLE_AUTH_CLIENT_ID || GOOGLE_CLIENT_ID).trim()
@@ -435,6 +441,14 @@ const integrationsLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: 'Too many integration requests, slow down.' }
+})
+
+const clientErrorLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: Number(process.env.RATE_LIMIT_CLIENT_ERRORS_PER_MIN || 30),
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many error reports, slow down.' }
 })
 
 // Apply targeted rate limits after initialization
@@ -2092,12 +2106,24 @@ app.get('/api/calendar/events', authMiddleware, async (req, res) => {
   }
 })
 
-// ----- Health -----
+// ----- Health (for uptime monitors + deploy checks) -----
 app.get('/api/health', (req, res) => {
+  const mem = process.memoryUsage()
   res.json({
     status: 'ok',
+    ok: true,
+    service: 'alter-co-api',
+    version: SERVER_VERSION,
+    time: new Date().toISOString(),
+    node: process.version,
+    pid: process.pid,
     storage: 'json',
     uptimeSeconds: Math.floor((Date.now() - startedAt) / 1000),
+    memory: {
+      heapUsed: mem.heapUsed,
+      heapTotal: mem.heapTotal,
+      rss: mem.rss
+    },
     emailConfigured: isEmailConfigured(),
     emailProvider: (process.env.RESEND_API_KEY || '').trim()
       ? 'resend'
@@ -2106,8 +2132,51 @@ app.get('/api/health', (req, res) => {
         : 'none',
     googleCalendarOAuthConfigured: isGoogleCalendarOAuthConfigured(),
     googleAuthConfigured: Boolean(GOOGLE_AUTH_CLIENT_ID),
-    googleAuthClientId: GOOGLE_AUTH_CLIENT_ID || ''
+    googleAuthClientId: GOOGLE_AUTH_CLIENT_ID || '',
+    stripeConfigured: isStripeConfigured()
   })
+})
+
+/** Readiness: verifies data directory is writable (use for orchestrators after /api/health). */
+app.get('/api/health/ready', (req, res) => {
+  try {
+    const testFile = path.join(DATA_DIR, '.healthcheck')
+    fs.writeFileSync(testFile, String(Date.now()), 'utf8')
+    fs.readFileSync(testFile, 'utf8')
+    try {
+      fs.unlinkSync(testFile)
+    } catch (e2) {}
+    res.json({
+      ok: true,
+      status: 'ready',
+      time: new Date().toISOString(),
+      storage: 'rw'
+    })
+  } catch (e) {
+    res.status(503).json({ ok: false, status: 'not_ready', error: 'storage_unavailable' })
+  }
+})
+
+/** Client-side error reports (from SPA global error handlers). Append-only JSON lines. */
+app.post('/api/client-errors', clientErrorLimiter, express.json({ limit: '48kb' }), (req, res) => {
+  try {
+    const body = req.body || {}
+    const row = {
+      ts: new Date().toISOString(),
+      ip: req.ip,
+      message: String(body.message || '').slice(0, 2000),
+      stack: String(body.stack || '').slice(0, 8000),
+      url: String(body.url || '').slice(0, 2000),
+      userAgent: String(body.userAgent || '').slice(0, 500),
+      page: String(body.page || '').slice(0, 200),
+      type: String(body.type || 'error').slice(0, 40)
+    }
+    const line = JSON.stringify(row) + '\n'
+    fs.appendFileSync(path.join(DATA_DIR, 'client-errors.log'), line, 'utf8')
+  } catch (e) {
+    console.error('[client-errors] write failed:', e && e.message ? e.message : e)
+  }
+  res.status(204).end()
 })
 
 // ----- Optional: serve frontend from parent (for single-server deploy) -----

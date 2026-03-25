@@ -460,12 +460,10 @@ let keyboardShortcutsBound = false
 
 // Onboarding
 const ONBOARDING_STEPS = [
-  { icon: '🚀', title: 'Welcome to ALTER.CO!', desc: 'Your all-in-one workspace for managing projects, tracking time, and collaborating with your team. Let\'s get you set up.' },
-  { icon: '📁', title: 'Create Your First Project', desc: 'Projects are the backbone of your workspace. Head to Projects and click "+ New Project" to organize your work.' },
-  { icon: '✅', title: 'Manage Tasks with Kanban', desc: 'Break projects into tasks and drag them across columns — To Do, In Progress, Review, and Done.' },
-  { icon: '⏱', title: 'Track Your Time', desc: 'Use the built-in time tracker to log hours against projects and get accurate reports on team productivity.' },
-  { icon: '💡', title: 'Capture & Vote on Ideas', desc: 'Submit ideas, vote on them, and convert the best ones directly into actionable tasks.' },
-  { icon: '🎉', title: 'You\'re All Set!', desc: 'Explore the Analytics, Audit Log, and Billing sections to get the most out of ALTER.CO. Let\'s build something great!' }
+  { icon: '🚀', title: 'Welcome to ALTER.CO', desc: 'One place for projects, tasks, docs, and team work. Your dashboard has a short checklist — project, first task, teammate — that turns this into a real workspace.' },
+  { icon: '✅', title: 'The essentials', desc: 'Create a project, add one task, then invite someone (email or code). That trio is enough to run a weekly rhythm.' },
+  { icon: '🧭', title: 'Explore when you\'re ready', desc: 'Docs for knowledge, Time for accountability, Goals for outcomes. Use Ctrl+K to jump anywhere.' },
+  { icon: '🎉', title: 'You\'re set', desc: 'Dismiss the checklist on the dashboard whenever you like — you can always find actions under Suggestions below.' }
 ]
 
 let currentOnboardingStep = 0
@@ -521,6 +519,35 @@ function copyLastError() {
   }
 }
 
+var lastClientErrorReportAt = 0
+
+function reportClientErrorToServer(payload) {
+  if (!ALTER_API_BASE) return
+  var now = Date.now()
+  if (now - lastClientErrorReportAt < 45000) return
+  lastClientErrorReportAt = now
+  try {
+    var body = {
+      message: payload.message,
+      stack: payload.stack,
+      page: payload.page,
+      type: payload.type,
+      time: payload.time,
+      url: typeof window !== 'undefined' && window.location ? String(window.location.href || '') : '',
+      userAgent: typeof navigator !== 'undefined' ? String(navigator.userAgent || '') : ''
+    }
+    var token = getAuthToken()
+    fetch(ALTER_API_BASE + '/api/client-errors', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: token ? 'Bearer ' + token : ''
+      },
+      body: JSON.stringify(body)
+    }).catch(function () {})
+  } catch (e) {}
+}
+
 function logAppError(payload) {
   lastAppError = payload
   try {
@@ -532,6 +559,7 @@ function logAppError(payload) {
   } catch (e) {
     // ignore storage failures
   }
+  reportClientErrorToServer(payload)
 }
 
 function initGlobalErrorCapture() {
@@ -1925,6 +1953,7 @@ function onboardingDismissStorageKey() {
 
 function isDashboardOnboardingDismissed() {
   try {
+    if (userSettings && userSettings.onboardingChecklistDismissed) return true
     return localStorage.getItem(onboardingDismissStorageKey()) === '1'
   } catch (e) {
     return false
@@ -1935,6 +1964,11 @@ function dismissDashboardOnboarding() {
   try {
     localStorage.setItem(onboardingDismissStorageKey(), '1')
   } catch (e) {}
+  if (!userSettings || typeof userSettings !== 'object') userSettings = {}
+  userSettings.onboardingChecklistDismissed = true
+  userSettings.onboardingChecklistDismissedAt = new Date().toISOString()
+  save('usersettings', userSettings)
+  scheduleSyncWorkspace()
   const onboard = document.getElementById('dashboardOnboarding')
   if (onboard) onboard.classList.add('hidden')
 }
@@ -1982,17 +2016,15 @@ function renderDashboardPulseAndOnboarding() {
 
   const hasProject = projects.length > 0
   const hasTask = tasks.length > 0
-  const hasEvent = events.length > 0
-  const hasGoogleConnected = !!googleCalendarConnected
-  const hasTeammate = Array.isArray(team) && team.length > 0
-  const doneCount = [hasProject, hasTask, hasEvent, hasGoogleConnected, hasTeammate].filter(Boolean).length
-  const totalSteps = 5
+  const hasTeammate = Array.isArray(team) && team.some(m => m && (m.status === 'accepted' || m.status === 'pending'))
+  const doneCount = [hasProject, hasTask, hasTeammate].filter(Boolean).length
+  const totalSteps = 3
   const progressPct = Math.round((doneCount / totalSteps) * 100)
   if (leadEl) {
     if (doneCount === totalSteps) {
-      leadEl.textContent = 'Nice work. Your workspace is activated and ready for real execution.'
+      leadEl.textContent = 'Nice work — project, task, and teammate are in place. You can dismiss this card anytime.'
     } else {
-      leadEl.textContent = `${doneCount}/${totalSteps} complete (${progressPct}%). Finish the checklist to unlock your first 10-minute success.`
+      leadEl.textContent = `${doneCount}/${totalSteps} complete (${progressPct}%). Create a project, add one task, invite someone — that’s enough to run a real week.`
     }
   }
 
@@ -2005,8 +2037,6 @@ function renderDashboardPulseAndOnboarding() {
   const steps = [
     { ok: hasProject, label: 'Create a project', action: 'openCreateProjectModal()' },
     { ok: hasTask, label: 'Add your first task', action: "switchPage('tasks', null);setTimeout(function(){openCreateTaskModal()},120)" },
-    { ok: hasEvent, label: 'Add your first calendar event', action: "switchPage('calendar', null);setTimeout(function(){openCreateEventModal()},120)" },
-    { ok: hasGoogleConnected, label: 'Connect Google Calendar', action: "switchPage('calendar', null);setTimeout(function(){connectGoogleCalendar()},120)" },
     { ok: hasTeammate, label: 'Invite a teammate', action: "switchPage('team',null);setTimeout(function(){openInviteTeamModal()},120)" }
   ]
   stepsEl.innerHTML = steps.map(s => {
@@ -2039,7 +2069,8 @@ function renderDashboardSuggestions() {
   if (projects.length && !events.length) {
     items.push({ label: 'Add a calendar event or milestone', action: "switchPage('calendar',null);setTimeout(function(){openCreateEventModal()},120)" })
   }
-  if (currentUser && (currentUser.role === 'admin' || currentUser.role === 'owner') && !team.length) {
+  const hasTeammate = Array.isArray(team) && team.some(m => m && (m.status === 'accepted' || m.status === 'pending'))
+  if (currentUser && (currentUser.role === 'admin' || currentUser.role === 'owner') && !hasTeammate) {
     items.push({ label: 'Invite someone (email or invite code)', action: "switchPage('team',null);setTimeout(function(){openInviteTeamModal()},120)" })
   }
   const slice = items.slice(0, 4)
@@ -2055,15 +2086,13 @@ function renderDashboardActivationInsights() {
   if (!el) return
   const hasProject = projects.length > 0
   const hasTask = tasks.length > 0
-  const hasEvent = events.length > 0
-  const hasGoogleConnected = !!googleCalendarConnected
-  const hasTeammate = Array.isArray(team) && team.length > 0
-  const done = [hasProject, hasTask, hasEvent, hasGoogleConnected, hasTeammate].filter(Boolean).length
-  const score = Math.round((done / 5) * 100)
+  const hasTeammate = Array.isArray(team) && team.some(m => m && (m.status === 'accepted' || m.status === 'pending'))
+  const done = [hasProject, hasTask, hasTeammate].filter(Boolean).length
+  const score = Math.round((done / 3) * 100)
   const lines = [
-    `Activation score: <strong style="color:#E5E7EB;">${score}%</strong>`,
-    `Projects: ${hasProject ? 'Yes' : 'No'} · Tasks: ${hasTask ? 'Yes' : 'No'} · Events: ${hasEvent ? 'Yes' : 'No'}`,
-    `Google Calendar: ${hasGoogleConnected ? 'Connected' : 'Not connected'} · Team: ${hasTeammate ? 'Invited' : 'No teammate yet'}`
+    `Starter checklist: <strong style="color:#E5E7EB;">${score}%</strong> (project · task · invite)`,
+    `Project: ${hasProject ? 'Yes' : 'No'} · First task: ${hasTask ? 'Yes' : 'No'} · Teammate invited: ${hasTeammate ? 'Yes' : 'No'}`,
+    `Optional next: calendar events, time tracking, goals — when you need them.`
   ]
   el.innerHTML = lines.join('<br>')
 }
@@ -5857,7 +5886,7 @@ function renderGoals() {
   if (!listEl) return
 
   if (!filtered.length) {
-    listEl.innerHTML = `<div class=\"empty-state compact\"><div class=\"empty-state-icon\">🎯</div><h3>No goals yet</h3><p>Create your first objective to align the team.</p><button class=\"btn-primary btn-sm\" onclick=\"openCreateGoalModal()\">+ New Goal</button></div>`
+    listEl.innerHTML = `<div class=\"empty-state compact\"><div class=\"empty-state-icon\">🎯</div><h3>No goals yet</h3><p>Set one objective and key results so priorities stay visible. Link tasks to goals later for automatic progress.</p><button class=\"btn-primary btn-sm\" onclick=\"openCreateGoalModal()\">+ New Goal</button></div>`
   } else {
     listEl.innerHTML = filtered.map(buildGoalCard).join('')
   }
@@ -6449,7 +6478,7 @@ function renderNotifications(filter) {
 
   let listEl = document.getElementById('notificationsList')
   if (list.length === 0) {
-    listEl.innerHTML = '<div class="empty-state compact"><div class="empty-state-icon">🔔</div><h3>No notifications</h3><p>Notifications will show up here when you get updates</p></div>'
+    listEl.innerHTML = '<div class="empty-state compact"><div class="empty-state-icon">🔔</div><h3>Nothing here yet</h3><p>Assignments, mentions, deadlines, and team updates will land here — check back after you collaborate.</p></div>'
   } else {
     listEl.innerHTML = html
   }
@@ -6504,7 +6533,7 @@ function renderActivityFeed() {
   let el = document.getElementById('activityFeed')
   if (!el) return
   if (!activity.length) {
-    el.innerHTML = '<div class="empty-state compact"><div class="empty-state-icon">📋</div><h3>No activity yet</h3><p>Create projects, tasks, or log time to see activity here</p></div>'
+    el.innerHTML = '<div class="empty-state compact"><div class="empty-state-icon">📋</div><h3>No activity yet</h3><p>Complete tasks, move cards on the board, or invite someone — this feed shows what changed across your workspace.</p></div>'
     return
   }
   el.innerHTML = activity.slice(0, 20).map(a => `
@@ -6541,7 +6570,7 @@ function renderAuditLog(list) {
   if (!el) return
 
   if (!source.length) {
-    el.innerHTML = `<div class="empty-state"><div class="empty-state-icon">📋</div><h3>No audit logs yet</h3><p>Actions will appear here</p></div>`
+    el.innerHTML = `<div class="empty-state"><div class="empty-state-icon">📋</div><h3>No audit entries yet</h3><p>Creates, updates, and logins are recorded for accountability. Do something in the workspace and refresh — entries appear here.</p></div>`
     return
   }
 
@@ -6825,7 +6854,11 @@ function renderPagesList() {
   if (!el) return
 
   if (!list.length) {
-    el.innerHTML = '<div class="pages-list-empty">No pages match your search. Clear the search or create a new page.</div>'
+    if (!pages.length && !search) {
+      el.innerHTML = '<div class="pages-list-empty">No docs yet — add a page for specs, runbooks, or wiki-style links. Use <strong>+ New page</strong> or open Templates.</div>'
+    } else {
+      el.innerHTML = '<div class="pages-list-empty">No pages match your search. Clear the search or create a new page.</div>'
+    }
     return
   }
 
