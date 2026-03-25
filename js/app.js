@@ -424,6 +424,14 @@ let blockInsertIndex = null
 let blockInsertMenuVisible = false
 let docsZoom = 1
 let docsTemplatesBuilt = false
+let blocksEditorHandlersBound = false
+let currentBlockIndex = null
+
+// Docs history (per page) for undo/redo
+const DOCS_HISTORY_LIMIT = 80
+const docsHistoryByPageId = {}
+let docsInputDebounceT = null
+let docsEditSessionKey = '' // used to avoid snapshot spam while typing in same block
 
 // Timer state (session = started but not finished with Stop)
 let timerRunning   = false
@@ -1000,11 +1008,11 @@ function initializeGoogleSignIn() {
       wrap.className = 'google-signin-slot'
       var w1 = computeGoogleBtnWidth(wrap)
       google.accounts.id.renderButton(wrap, {
-        theme: 'outline',
+        theme: 'filled_black',
         size: 'large',
         width: w1,
         text: 'continue_with',
-        shape: 'pill',
+        shape: 'rectangular',
         logo_alignment: 'left'
       })
     }
@@ -1013,11 +1021,11 @@ function initializeGoogleSignIn() {
       registerWrap.className = 'google-signin-slot'
       var w2 = computeGoogleBtnWidth(registerWrap)
       google.accounts.id.renderButton(registerWrap, {
-        theme: 'outline',
+        theme: 'filled_black',
         size: 'large',
         width: w2,
         text: 'signup_with',
-        shape: 'pill',
+        shape: 'rectangular',
         logo_alignment: 'left'
       })
     }
@@ -1569,6 +1577,17 @@ function updateCommandResults() {
 
   let html = ''
 
+  function hi(text) {
+    const s = String(text || '')
+    if (!q) return escapeHtml(s)
+    const i = s.toLowerCase().indexOf(q)
+    if (i < 0) return escapeHtml(s)
+    const before = escapeHtml(s.slice(0, i))
+    const mid = escapeHtml(s.slice(i, i + q.length))
+    const after = escapeHtml(s.slice(i + q.length))
+    return before + '<mark style="background:rgba(99,102,241,0.25);color:#E5E7EB;border-radius:4px;padding:0 2px;">' + mid + '</mark>' + after
+  }
+
   // Navigation commands
   let pages = [
     { icon:'📊', label:'Dashboard', sub:'Go to dashboard', action: () => switchPage('dashboard', null) },
@@ -1607,6 +1626,27 @@ function updateCommandResults() {
 
   // Ideas search
   let filteredIdeas = q ? ideas.filter(i => (i.title || '').toLowerCase().includes(q) || (i.description || '').toLowerCase().includes(q)).slice(0, 3) : []
+
+  // Goals search
+  let filteredGoals = q ? goals.filter(g => {
+    const t = String(g.title || '').toLowerCase()
+    if (t.includes(q)) return true
+    try {
+      const krs = Array.isArray(g.keyResults) ? g.keyResults : []
+      return krs.some(kr => String((kr && kr.title) ? kr.title : kr || '').toLowerCase().includes(q))
+    } catch (e) { return false }
+  }).slice(0, 3) : []
+
+  // Docs search (titles + block text)
+  ensurePageInitialized()
+  let filteredDocs = []
+  if (q) {
+    filteredDocs = pages.filter(p => {
+      if (String(p.title || '').toLowerCase().includes(q)) return true
+      try { return (p.blocks || []).some(b => stripHtmlForPreview(b.text || '').toLowerCase().includes(q)) } catch (e) { return false }
+    }).slice(0, 5)
+  }
+
   let savedViews = Array.isArray(userSettings.taskSavedViews) ? userSettings.taskSavedViews : []
   let filteredTaskViews = q ? savedViews.filter(v => (v.name || '').toLowerCase().includes(q)).slice(0, 6) : savedViews.slice(0, 4)
 
@@ -1650,6 +1690,52 @@ function updateCommandResults() {
       let item = { icon:'💡', label: i.title, sub: i.category || 'idea', action: () => switchPage('ideas', null) }
       commandItems.push(item)
       html += commandItemHtml(item)
+    })
+  }
+
+  if (filteredGoals.length) {
+    html += `<div class="command-section-label">Goals</div>`
+    filteredGoals.forEach(g => {
+      let item = {
+        icon: '🎯',
+        label: (q ? hi(g.title || 'Untitled goal') : escapeHtml(g.title || 'Untitled goal')),
+        sub: 'Open goal',
+        action: () => {
+          switchPage('goals', null)
+          setTimeout(function () { try { openEditGoalModal(g.id) } catch (e) {} }, 80)
+        }
+      }
+      commandItems.push(item)
+      html += `<div class="command-item" onclick="executeCommand(${commandItems.length - 1})">
+        <div class="command-item-icon">${item.icon}</div>
+        <div class="command-item-text">
+          <div class="command-item-label">${item.label}</div>
+          <div class="command-item-sub">${escapeHtml(item.sub)}</div>
+        </div>
+      </div>`
+    })
+  }
+
+  if (filteredDocs.length) {
+    html += `<div class="command-section-label">Docs</div>`
+    filteredDocs.forEach(p => {
+      let item = {
+        icon: '📄',
+        label: (q ? hi(p.title || 'Untitled') : escapeHtml(p.title || 'Untitled')),
+        sub: 'Open doc',
+        action: () => {
+          switchPage('pages', null)
+          setTimeout(function () { openPage(p.id) }, 100)
+        }
+      }
+      commandItems.push(item)
+      html += `<div class="command-item" onclick="executeCommand(${commandItems.length - 1})">
+        <div class="command-item-icon">${item.icon}</div>
+        <div class="command-item-text">
+          <div class="command-item-label">${item.label}</div>
+          <div class="command-item-sub">${escapeHtml(item.sub)}</div>
+        </div>
+      </div>`
     })
   }
 
@@ -2860,6 +2946,7 @@ function saveTask() {
   showToast('Task created!', 'success')
   updateStats()
   if (task.status === 'done') runTaskStatusAutomations(task, 'todo', 'done', 'create')
+  try { runCustomAutomations({ type: 'task_created', task, oldStatus: '', newStatus: task.status || '', source: 'create' }) } catch (e) {}
 }
 
 function buildTaskCard(t) {
@@ -6322,6 +6409,11 @@ function renderNotifications(filter) {
   let list = notifications
   if (currentNotificationFilter === 'unread') list = notifications.filter(n => !n.read)
   if (currentNotificationFilter === 'mentions') list = notifications.filter(n => n.type === 'mention')
+  if (currentNotificationFilter === 'tasks') list = notifications.filter(n => n.linkType === 'task' || n.type === 'task')
+  if (currentNotificationFilter === 'system') list = notifications.filter(n => !n.linkType && (n.type === 'info' || n.type === 'system'))
+
+  const q = (document.getElementById('notificationsSearch')?.value || '').toLowerCase().trim()
+  if (q) list = list.filter(n => String(n.text || '').toLowerCase().includes(q))
   let html = list.slice(0, 30).map(n => `
     <div class="notification-item ${n.read ? '' : 'unread'} ${n.linkType && n.linkId ? 'notification-item--link' : ''}" style="${n.linkType && n.linkId ? 'cursor:pointer;' : ''}" onclick="handleNotifRowClick('${n.id}', event)">
       <div class="notif-dot ${n.read ? 'read' : ''}"></div>
@@ -6329,6 +6421,7 @@ function renderNotifications(filter) {
         <div class="notification-title">${escapeHtml(n.text)}${n.linkType && n.linkId ? ' <span style="font-size:10px;color:#6B7280;">→ Open</span>' : ''}</div>
         <div class="notification-time">${timeAgo(n.time)}</div>
       </div>
+      <button type="button" class="btn-xs btn-secondary" style="margin-left:auto;align-self:center;" onclick="event.stopPropagation();markNotifRead('${n.id}');">Read</button>
     </div>
   `).join('')
 
@@ -6465,9 +6558,6 @@ function exportAuditLog() {
 /* ===================================================
    PAGES (Notion-style blocks)
 =================================================== */
-let blocksEditorHandlersBound = false
-let currentBlockIndex = null
-
 function ensurePageInitialized() {
   if (!pages || !pages.length) {
     pages = [{
@@ -6549,6 +6639,68 @@ function updatePageTOC(page) {
   body.className = ''
   body.innerHTML = '<ul>' + items.map(it =>
     `<li><a class="${it.cls}" data-toc-index="${it.i}" onclick="focusBlockIndex(${it.i}); return false;">${escapeHtml(it.label)}</a></li>`
+  ).join('') + '</ul>'
+}
+
+function extractWikiLinksFromHtml(html) {
+  const out = []
+  const s = String(html || '')
+  // <a ... data-wiki-page-id="...">
+  const re = /data-wiki-page-id\s*=\s*["']([^"']+)["']/gi
+  let m
+  while ((m = re.exec(s))) {
+    const id = String(m[1] || '').trim()
+    if (id) out.push(id)
+  }
+  return out
+}
+
+function buildDocsLinkIndex() {
+  ensurePageInitialized()
+  const idx = {}
+  pages.forEach(p => {
+    const links = new Set()
+    ;(p.blocks || []).forEach(b => {
+      if (b && b.text) extractWikiLinksFromHtml(b.text).forEach(id => links.add(id))
+    })
+    idx[p.id] = Array.from(links)
+  })
+  try { localStorage.setItem('pageLinkIndex', JSON.stringify(idx)) } catch (e) {}
+  return idx
+}
+
+function loadDocsLinkIndex() {
+  try {
+    const raw = localStorage.getItem('pageLinkIndex')
+    if (!raw) return null
+    const j = JSON.parse(raw)
+    return j && typeof j === 'object' ? j : null
+  } catch (e) {
+    return null
+  }
+}
+
+function renderPageBacklinks(page) {
+  const el = document.getElementById('pageBacklinksBody')
+  if (!el || !page) return
+  const idx = loadDocsLinkIndex() || buildDocsLinkIndex()
+  const inbound = []
+  Object.keys(idx || {}).forEach(fromId => {
+    const arr = idx[fromId] || []
+    if (Array.isArray(arr) && arr.includes(page.id)) inbound.push(fromId)
+  })
+  if (!inbound.length) {
+    el.className = 'docs-toc-empty'
+    el.textContent = 'No backlinks yet.'
+    return
+  }
+  el.className = ''
+  const rows = inbound
+    .map(pid => pages.find(p => p.id === pid))
+    .filter(Boolean)
+    .slice(0, 12)
+  el.innerHTML = '<ul>' + rows.map(p =>
+    `<li><a class="docs-toc-h2" onclick="openPage('${escapeHtml(p.id)}'); return false;">${escapeHtml(p.title || 'Untitled')}</a></li>`
   ).join('') + '</ul>'
 }
 
@@ -6692,6 +6844,8 @@ function newBlockOfType(type) {
   if (type === 'quote') return { id: genId(), type, text: '' }
   if (type === 'code') return { id: genId(), type: 'code', text: '' }
   if (type === 'callout') return { id: genId(), type: 'callout', text: '' }
+  if (type === 'bulleted_list') return { id: genId(), type: 'bulleted_list', text: '<li></li>' }
+  if (type === 'numbered_list') return { id: genId(), type: 'numbered_list', text: '<li></li>' }
   return { id: genId(), type: 'paragraph', text: '' }
 }
 
@@ -6700,6 +6854,7 @@ function syncPagesSidebarMeta() {
   if (!page) return
   updatePagesMetaAndBreadcrumb(page)
   updatePageTOC(page)
+  renderPageBacklinks(page)
 }
 
 function focusBlockIndex(index) {
@@ -6726,9 +6881,87 @@ function updateCurrentPageAndPersist(mutator) {
   const page = pages.find(x => x.id === currentPageId)
   if (!page) return
 
+  const opts = arguments.length > 1 ? arguments[1] : null
+  if (opts && opts.history) {
+    try { snapshotDocsPageForUndo(String(opts.reason || 'edit')) } catch (e) {}
+  }
+
   mutator(page)
   page.updated = new Date().toISOString()
   save('pages', pages)
+}
+
+function getDocsHistoryBucket(pageId) {
+  const id = String(pageId || '')
+  if (!id) return null
+  if (!docsHistoryByPageId[id]) docsHistoryByPageId[id] = { undo: [], redo: [] }
+  return docsHistoryByPageId[id]
+}
+
+function snapshotDocsPageForUndo(reason) {
+  const page = pages.find(x => x.id === currentPageId)
+  if (!page) return
+  const bucket = getDocsHistoryBucket(page.id)
+  if (!bucket) return
+  // Snapshot includes blocks + title to keep undo coherent
+  const snap = {
+    t: Date.now(),
+    reason: String(reason || ''),
+    pageId: page.id,
+    title: page.title || '',
+    blocks: JSON.parse(JSON.stringify(page.blocks || []))
+  }
+  bucket.undo.push(snap)
+  if (bucket.undo.length > DOCS_HISTORY_LIMIT) bucket.undo.shift()
+  bucket.redo = []
+}
+
+function restoreDocsSnapshot(snap) {
+  if (!snap || !snap.pageId) return
+  const page = pages.find(x => x.id === snap.pageId)
+  if (!page) return
+  page.title = snap.title || ''
+  page.blocks = JSON.parse(JSON.stringify(snap.blocks || []))
+  page.updated = new Date().toISOString()
+  save('pages', pages)
+  // keep title input in sync
+  const titleInput = document.getElementById('pageTitleInput')
+  if (titleInput) titleInput.value = page.title || ''
+  renderPagesEditor()
+}
+
+function docsUndo() {
+  const page = pages.find(x => x.id === currentPageId)
+  if (!page) return
+  const bucket = getDocsHistoryBucket(page.id)
+  if (!bucket || !bucket.undo.length) return
+  // push current state to redo
+  bucket.redo.push({
+    t: Date.now(),
+    reason: 'redo_point',
+    pageId: page.id,
+    title: page.title || '',
+    blocks: JSON.parse(JSON.stringify(page.blocks || []))
+  })
+  const snap = bucket.undo.pop()
+  restoreDocsSnapshot(snap)
+}
+
+function docsRedo() {
+  const page = pages.find(x => x.id === currentPageId)
+  if (!page) return
+  const bucket = getDocsHistoryBucket(page.id)
+  if (!bucket || !bucket.redo.length) return
+  // push current state back to undo
+  bucket.undo.push({
+    t: Date.now(),
+    reason: 'undo_point',
+    pageId: page.id,
+    title: page.title || '',
+    blocks: JSON.parse(JSON.stringify(page.blocks || []))
+  })
+  const snap = bucket.redo.pop()
+  restoreDocsSnapshot(snap)
 }
 
 function renderBlocksForCurrentPage() {
@@ -6867,6 +7100,36 @@ function renderBlocksForCurrentPage() {
       `
     }
 
+    if (b.type === 'bulleted_list') {
+      return `
+        <div class="block-row" data-block-id="${escapeHtml(bid)}" data-block-index="${i}" data-block-type="bulleted_list" style="position:relative;">
+          ${linkBtn}
+          <ul class="block-list-ul block-text"
+              contenteditable="true"
+              data-block-index="${i}"
+              data-block-field="text"
+              data-placeholder="List">
+            ${b.text || '<li></li>'}
+          </ul>
+        </div>
+      `
+    }
+
+    if (b.type === 'numbered_list') {
+      return `
+        <div class="block-row" data-block-id="${escapeHtml(bid)}" data-block-index="${i}" data-block-type="numbered_list" style="position:relative;">
+          ${linkBtn}
+          <ol class="block-list-ol block-text"
+              contenteditable="true"
+              data-block-index="${i}"
+              data-block-field="text"
+              data-placeholder="List">
+            ${b.text || '<li></li>'}
+          </ol>
+        </div>
+      `
+    }
+
     // paragraph default
     return `
       <div class="block-row" data-block-id="${escapeHtml(bid)}" data-block-index="${i}" data-block-type="paragraph" style="position:relative;">
@@ -6892,7 +7155,7 @@ function addBlockAt(index, type) {
     const newBlock = newBlockOfType(type)
     const insertAt = Math.max(0, Math.min(index, page.blocks.length))
     page.blocks.splice(insertAt, 0, newBlock)
-  })
+  }, { history: true, reason: 'add_block' })
 }
 
 function removeBlockAt(index) {
@@ -6900,7 +7163,7 @@ function removeBlockAt(index) {
     if (!Array.isArray(page.blocks)) return
     if (page.blocks.length <= 1) return // keep at least one block
     page.blocks.splice(index, 1)
-  })
+  }, { history: true, reason: 'remove_block' })
 }
 
 function showBlockInsertMenu(afterIndex) {
@@ -6913,6 +7176,8 @@ function showBlockInsertMenu(afterIndex) {
     <button type="button" onclick="insertBlockFromMenu('heading')">Heading 1<span>Page title section</span></button>
     <button type="button" onclick="insertBlockFromMenu('heading2')">Heading 2<span>Major sections</span></button>
     <button type="button" onclick="insertBlockFromMenu('heading3')">Heading 3<span>Subsections</span></button>
+    <button type="button" onclick="insertBlockFromMenu('bulleted_list')">Bulleted list<span>Bullet points</span></button>
+    <button type="button" onclick="insertBlockFromMenu('numbered_list')">Numbered list<span>Steps and sequences</span></button>
     <div class="bim-h">Blocks</div>
     <button type="button" onclick="insertBlockFromMenu('quote')">Quote<span>Callout quote</span></button>
     <button type="button" onclick="insertBlockFromMenu('callout')">Callout<span>Note or alert</span></button>
@@ -6954,7 +7219,18 @@ function bindBlocksEditorHandlersIfNeeded() {
     const idxAttr = target.getAttribute('data-block-index')
     if (idxAttr == null) return
     const idx = Number(idxAttr)
-    if (!Number.isNaN(idx)) currentBlockIndex = idx
+    if (!Number.isNaN(idx)) {
+      currentBlockIndex = idx
+      // Snapshot once per edit-session (so typing doesn't spam history)
+      try {
+        const field = String(target.getAttribute('data-block-field') || '')
+        const key = String(currentPageId || '') + '|' + String(idx) + '|' + field
+        if (docsEditSessionKey !== key) {
+          snapshotDocsPageForUndo('typing')
+          docsEditSessionKey = key
+        }
+      } catch (e2) {}
+    }
   })
 
   // Input updates
@@ -6975,6 +7251,9 @@ function bindBlocksEditorHandlersIfNeeded() {
     syncPagesSidebarMeta()
   })
 
+  // Paste cleanup (default to plain text)
+  container.addEventListener('paste', handleDocsPaste)
+
   // Key shortcuts
   container.addEventListener('keydown', e => {
     const t = e.target
@@ -6982,6 +7261,21 @@ function bindBlocksEditorHandlersIfNeeded() {
     const idx = Number(t.getAttribute('data-block-index'))
     const field = t.getAttribute('data-block-field')
     if (Number.isNaN(idx)) return
+
+    // Undo/redo (docs only)
+    if ((e.ctrlKey || e.metaKey) && !e.altKey) {
+      const k = String(e.key || '').toLowerCase()
+      if (k === 'z' && !e.shiftKey) {
+        e.preventDefault()
+        docsUndo()
+        return
+      }
+      if (k === 'y' || (k === 'z' && e.shiftKey)) {
+        e.preventDefault()
+        docsRedo()
+        return
+      }
+    }
 
     // Close menu
     if (e.key === 'Escape' && blockInsertMenuVisible) {
@@ -7001,10 +7295,27 @@ function bindBlocksEditorHandlersIfNeeded() {
       return
     }
 
+    // Wiki link quick insert: Ctrl+Shift+K
+    if ((e.ctrlKey || e.metaKey) && e.shiftKey && !e.altKey) {
+      const k2 = String(e.key || '').toLowerCase()
+      if (k2 === 'k') {
+        e.preventDefault()
+        promptWikiLinkInsert()
+        return
+      }
+    }
+
     if (e.key === 'Enter') {
       const row = t.closest && t.closest('.block-row')
       const bt = row && row.getAttribute('data-block-type')
       if (bt === 'code') return
+      if (isListBlockType(bt)) {
+        // Within list blocks, Enter creates a new list item
+        e.preventDefault()
+        const ok = insertNewListItemAtCursor(t)
+        if (ok) return
+        // Fallback: if selection isn't in <li>, add a paragraph block after
+      }
       e.preventDefault()
       addBlockAt(idx + 1, 'paragraph')
       renderBlocksForCurrentPage()
@@ -7017,6 +7328,23 @@ function bindBlocksEditorHandlersIfNeeded() {
     if (e.key === 'Backspace') {
       const text = (t.innerText || '').replace(/\u00A0/g, ' ').trim()
       if (!text) {
+        // Empty list block: remove / convert cleanly
+        try {
+          const row = t.closest && t.closest('.block-row')
+          const bt = row && row.getAttribute('data-block-type')
+          if (isListBlockType(bt)) {
+            const page = pages.find(x => x.id === currentPageId)
+            const b = page && page.blocks ? page.blocks[idx] : null
+            const empty = isEmptyListHtml(b && b.text)
+            if (empty && idx > 0) {
+              e.preventDefault()
+              removeBlockAt(idx)
+              renderBlocksForCurrentPage()
+              focusBlockIndex(Math.max(0, idx - 1))
+              return
+            }
+          }
+        } catch (e2) {}
         if (idx > 0) {
           e.preventDefault()
           removeBlockAt(idx)
@@ -7062,6 +7390,108 @@ function applyInlineFormat(command) {
   }
 }
 
+function docsPromptLink() {
+  try {
+    const url = String(window.prompt('Link URL (https://...)', 'https://') || '').trim()
+    if (!url) return
+    document.execCommand('createLink', false, url)
+  } catch (e) {}
+}
+
+function getClosest(el, sel) {
+  try { return el && el.closest ? el.closest(sel) : null } catch (e) { return null }
+}
+
+function isListBlockType(bt) {
+  return bt === 'bulleted_list' || bt === 'numbered_list'
+}
+
+function insertNewListItemAtCursor(containerEl) {
+  const sel = window.getSelection && window.getSelection()
+  if (!sel || !sel.rangeCount) return false
+  const anchor = sel.anchorNode ? (sel.anchorNode.nodeType === 1 ? sel.anchorNode : sel.anchorNode.parentElement) : null
+  const li = getClosest(anchor, 'li')
+  if (!li) return false
+  const parent = li.parentElement
+  if (!parent || (parent.tagName !== 'UL' && parent.tagName !== 'OL')) return false
+  const newLi = document.createElement('li')
+  newLi.innerHTML = '<br>'
+  if (li.nextSibling) parent.insertBefore(newLi, li.nextSibling)
+  else parent.appendChild(newLi)
+  try {
+    const r = document.createRange()
+    r.selectNodeContents(newLi)
+    r.collapse(true)
+    sel.removeAllRanges()
+    sel.addRange(r)
+  } catch (e) {}
+  return true
+}
+
+function isEmptyListHtml(html) {
+  const s = String(html || '').replace(/\u00A0/g, ' ').trim()
+  if (!s) return true
+  // strip tags and whitespace
+  const text = s.replace(/<[^>]+>/g, '').trim()
+  return !text
+}
+
+function normalizePlainTextToHtml(text) {
+  const t = String(text || '')
+  const esc = escapeHtml(t)
+  return esc.replace(/\r\n/g, '\n').replace(/\r/g, '\n').replace(/\n/g, '<br>')
+}
+
+function handleDocsPaste(e) {
+  const t = e.target
+  if (!t) return
+  const row = getClosest(t, '.block-row')
+  if (!row) return
+  const bt = row.getAttribute('data-block-type') || ''
+  // Only handle paste in docs blocks
+  if (!bt) return
+
+  try {
+    const cd = e.clipboardData
+    if (!cd) return
+    const plain = cd.getData('text/plain') || ''
+    if (plain == null) return
+    e.preventDefault()
+    if (bt === 'code') {
+      // code blocks: pure text
+      document.execCommand('insertText', false, plain)
+      return
+    }
+    // default: insert sanitized plain text as HTML line breaks
+    const html = normalizePlainTextToHtml(plain)
+    document.execCommand('insertHTML', false, html)
+  } catch (e2) {}
+}
+
+function promptWikiLinkInsert() {
+  ensurePageInitialized()
+  const query = String(window.prompt('Link to page (type a page title)', '') || '').trim()
+  if (!query) return
+  const existing = pages.find(p => String(p.title || '').toLowerCase() === query.toLowerCase())
+  const targetPage = existing || null
+  let pid = targetPage ? targetPage.id : null
+  let title = targetPage ? (targetPage.title || query) : query
+  if (!pid) {
+    // create the page
+    const nowIso = new Date().toISOString()
+    const newPage = { id: genId(), title: title, created: nowIso, updated: nowIso, blocks: [{ id: genId(), type: 'paragraph', text: '' }] }
+    pages.unshift(newPage)
+    save('pages', pages)
+    pid = newPage.id
+  }
+  try {
+    const html = `<a href=\"#\" class=\"wiki-link\" data-wiki-page-id=\"${escapeHtml(pid)}\" onclick=\"openPage('${escapeHtml(pid)}');return false;\">${escapeHtml(title)}</a>`
+    document.execCommand('insertHTML', false, html)
+    buildDocsLinkIndex()
+    syncPagesSidebarMeta()
+  } catch (e) {}
+}
+
 function setBlockTypeFromToolbar(type) {
   if (currentBlockIndex == null) return
   updateCurrentPageAndPersist(page => {
@@ -7069,7 +7499,7 @@ function setBlockTypeFromToolbar(type) {
     const b = page.blocks[currentBlockIndex]
     if (!b) return
     b.type = type
-  })
+  }, { history: true, reason: 'change_block_type' })
   renderBlocksForCurrentPage()
   focusBlockIndex(currentBlockIndex)
 }
@@ -7707,21 +8137,67 @@ function populateGoalKrSelect(goalId, selectId, selectedKrId) {
   sel.value = [...sel.options].some(o => o.value === want) ? want : ''
 }
 
-function getNextRecurringDueDate(prevDue, freq) {
+function nthWeekdayOfMonth(year, monthIndex, weekday0, nth) {
+  // weekday0: 0=Sun..6=Sat, nth: 1..5 (5 means "last" if overflow handled by caller)
+  const first = new Date(year, monthIndex, 1)
+  const firstW = first.getDay()
+  const delta = (weekday0 - firstW + 7) % 7
+  const day = 1 + delta + (Math.max(1, nth) - 1) * 7
+  return new Date(year, monthIndex, day)
+}
+
+function bumpIfWeekend(dateObj) {
+  const d = new Date(dateObj.getTime())
+  const wd = d.getDay()
+  if (wd === 6) d.setDate(d.getDate() + 2) // Sat -> Mon
+  if (wd === 0) d.setDate(d.getDate() + 1) // Sun -> Mon
+  return d
+}
+
+function getNextRecurringDueDate(prevDue, freqOrRule) {
+  const rule = (freqOrRule && typeof freqOrRule === 'object') ? freqOrRule : { freq: String(freqOrRule || '') }
+  const freq = String(rule.freq || '')
+  const interval = Math.max(1, Number(rule.interval || 1) || 1)
   const base = prevDue ? new Date(prevDue) : new Date()
   if (isNaN(base.getTime())) return null
   const d = new Date(base.getTime())
-  if (freq === 'daily') d.setDate(d.getDate() + 1)
-  else if (freq === 'weekly') d.setDate(d.getDate() + 7)
-  else if (freq === 'monthly') d.setMonth(d.getMonth() + 1)
+  if (freq === 'daily') d.setDate(d.getDate() + interval)
+  else if (freq === 'weekly') d.setDate(d.getDate() + (7 * interval))
+  else if (freq === 'monthly') {
+    // Monthly special mode: Nth weekday
+    if (rule.monthlyMode === 'nth_weekday' && rule.byweekday != null && rule.bysetpos != null) {
+      const nextMonth = new Date(d.getTime())
+      nextMonth.setMonth(nextMonth.getMonth() + interval)
+      const y = nextMonth.getFullYear()
+      const m = nextMonth.getMonth()
+      const weekday0 = Math.max(0, Math.min(6, Number(rule.byweekday)))
+      const nth = Math.max(1, Math.min(5, Number(rule.bysetpos)))
+      const cand = nthWeekdayOfMonth(y, m, weekday0, nth)
+      d.setTime(cand.getTime())
+    } else {
+      d.setMonth(d.getMonth() + interval)
+    }
+  }
   else return null
-  return toLocalDateTimeInputValue(d)
+  const adjusted = rule.skipWeekends ? bumpIfWeekend(d) : d
+  return toLocalDateTimeInputValue(adjusted)
 }
 
 function maybeCreateNextRecurringTask(task) {
   if (!task || !task.recurrence || !task.recurrence.freq) return null
   if (task.recurrence.createNextOnDone === false) return null
-  const nextDue = getNextRecurringDueDate(task.dueDate, task.recurrence.freq)
+  // End rules: after N occurrences or until date
+  const occ = Number(task.recurrence._occurrenceCount || 0) || 0
+  const endType = String(task.recurrence.endType || '')
+  const endCount = Math.max(0, Number(task.recurrence.endCount || 0) || 0)
+  const until = task.recurrence.until ? new Date(String(task.recurrence.until)) : null
+  if (endType === 'count' && endCount && occ >= endCount) return null
+  if (endType === 'until' && until && !isNaN(until.getTime())) {
+    const cur = task.dueDate ? new Date(task.dueDate) : new Date()
+    if (cur > until) return null
+  }
+
+  const nextDue = getNextRecurringDueDate(task.dueDate, task.recurrence)
   const nowIso = new Date().toISOString()
   const next = {
     id: genId(),
@@ -7733,7 +8209,7 @@ function maybeCreateNextRecurringTask(task) {
     dueDate: nextDue || null,
     assignee: task.assignee || (currentUser ? currentUser.id : ''),
     estimatedHours: task.estimatedHours || 0,
-    recurrence: { ...task.recurrence },
+    recurrence: { ...task.recurrence, _occurrenceCount: occ + 1 },
     goalId: task.goalId || null,
     goalKrId: task.goalKrId || null,
     created: nowIso
@@ -7778,6 +8254,171 @@ function runTaskStatusAutomations(task, oldStatus, newStatus, source) {
       autoProgressGoalKRFromLinkedTasks(task.goalId, task.goalKrId)
     }
   }
+
+  // Custom automations (user-defined rules)
+  try { runCustomAutomations({ type: 'task_status_changed', task, oldStatus, newStatus, source }) } catch (e) {}
+}
+
+function loadAutomations() {
+  try {
+    const raw = localStorage.getItem('automations')
+    if (!raw) return []
+    const j = JSON.parse(raw)
+    return Array.isArray(j) ? j : []
+  } catch (e) {
+    return []
+  }
+}
+
+function saveAutomations(list) {
+  try { localStorage.setItem('automations', JSON.stringify(Array.isArray(list) ? list : [])) } catch (e) {}
+}
+
+function normalizeAutomationRule(r) {
+  if (!r || typeof r !== 'object') return null
+  return {
+    id: r.id || genId(),
+    trigger: String(r.trigger || 'task_status_changed'),
+    projectId: r.projectId ? String(r.projectId) : '',
+    fromStatus: r.fromStatus ? String(r.fromStatus) : '',
+    toStatus: r.toStatus ? String(r.toStatus) : '',
+    action: String(r.action || 'notify'),
+    value: String(r.value || '')
+  }
+}
+
+function matchesAutomation(rule, ctx) {
+  if (!rule || !ctx) return false
+  if (rule.trigger !== ctx.type) return false
+  if (rule.projectId && String(ctx.task?.projectId || '') !== rule.projectId) return false
+  if (rule.fromStatus && String(ctx.oldStatus || '') !== rule.fromStatus) return false
+  if (rule.toStatus && String(ctx.newStatus || '') !== rule.toStatus) return false
+  return true
+}
+
+function runCustomAutomations(ctx) {
+  const list = loadAutomations().map(normalizeAutomationRule).filter(Boolean)
+  if (!list.length) return
+  list.forEach(rule => {
+    if (!matchesAutomation(rule, ctx)) return
+    const t = ctx.task
+    if (!t) return
+    if (rule.action === 'notify') {
+      addNotification(rule.value || `Automation fired for "${t.title}"`, 'info', { linkType: 'task', linkId: t.id })
+      addAuditLog('update', `Automation: notify for "${t.title}"`, 'update', { projectId: t.projectId || null, taskId: t.id })
+      return
+    }
+    if (rule.action === 'assign') {
+      const uid = String(rule.value || '').trim()
+      if (!uid) return
+      t.assignee = uid
+      t.updated = new Date().toISOString()
+      save('tasks', tasks)
+      addNotification(`Automation assigned: "${t.title}"`, 'task', { linkType: 'task', linkId: t.id })
+      addAuditLog('update', `Automation assigned task "${t.title}"`, 'update', { projectId: t.projectId || null, taskId: t.id })
+      renderTasks()
+      return
+    }
+    if (rule.action === 'set_priority') {
+      const pr = String(rule.value || '').trim()
+      if (!pr) return
+      t.priority = pr
+      t.updated = new Date().toISOString()
+      save('tasks', tasks)
+      addAuditLog('update', `Automation set priority "${pr}" for "${t.title}"`, 'update', { projectId: t.projectId || null, taskId: t.id })
+      renderTasks()
+      return
+    }
+    if (rule.action === 'create_task') {
+      const title = String(rule.value || '').trim() || (`Follow-up: ${t.title}`)
+      const nowIso = new Date().toISOString()
+      const nt = {
+        id: genId(),
+        title,
+        description: '',
+        projectId: t.projectId || '',
+        priority: t.priority || 'medium',
+        status: 'todo',
+        dueDate: null,
+        assignee: t.assignee || (currentUser ? currentUser.id : ''),
+        estimatedHours: 0,
+        recurrence: null,
+        goalId: t.goalId || null,
+        goalKrId: t.goalKrId || null,
+        created: nowIso
+      }
+      tasks.push(nt)
+      save('tasks', tasks)
+      addAuditLog('create', `Automation created follow-up task "${title}"`, 'create', { projectId: nt.projectId || null, taskId: nt.id })
+      addNotification(`Automation created task: "${title}"`, 'task', { linkType: 'task', linkId: nt.id })
+      renderTasks()
+      updateStats()
+      renderDashboardCharts()
+      return
+    }
+  })
+}
+
+function openAutomationsModal() {
+  const modal = document.getElementById('automationsModal')
+  if (!modal) return
+  // Populate projects
+  const sel = document.getElementById('autoProject')
+  if (sel) {
+    sel.innerHTML = '<option value=\"\">Any project</option>' + projects.map(p => `<option value=\"${escapeHtml(p.id)}\">${escapeHtml(p.name)}</option>`).join('')
+  }
+  renderAutomationsList()
+  modal.classList.add('active')
+}
+
+function closeAutomationsModal() {
+  const modal = document.getElementById('automationsModal')
+  if (modal) modal.classList.remove('active')
+}
+
+function renderAutomationsList() {
+  const el = document.getElementById('automationsList')
+  if (!el) return
+  const list = loadAutomations().map(normalizeAutomationRule).filter(Boolean)
+  if (!list.length) {
+    el.innerHTML = '<div class=\"empty-state compact\"><div class=\"empty-state-icon\">⚡</div><h3>No automations</h3><p>Create a rule below to automate your workflow.</p></div>'
+    return
+  }
+  el.innerHTML = list.map(r => {
+    const proj = r.projectId ? (projects.find(p => p.id === r.projectId)?.name || 'Project') : 'Any project'
+    const when = r.trigger === 'task_created' ? 'When task is created' : 'When task status changes'
+    const cond = (r.fromStatus || r.toStatus) ? ` (${r.fromStatus || 'any'} → ${r.toStatus || 'any'})` : ''
+    const act = r.action.replace('_', ' ')
+    const val = r.value ? `: ${escapeHtml(r.value)}` : ''
+    return `<div style=\"border:1px solid #1F2937;background:rgba(2,6,23,0.6);border-radius:12px;padding:12px;display:flex;gap:10px;align-items:flex-start;\">
+      <div style=\"flex:1;min-width:0;\">
+        <div style=\"font-weight:700;color:#E5E7EB;\">${escapeHtml(when)}${escapeHtml(cond)}</div>
+        <div style=\"font-size:12px;color:#9CA3AF;margin-top:4px;\">Project: ${escapeHtml(proj)} · Action: <strong>${escapeHtml(act)}</strong>${val}</div>
+      </div>
+      <button type=\"button\" class=\"btn-xs btn-danger\" onclick=\"deleteAutomationRule('${escapeHtml(r.id)}')\">Delete</button>
+    </div>`
+  }).join('')
+}
+
+function addAutomationFromModal() {
+  const trigger = document.getElementById('autoTrigger')?.value || 'task_status_changed'
+  const projectId = document.getElementById('autoProject')?.value || ''
+  const fromStatus = document.getElementById('autoFrom')?.value || ''
+  const toStatus = document.getElementById('autoTo')?.value || ''
+  const action = document.getElementById('autoAction')?.value || 'notify'
+  const value = document.getElementById('autoActionValue')?.value || ''
+  const list = loadAutomations().map(normalizeAutomationRule).filter(Boolean)
+  list.unshift(normalizeAutomationRule({ id: genId(), trigger, projectId, fromStatus, toStatus, action, value }))
+  saveAutomations(list)
+  renderAutomationsList()
+  showToast('Automation added', 'success')
+}
+
+function deleteAutomationRule(id) {
+  const list = loadAutomations().map(normalizeAutomationRule).filter(Boolean).filter(r => r.id !== id)
+  saveAutomations(list)
+  renderAutomationsList()
+  showToast('Automation removed', 'info')
 }
 
 function renderDashboardWorkload() {
@@ -7786,6 +8427,15 @@ function renderDashboardWorkload() {
   const active = tasks.filter(t => t.status !== 'done')
   const now = new Date()
   const overdue = active.filter(t => t.dueDate && new Date(t.dueDate) < now)
+  const overdueHigh = overdue.filter(t => (t.priority || 'medium') === 'high')
+
+  // Capacity (simple weekly capacity per person; default 40h)
+  const capacity = (userSettings && userSettings.capacityByUserId) ? userSettings.capacityByUserId : {}
+  function getCapHours(uid) {
+    const v = capacity && capacity[uid]
+    const n = Number(v)
+    return Number.isFinite(n) && n > 0 ? n : 40
+  }
 
   const byAssignee = {}
   active.forEach(t => {
@@ -7796,7 +8446,27 @@ function renderDashboardWorkload() {
     const label =
       id === 'unassigned' ? 'Unassigned' :
       (currentUser && id === currentUser.id ? 'You' : ((team.find(m => m.id === id)?.email || id).split('@')[0]))
-    return `<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid #1F2937;"><span>${escapeHtml(label)}</span><strong>${byAssignee[id]}</strong></div>`
+    // Utilization proxy: sum of estimates for active tasks
+    const est = active.filter(t => (t.assignee || 'unassigned') === id).reduce((s, t) => s + (t.estimatedHours || 0), 0)
+    const capH = (id === 'unassigned') ? null : getCapHours(id)
+    const util = (capH && est) ? Math.round((est / capH) * 100) : null
+    const utilColor = util != null && util > 110 ? '#ef4444' : util != null && util > 85 ? '#f59e0b' : '#22c55e'
+    return `<div style="display:flex;justify-content:space-between;gap:10px;padding:6px 0;border-bottom:1px solid #1F2937;">
+      <span style="min-width:0;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(label)}</span>
+      <span style="flex-shrink:0;color:#9CA3AF;">${byAssignee[id]} task${byAssignee[id]===1?'':'s'}${util != null ? ` · <span style="color:${utilColor};font-weight:700;">${util}%</span>` : ''}</span>
+    </div>`
+  }).join('')
+
+  // Burndown (simple): per-project done vs remaining counts
+  const burndownRows = projects.slice(0, 6).map(p => {
+    const projTasks = tasks.filter(t => t.projectId === p.id)
+    const done = projTasks.filter(t => t.status === 'done').length
+    const rem = projTasks.length - done
+    const pct = projTasks.length ? Math.round((done / projTasks.length) * 100) : 0
+    return `<div style="display:flex;justify-content:space-between;gap:10px;padding:6px 0;border-bottom:1px solid #1F2937;">
+      <span style="min-width:0;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(p.name)}</span>
+      <span style="flex-shrink:0;color:#9CA3AF;">${pct}% · ${done} done / ${rem} left</span>
+    </div>`
   }).join('')
 
   const projRows = projects.slice(0, 8).map(p => {
@@ -7814,13 +8484,19 @@ function renderDashboardWorkload() {
   el.innerHTML = `
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
       <div>
-        <div style="font-size:11px;color:#6B7280;margin-bottom:6px;text-transform:uppercase;letter-spacing:0.08em;">Active tasks by assignee</div>
+        <div style="font-size:11px;color:#6B7280;margin-bottom:6px;text-transform:uppercase;letter-spacing:0.08em;">Workload & capacity</div>
         ${assigneeRows || '<div style="color:#6B7280;">No active tasks.</div>'}
+        <div style="margin-top:12px;font-size:11px;color:#6B7280;margin-bottom:6px;text-transform:uppercase;letter-spacing:0.08em;">Burndown (projects)</div>
+        ${burndownRows || '<div style="color:#6B7280;">No projects.</div>'}
       </div>
       <div>
         <div style="font-size:11px;color:#6B7280;margin-bottom:6px;text-transform:uppercase;letter-spacing:0.08em;">Overdue</div>
         <div style="font-size:28px;font-weight:800;color:${overdue.length ? '#ef4444' : '#22c55e'};margin-bottom:6px;">${overdue.length}</div>
         <div style="font-size:11px;color:#6B7280;margin-bottom:10px;">Tasks past due date</div>
+        <div style="font-size:11px;color:#6B7280;margin-bottom:6px;text-transform:uppercase;letter-spacing:0.08em;">At risk</div>
+        <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid #1F2937;">
+          <span>Overdue high priority</span><strong style="color:${overdueHigh.length ? '#ef4444' : '#9CA3AF'};">${overdueHigh.length}</strong>
+        </div>
         <div style="font-size:11px;color:#6B7280;margin-bottom:6px;text-transform:uppercase;letter-spacing:0.08em;">Time vs estimate (projects)</div>
         ${projRows || '<div style="color:#6B7280;">No projects.</div>'}
       </div>

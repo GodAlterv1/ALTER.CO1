@@ -1021,6 +1021,12 @@ function requireAdmin(req, res, next) {
   return res.status(403).json({ error: 'Admin access required' })
 }
 
+function requireWriter(req, res, next) {
+  const r = req.userRole
+  if (r === 'viewer') return res.status(403).json({ error: 'Read-only access' })
+  return next()
+}
+
 // ----- Routes: Auth -----
 app.post('/api/auth/register', authBurstLimiter, async (req, res) => {
   const { username, email, password, fullName, inviteCode } = req.body || {}
@@ -1451,7 +1457,7 @@ app.get('/api/workspace', authMiddleware, (req, res) => {
   res.json({ ...out, workspaceOwnerSummary })
 })
 
-app.put('/api/workspace', authMiddleware, (req, res) => {
+app.put('/api/workspace', authMiddleware, requireWriter, (req, res) => {
   const fileUserId = resolveWorkspaceFileUserId(req.userId)
   const data = req.body || {}
   const current = readWorkspace(fileUserId) || emptyWorkspace()
@@ -1469,7 +1475,7 @@ app.put('/api/workspace', authMiddleware, (req, res) => {
 })
 
 // Partial workspace update for backend-first writes (e.g. tasks/team updates)
-app.patch('/api/workspace/:key', authMiddleware, (req, res) => {
+app.patch('/api/workspace/:key', authMiddleware, requireWriter, (req, res) => {
   const key = String(req.params.key || '').trim()
   if (!WORKSPACE_KEYS.includes(key)) {
     return res.status(400).json({ error: 'Invalid workspace key' })

@@ -407,19 +407,17 @@ input[type="time"]::-webkit-calendar-picker-indicator {
   align-items: center;
   min-height: 40px;
   padding: 0;
-  background: #020617;
-  border: 1px solid #1F2937;
-  border-radius: 8px;
+  background: transparent;
+  border: none;
+  border-radius: 0;
   width: 100%;
-  overflow: hidden;
 }
-.google-signin-slot:hover { border-color: rgba(79,70,229,0.55); background: #0d1117; }
+.google-signin-slot:hover { background: transparent; }
 .google-signin-slot > div {
   display: flex !important;
   justify-content: center;
   width: 100%;
 }
-.google-signin-slot iframe { border-radius: 999px !important; }
 .google-signin-slot--text {
   font-size: 12px;
   color: #9CA3AF;
@@ -3263,6 +3261,21 @@ kbd {
   .docs-sidebar { border-right: none; border-bottom: 1px solid #1F2937; max-height: 320px; }
   .docs-article-inner { padding: 20px 16px 60px; }
 }
+@media (max-width: 640px) {
+  .docs-sidebar-actions { padding: 12px; }
+  .docs-sidebar-secondary { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .docs-sidebar-secondary button { width: 100%; }
+  .docs-page-canvas { padding: 18px 16px 40px; border-radius: 14px; }
+  .pages-toolbar {
+    position: sticky;
+    top: 64px;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    flex-wrap: nowrap;
+    gap: 6px;
+  }
+  .pages-toolbar-label { display: none; }
+}
 .docs-breadcrumb { font-size: 12px; color: #6B7280; margin-bottom: 16px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .docs-breadcrumb span { color: #9CA3AF; }
 .docs-title-field {
@@ -3409,14 +3422,24 @@ kbd {
   padding: 18px 0 30px;
 }
 .docs-page-canvas {
-  transform: scale(var(--docs-zoom));
-  transform-origin: top center;
+  /* Avoid transform scaling: it makes text look compressed/blurry on many displays.
+     Use zoom for crisp typography (Chromium/Edge), fallback to transform via JS if needed. */
+  zoom: var(--docs-zoom);
   width: min(900px, 100%);
   background: #0b1220;
   border: 1px solid rgba(148, 163, 184, 0.12);
   box-shadow: 0 18px 60px rgba(0,0,0,0.55);
   border-radius: 16px;
   padding: 22px 24px 48px;
+}
+
+.docs-page-canvas,
+.docs-page-canvas .block-text,
+.docs-page-canvas .docs-title-field {
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  font-kerning: normal;
 }
 .docs-page-ruler {
   display: flex;
@@ -3502,7 +3525,13 @@ kbd {
   .pages-toolbar, .docs-page-ruler { display: none !important; }
   .block-text, .docs-title-field { color: #111827 !important; -webkit-text-fill-color: #111827 !important; }
 }
-.block-text { outline: none; color: #E5E7EB; font-size: 15px; line-height: 1.65; }
+.block-text {
+  outline: none;
+  color: #E5E7EB;
+  font-size: 16px;
+  line-height: 1.7;
+  letter-spacing: 0.01em;
+}
 .block-text[contenteditable="true"]:empty:before { content: attr(data-placeholder); color: #6B7280; }
 .block-heading { font-size: 1.75rem; font-weight: 800; color: #F9FAFB; letter-spacing: -0.02em; line-height: 1.25; }
 .block-h2 { font-size: 1.35rem; font-weight: 700; color: #F3F4F6; letter-spacing: -0.02em; line-height: 1.3; margin-top: 0.25em; }
@@ -3540,6 +3569,16 @@ kbd {
 .block-checklist { display: flex; align-items: flex-start; gap: 12px; }
 .block-checklist input[type="checkbox"] { margin-top: 6px; width: 16px; height: 16px; accent-color: #6366f1; }
 .block-checklist .check-text { flex: 1; }
+
+.block-list-ul,
+.block-list-ol {
+  margin: 0;
+  padding-left: 22px;
+}
+.block-list-ul li,
+.block-list-ol li {
+  margin: 6px 0;
+}
 
 .block-insert-menu {
   position: fixed;
@@ -4912,6 +4951,9 @@ kbd {
 
                         <div class="pages-toolbar">
                           <span class="pages-toolbar-label">Insert &amp; format</span>
+                          <button type="button" onclick="docsUndo()" title="Undo (Ctrl+Z)">Undo</button>
+                          <button type="button" onclick="docsRedo()" title="Redo (Ctrl+Y)">Redo</button>
+                          <span class="toolbar-separator"></span>
                           <button type="button" onclick="setBlockTypeFromToolbar('paragraph')">Paragraph</button>
                           <button type="button" onclick="setBlockTypeFromToolbar('heading')">H1</button>
                           <button type="button" onclick="setBlockTypeFromToolbar('heading2')">H2</button>
@@ -4920,10 +4962,15 @@ kbd {
                           <button type="button" onclick="setBlockTypeFromToolbar('quote')">Quote</button>
                           <button type="button" onclick="setBlockTypeFromToolbar('callout')">Callout</button>
                           <button type="button" onclick="setBlockTypeFromToolbar('code')">Code</button>
+                          <button type="button" onclick="setBlockTypeFromToolbar('bulleted_list')">Bullets</button>
+                          <button type="button" onclick="setBlockTypeFromToolbar('numbered_list')">Numbers</button>
                           <span class="toolbar-separator"></span>
                           <button type="button" onclick="applyInlineFormat('bold')"><strong>B</strong></button>
                           <button type="button" onclick="applyInlineFormat('italic')"><em>I</em></button>
                           <button type="button" onclick="applyInlineFormat('underline')"><span style="text-decoration:underline;">U</span></button>
+                          <button type="button" onclick="docsPromptLink()" title="Insert link">Link</button>
+                          <button type="button" onclick="applyInlineFormat('unlink')" title="Remove link">Unlink</button>
+                          <button type="button" onclick="promptWikiLinkInsert()" title="Insert wiki link">[[ ]]</button>
                           <span class="toolbar-separator"></span>
                           <button type="button" onclick="insertBlockFromToolbar('checklist')">Checklist</button>
                           <button type="button" onclick="insertBlockFromToolbar('divider')">Divider</button>
@@ -4941,6 +4988,8 @@ kbd {
                   <nav class="docs-toc" id="pageTOC" aria-label="On this page">
                     <p class="docs-toc-title">On this page</p>
                     <div id="pageTOCBody" class="docs-toc-empty">Add headings to see outline.</div>
+                    <p class="docs-toc-title" style="margin-top:16px;">Linked mentions</p>
+                    <div id="pageBacklinksBody" class="docs-toc-empty">No backlinks yet.</div>
                   </nav>
                 </div>
               </div>
@@ -5154,6 +5203,11 @@ kbd {
           </div>
           <button onclick="saveWorkspaceSettings()">Save Workspace</button>
           <div style="margin-top:22px;padding-top:18px;border-top:1px solid #1F2937;">
+            <h4 style="margin:0 0 8px 0;">Automations</h4>
+            <p style="font-size:12px;color:#9CA3AF;margin:0 0 10px 0;line-height:1.45;">Create rules like “when task moves to Done → notify / assign / create task”.</p>
+            <button type="button" class="btn-sm btn-secondary" onclick="openAutomationsModal()">Manage automations</button>
+          </div>
+          <div style="margin-top:22px;padding-top:18px;border-top:1px solid #1F2937;">
             <h4 style="margin:0 0 8px 0;">Product analytics (local only)</h4>
             <p style="font-size:12px;color:#9CA3AF;margin:0 0 10px 0;line-height:1.45;">Events are stored in this browser for debugging and activation insights. Clear anytime.</p>
             <div id="settingsAnalyticsSummary" style="font-size:12px;color:#9CA3AF;margin-bottom:10px;"></div>
@@ -5342,6 +5396,12 @@ kbd {
       <button class="notif-tab active" onclick="filterNotifs('all', this)">All</button>
       <button class="notif-tab" onclick="filterNotifs('unread', this)">Unread</button>
       <button class="notif-tab" onclick="filterNotifs('mentions', this)">Mentions</button>
+      <button class="notif-tab" onclick="filterNotifs('tasks', this)">Tasks</button>
+      <button class="notif-tab" onclick="filterNotifs('system', this)">System</button>
+    </div>
+    <div style="padding:10px 12px;border-bottom:1px solid #1F2937;">
+      <input id="notificationsSearch" placeholder="Search notifications…" oninput="renderNotifications(currentNotificationFilter)" autocomplete="off"
+             style="width:100%;padding:10px 12px;background:#020617;border:1px solid #1F2937;border-radius:10px;color:#E5E7EB;font-size:13px;box-sizing:border-box;">
     </div>
     <div class="notifications-list" id="notificationsList"></div>
   </div>
@@ -5872,6 +5932,73 @@ kbd {
     <div id="docsTemplatesGrid" class="template-grid"></div>
     <div style="margin-top:14px;display:flex;justify-content:flex-end;gap:8px;">
       <button type="button" class="btn-secondary" onclick="closeDocsTemplatesModal()">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- Automations Modal -->
+<div id="automationsModal" class="modal" onclick="handleModalBackdrop(event)">
+  <div class="modal-box" onclick="event.stopPropagation()" style="max-width:760px;">
+    <div class="modal-header">
+      <h2>⚡ Automations</h2>
+      <button type="button" class="btn-xs btn-secondary" onclick="closeAutomationsModal()">✕</button>
+    </div>
+    <div id="automationsList" style="display:flex;flex-direction:column;gap:10px;"></div>
+    <div style="margin-top:14px;padding-top:14px;border-top:1px solid #1F2937;">
+      <div class="form-row">
+        <div class="form-group">
+          <label>Trigger</label>
+          <select id="autoTrigger">
+            <option value="task_status_changed">Task status changed</option>
+            <option value="task_created">Task created</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Project (optional)</label>
+          <select id="autoProject"><option value="">Any project</option></select>
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>From status (optional)</label>
+          <select id="autoFrom">
+            <option value="">Any</option>
+            <option value="todo">To Do</option>
+            <option value="in-progress">In Progress</option>
+            <option value="review">Review</option>
+            <option value="done">Done</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>To status (optional)</label>
+          <select id="autoTo">
+            <option value="">Any</option>
+            <option value="todo">To Do</option>
+            <option value="in-progress">In Progress</option>
+            <option value="review">Review</option>
+            <option value="done">Done</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Action</label>
+          <select id="autoAction">
+            <option value="notify">Add notification</option>
+            <option value="assign">Assign task</option>
+            <option value="set_priority">Set priority</option>
+            <option value="create_task">Create follow-up task</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Action value</label>
+          <input id="autoActionValue" placeholder="e.g. high / userId / task title / message" type="text">
+        </div>
+      </div>
+      <div style="display:flex;justify-content:flex-end;gap:8px;">
+        <button type="button" class="btn-secondary" onclick="closeAutomationsModal()">Close</button>
+        <button type="button" onclick="addAutomationFromModal()">Add automation</button>
+      </div>
     </div>
   </div>
 </div>
