@@ -360,9 +360,6 @@ const apiGeneralLimiter = rateLimit({
   message: { error: 'Too many requests, slow down.' }
 })
 app.use('/api/', apiGeneralLimiter)
-app.use('/api/workspace', workspaceWriteLimiter)
-app.use('/api/workspace/', workspaceWriteLimiter)
-app.use('/api/integrations/', integrationsLimiter)
 
 const workspaceWriteLimiter = rateLimit({
   windowMs: 60 * 1000,
@@ -379,6 +376,11 @@ const integrationsLimiter = rateLimit({
   legacyHeaders: false,
   message: { error: 'Too many integration requests, slow down.' }
 })
+
+// Apply targeted rate limits after initialization
+app.use('/api/workspace', workspaceWriteLimiter)
+app.use('/api/workspace/', workspaceWriteLimiter)
+app.use('/api/integrations/', integrationsLimiter)
 
 function makeCookieOptions() {
   // Note: 'secure' requires HTTPS; keep false for local dev.
